@@ -4,8 +4,6 @@ import {
   Globe,
   Wifi,
   ShieldCheck,
-  Calendar,
-  MapPin,
   Radio,
   ArrowUpRight,
   Mail,
@@ -13,6 +11,9 @@ import {
   Copy,
   Check,
   Video,
+  Zap,
+  ShieldAlert,
+  Palette,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -20,6 +21,7 @@ import {
   CurrencyMode,
   formatMoney,
 } from '../types/firestore';
+import { emitToast } from '../lib/toast';
 
 interface AgentIdentityCardProps {
   agent: AgentDoc;
@@ -33,9 +35,10 @@ interface AgentIdentityCardProps {
   onEmail: (agent: AgentDoc) => void;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
+  onCustomize?: (agent: AgentDoc) => void;
 }
 
-/** Deterministic crisp SVG QR matrix seeded from agent handle/endpoint */
+/** Deterministic crisp SVG QR matrix seeded from agent handle */
 const DeterministicQrSvg: React.FC<{ seed: string }> = ({ seed }) => {
   const size = 21;
   let hash = 2166136261;
@@ -72,7 +75,7 @@ const DeterministicQrSvg: React.FC<{ seed: string }> = ({ seed }) => {
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      className="w-12 h-12 sm:w-14 sm:h-14 rounded bg-white p-0.5 border border-slate-200 shadow-xs"
+      className="w-11 h-11 sm:w-12 sm:h-12 rounded-md bg-white p-0.5 border border-zinc-300"
       aria-label={`Agent Handshake QR for ${seed}`}
     >
       <rect width={size} height={size} fill="#ffffff" />
@@ -83,26 +86,26 @@ const DeterministicQrSvg: React.FC<{ seed: string }> = ({ seed }) => {
           y={cell.r}
           width={0.92}
           height={0.92}
-          fill="#0f172a"
+          fill="#09090b"
         />
       ))}
     </svg>
   );
 };
 
-/** Clean illustrated vector portraits for personal human agents */
+/** Clean vector portrait for human personas */
 const PersonaPortraitSvg: React.FC<{ variant?: AgentDoc['avatarVariant']; initials: string }> = ({
   variant,
   initials,
 }) => {
   const palette =
     variant === 'chris'
-      ? { bg: '#E2E8F0', skin: '#6F4533', suit: '#1D4ED8', shirt: '#0F172A', hair: '#1E1B18' }
+      ? { bg: '#E4E4E7', skin: '#6F4533', suit: '#18181B', shirt: '#3F3F46', hair: '#18181B' }
       : variant === 'thandi'
       ? { bg: '#E0F2FE', skin: '#7C4B36', suit: '#0F766E', shirt: '#F8FAFC', hair: '#18181B' }
       : variant === 'alex'
-      ? { bg: '#E2E8F0', skin: '#5E3828', suit: '#1E293B', shirt: '#0EA5E9', hair: '#171717' }
-      : { bg: '#E2E8F0', skin: '#7C533D', suit: '#1E40AF', shirt: '#E2E8F0', hair: '#1E293B' };
+      ? { bg: '#E4E4E7', skin: '#5E3828', suit: '#27272A', shirt: '#0EA5E9', hair: '#171717' }
+      : { bg: '#E4E4E7', skin: '#7C533D', suit: '#1E293B', shirt: '#F4F4F5', hair: '#18181B' };
 
   return (
     <svg viewBox="0 0 100 100" className="w-full h-full" aria-label={initials}>
@@ -121,7 +124,7 @@ const PersonaPortraitSvg: React.FC<{ variant?: AgentDoc['avatarVariant']; initia
         <path
           d="M34 34 C34 21, 41 18, 50 18 C59 18, 66 21, 66 34 C61 27, 39 27, 34 34 Z"
           fill={palette.hair}
-          opacity="0.88"
+          opacity="0.9"
         />
       )}
       <circle cx="44" cy="40" r="1.6" fill="#18100C" />
@@ -137,19 +140,18 @@ const PersonaPortraitSvg: React.FC<{ variant?: AgentDoc['avatarVariant']; initia
   );
 };
 
-/** Crisp corporate emblem/logo mark for Business Agents */
 const BusinessLogoEmblem: React.FC<{ agent: AgentDoc; size?: 'sm' | 'lg' }> = ({
   agent,
   size = 'lg',
 }) => {
   const code = agent.brandLogoCode || agent.displayName.slice(0, 2).toUpperCase();
-  const bg = agent.brandColor || '#0F172A';
+  const bg = agent.brandColor || '#18181B';
   const isEmergency = agent.handle === '911.emergency.agent';
 
   if (size === 'sm') {
     return (
       <div
-        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-display font-bold text-xs text-white shadow-sm border border-white/25"
+        className="w-6 h-6 sm:w-7 sm:h-7 rounded-md flex items-center justify-center font-display font-bold text-[10px] text-white border border-white/20"
         style={{ backgroundColor: bg }}
       >
         {code.slice(0, 3)}
@@ -162,22 +164,160 @@ const BusinessLogoEmblem: React.FC<{ agent: AgentDoc; size?: 'sm' | 'lg' }> = ({
       className="w-full h-full flex flex-col items-center justify-center text-white relative overflow-hidden"
       style={{ backgroundColor: bg }}
     >
-      <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="38" fill="none" stroke="white" strokeWidth="1.5" strokeDasharray="4 3" />
-        <path d="M10 50 H90 M50 10 V90" stroke="white" strokeWidth="0.7" />
-      </svg>
       <span
-        className={`font-display font-extrabold tracking-tight relative z-10 ${
-          code.length >= 3 ? 'text-lg' : 'text-2xl'
+        className={`font-display font-bold tracking-tight relative z-10 ${
+          code.length >= 3 ? 'text-base' : 'text-xl'
         } text-white`}
       >
         {code}
       </span>
-      <span className="text-[7.5px] font-mono tracking-widest uppercase text-white/80 relative z-10 mt-0.5">
-        {isEmergency ? 'CIVIC SOS' : 'VERIFIED'}
+      <span className="text-[7px] font-mono tracking-widest uppercase text-white/75 relative z-10 mt-0.5">
+        {isEmergency ? 'SOS' : 'CORP'}
       </span>
     </div>
   );
+};
+
+/** Dynamic Banner Texture Motifs */
+const BannerTextureOverlay: React.FC<{ style?: AgentDoc['cardStyle']['bannerStyle'] }> = ({ style }) => {
+  if (!style || style === 'minimal') {
+    return <div className="absolute bottom-0 inset-x-0 h-[1px] bg-white/20 pointer-events-none" />;
+  }
+  if (style === 'circuit') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0 12 h30 l10 10 h40 M120 5 h30 l15 15 h50 M250 18 h25 l8 -8 h60" fill="none" stroke="#fff" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="30" cy="12" r="2" fill="#fff" />
+        <circle cx="80" cy="22" r="2" fill="#fff" />
+        <circle cx="150" cy="5" r="2" fill="#fff" />
+        <circle cx="275" cy="18" r="2" fill="#fff" />
+      </svg>
+    );
+  }
+  if (style === 'monogram') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-15" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="monogram-pat" width="24" height="24" patternUnits="userSpaceOnUse">
+            <path d="M12 0 L24 12 L12 24 L0 12 Z M12 4 L20 12 L12 20 L4 12 Z" fill="none" stroke="#fff" strokeWidth="0.8" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#monogram-pat)" />
+      </svg>
+    );
+  }
+  if (style === 'geometric') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="geom-pat" width="32" height="20" patternUnits="userSpaceOnUse">
+            <polygon points="0,0 16,20 32,0" fill="none" stroke="#fff" strokeWidth="0.8" />
+            <polygon points="0,20 16,0 32,20" fill="none" stroke="#fff" strokeWidth="0.8" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#geom-pat)" />
+      </svg>
+    );
+  }
+  if (style === 'mesh') {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-6 -left-6 w-28 h-28 rounded-full bg-cyan-400/25 blur-xl" />
+        <div className="absolute -top-4 -right-4 w-32 h-32 rounded-full bg-fuchsia-400/25 blur-xl" />
+      </div>
+    );
+  }
+  if (style === 'wave') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 200 40">
+        <path d="M0 20 Q25 5, 50 20 T100 20 T150 20 T200 20" fill="none" stroke="#fff" strokeWidth="1.5" />
+        <path d="M0 25 Q25 15, 50 25 T100 25 T150 25 T200 25" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.6" />
+      </svg>
+    );
+  }
+  if (style === 'horizon') {
+    return <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-white/10 via-transparent to-black/35" />;
+  }
+  if (style === 'carbon') {
+    return (
+      <div
+        className="absolute inset-0 pointer-events-none opacity-20"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 2px, transparent 0, transparent 6px)',
+        }}
+      />
+    );
+  }
+  // default gradient
+  return <div className="absolute inset-0 pointer-events-none bg-gradient-to-tr from-black/20 via-transparent to-white/15" />;
+};
+
+/** Dynamic Background Pattern Watermarks */
+const CardBackgroundPatternOverlay: React.FC<{
+  pattern?: AgentDoc['cardStyle']['backgroundPattern'];
+  agentId: string;
+}> = ({ pattern, agentId }) => {
+  if (!pattern || pattern === 'none') return null;
+
+  if (pattern === 'subtle-grid') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none text-zinc-950 dark:text-white opacity-[0.035]" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id={`grid-pat-${agentId}`} width="16" height="16" patternUnits="userSpaceOnUse">
+            <path d="M 16 0 L 0 0 0 16" fill="none" stroke="currentColor" strokeWidth="0.75" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#grid-pat-${agentId})`} />
+      </svg>
+    );
+  }
+  if (pattern === 'dots') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none text-zinc-950 dark:text-white opacity-[0.045]" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id={`dot-pat-${agentId}`} width="12" height="12" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="currentColor" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#dot-pat-${agentId})`} />
+      </svg>
+    );
+  }
+  if (pattern === 'aurora') {
+    return (
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -bottom-10 -left-10 w-44 h-44 rounded-full bg-sky-500/10 blur-2xl dark:bg-sky-500/15" />
+        <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-violet-500/10 blur-2xl dark:bg-violet-500/15" />
+      </div>
+    );
+  }
+  if (pattern === 'topo') {
+    return (
+      <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.045] text-zinc-950 dark:text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" preserveAspectRatio="none">
+        <path d="M0,50 Q75,100 150,40 T300,60 M0,110 Q75,160 150,100 T300,120 M0,170 Q75,220 150,160 T300,180 M0,230 Q75,280 150,220 T300,240" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    );
+  }
+  if (pattern === 'stripes') {
+    return (
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.035] text-zinc-950 dark:text-white"
+        style={{
+          backgroundImage: 'repeating-linear-gradient(135deg, currentColor 0, currentColor 1px, transparent 0, transparent 8px)',
+        }}
+      />
+    );
+  }
+  if (pattern === 'circuit') {
+    return (
+      <svg className="absolute top-0 right-0 w-36 h-36 pointer-events-none text-zinc-950 dark:text-white opacity-[0.05]" xmlns="http://www.w3.org/2000/svg">
+        <path d="M36 0 v36 h36 v36 h64" fill="none" stroke="currentColor" strokeWidth="1" />
+        <circle cx="36" cy="36" r="2.5" fill="currentColor" />
+        <circle cx="72" cy="72" r="2.5" fill="currentColor" />
+      </svg>
+    );
+  }
+  return null;
 };
 
 export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
@@ -192,10 +332,12 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
   onEmail,
   onToggleDiscoverable,
   onOpenVideoStudio,
+  onCustomize,
 }) => {
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
   const isPersona = agent.type === 'persona';
   const isEmergency = agent.handle === '911.emergency.agent';
+  const cardStyle = agent.cardStyle;
 
   const handleBase = agent.handle.replace('.agent', '');
   const didValue =
@@ -203,9 +345,9 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
     (isPersona
       ? `did:linkedin:${handleBase.replace(/\./g, '')}-agent-v1`
       : `did:web:${agent.websiteUrl || handleBase + '.co.za'}:agent-v1`);
-  const protocolValue = agent.protocol || 'Poppy v1.0 / A2A / MCP';
+  const protocolValue = agent.protocol || 'Poppy v1.0 · A2A · MCP';
   const endpointValue = agent.interactEndpoint || agent.mcpEndpoint;
-  const authValue = agent.authMethods || 'OAuth2 / Bearer / Public-Key';
+  const authValue = agent.authMethods || 'OAuth2 · Bearer · Public-Key';
   const linkedinOrWeb = isPersona
     ? agent.linkedinUrl || `linkedin.com/in/${handleBase.replace(/\./g, '')}`
     : agent.websiteUrl || `${handleBase.replace(/\./g, '')}.co.za`;
@@ -217,21 +359,80 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
     (b) => b.organizerHandle === agent.handle || b.attendeeHandle === agent.handle
   );
 
-  const headerGradient = isPersona
-    ? 'linear-gradient(135deg, #0B4C84 0%, #06325C 100%)'
-    : isEmergency
-    ? 'linear-gradient(135deg, #9F1239 0%, #4C0519 100%)'
-    : `linear-gradient(135deg, ${agent.brandColor || '#0F172A'} 0%, #07192E 100%)`;
+  const headerBg =
+    cardStyle?.bannerBgColor ||
+    (isEmergency
+      ? '#881337'
+      : isPersona
+      ? '#18181b'
+      : agent.brandColor || '#18181b');
 
-  const capabilitySlugs = agent.skills.slice(0, 3).map((s) =>
-    s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
-  );
+  const bannerHeightClass =
+    cardStyle?.bannerHeight === 'compact'
+      ? 'h-11 sm:h-12'
+      : cardStyle?.bannerHeight === 'tall'
+      ? 'h-16 sm:h-18'
+      : 'h-12 sm:h-14';
 
-  const copyText = (e: React.MouseEvent, key: string, value: string) => {
+  const badgeFrameClass =
+    cardStyle?.bannerBadgeStyle === 'pill'
+      ? 'rounded-full bg-white/20 px-2.5 py-0.5 backdrop-blur-xs'
+      : cardStyle?.bannerBadgeStyle === 'outline'
+      ? 'rounded-md border border-white/40 px-2 py-0.5'
+      : cardStyle?.bannerBadgeStyle === 'none'
+      ? 'px-0 py-0'
+      : 'rounded-md bg-white/10 border border-white/20 backdrop-blur-xs px-2 py-0.5';
+
+  const bgTheme = cardStyle?.backgroundTheme || 'default';
+  const surfaceThemeClass = {
+    default: 'bg-white dark:bg-[#121215]',
+    pearl: 'bg-zinc-50 dark:bg-[#16161a]',
+    obsidian: 'bg-zinc-100 dark:bg-[#0c0c0e]',
+    sapphire: 'bg-sky-50/50 dark:bg-[#081524]',
+    emerald: 'bg-emerald-50/50 dark:bg-[#061812]',
+    amber: 'bg-amber-50/50 dark:bg-[#1f1706]',
+    amethyst: 'bg-purple-50/50 dark:bg-[#160c22]',
+    cyber: 'bg-slate-50 dark:bg-[#0a0f1d]',
+  }[bgTheme] || 'bg-white dark:bg-[#121215]';
+
+  const edgeRadiusClass = cardStyle?.edgeRadius || 'rounded-2xl';
+  const borderStyleKind = cardStyle?.borderStyle || 'hairline';
+  const accentColor =
+    cardStyle?.borderAccentColor ||
+    cardStyle?.bannerBgColor ||
+    agent.brandColor ||
+    (isEmergency ? '#be123c' : '#0284c7');
+
+  let borderClass = 'border border-zinc-300 dark:border-white/15';
+  let borderStyleObj: React.CSSProperties = {};
+
+  if (borderStyleKind === 'bold-accent') {
+    borderClass = 'border-2';
+    borderStyleObj = { borderColor: accentColor };
+  } else if (borderStyleKind === 'cyber-glow') {
+    borderClass = 'border';
+    borderStyleObj = {
+      borderColor: accentColor,
+      boxShadow: `0 0 16px -2px ${accentColor}44`,
+    };
+  } else if (borderStyleKind === 'double') {
+    borderClass = 'border-4 border-double';
+    borderStyleObj = { borderColor: accentColor };
+  } else if (borderStyleKind === 'dashed-tech') {
+    borderClass = 'border-2 border-dashed';
+    borderStyleObj = { borderColor: accentColor };
+  } else if (borderStyleKind === 'frosted-glass') {
+    borderClass = 'border border-white/50 dark:border-white/20 backdrop-blur-md shadow-lg';
+  } else if (isEmergency) {
+    borderClass = 'border border-rose-500/80';
+  }
+
+  const copyText = (e: React.MouseEvent, key: string, value: string, label: string) => {
     e.stopPropagation();
     navigator.clipboard.writeText(value);
     setCopiedField(key);
-    setTimeout(() => setCopiedField(null), 1600);
+    emitToast(`Copied ${label}`);
+    setTimeout(() => setCopiedField(null), 1500);
   };
 
   const summaryText =
@@ -239,67 +440,74 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
     agent.passerbyIncentive ||
     (isPersona
       ? `${agent.roleTitle} at ${agent.organization}.`
-      : `${agent.organization} automated agent desk.`);
+      : `${agent.organization} autonomous commerce desk.`);
 
   return (
     <div className="w-full max-w-[376px] sm:max-w-[360px] mx-auto perspective-1200 select-none">
       <div
-        className={`relative w-full h-[364px] sm:h-[416px] preserve-3d ${
+        className={`relative w-full h-[358px] sm:h-[404px] preserve-3d ${
           flipped ? 'rotate-y-180' : ''
         }`}
       >
-        {/* FRONT FACE */}
+        {/* FRONT FACE — High-contrast Tactile Editorial Business Card */}
         <div
           aria-hidden={flipped}
-          className={`absolute inset-0 backface-hidden rounded-[22px] overflow-hidden shadow-2xl border flex flex-col justify-between transition-colors ${
-            isActive
-              ? isEmergency
-                ? 'border-rose-400/60 shadow-rose-950/50'
-                : 'border-sky-300/40 shadow-sky-950/60'
-              : 'border-slate-700/60'
-          }`}
-          style={{
-            backgroundColor: '#073763',
-            pointerEvents: flipped ? 'none' : 'auto',
-          }}
+          className={`absolute inset-0 backface-hidden ${edgeRadiusClass} overflow-hidden shadow-lg dark:shadow-2xl flex flex-col justify-between ${surfaceThemeClass} text-zinc-950 dark:text-zinc-50 transition-all ${borderClass}`}
+          style={{ ...borderStyleObj, pointerEvents: flipped ? 'none' : 'auto' }}
         >
-          {/* TOP HEADER BANNER */}
+          {/* Subtle Background Watermark Pattern */}
+          <CardBackgroundPatternOverlay pattern={cardStyle?.backgroundPattern} agentId={agent.id} />
+
+          {/* Personalized Top Accent Strip */}
           <div
-            className="relative h-[52px] sm:h-[64px] px-3 pt-2 flex items-start justify-between overflow-hidden shrink-0"
-            style={{ background: headerGradient }}
+            className={`relative ${bannerHeightClass} px-3.5 flex items-center justify-between shrink-0 overflow-hidden`}
+            style={{ backgroundColor: headerBg }}
           >
-            <svg
-              className="absolute inset-0 w-full h-full opacity-20 pointer-events-none"
-              viewBox="0 0 360 110"
-              preserveAspectRatio="none"
-            >
-              <path
-                d="M 0 32 H 75 L 95 52 H 150 M 210 26 H 280 L 305 50 H 360 M 20 82 H 95 L 118 65"
-                fill="none"
-                stroke="#7DD3FC"
-                strokeWidth="1.2"
-              />
-              <circle cx="150" cy="52" r="3" fill="#7DD3FC" />
-              <circle cx="210" cy="26" r="3" fill="#7DD3FC" />
-              <circle cx="118" cy="65" r="2.5" fill="#7DD3FC" />
-            </svg>
+            {/* Texture Motif */}
+            <BannerTextureOverlay style={cardStyle?.bannerStyle} />
 
-            <span className="relative z-10 px-2 py-0.5 rounded-md bg-white/15 backdrop-blur-sm border border-white/20 text-[9px] font-semibold tracking-wider text-white uppercase">
-              {isPersona ? 'AI AGENT IDENTITY' : isEmergency ? 'CIVIC SOS' : 'BUSINESS AGENT'}
-            </span>
+            <div className="relative z-10 flex items-center gap-1.5">
+              <span className={`inline-flex items-center gap-1 text-[10px] font-medium tracking-wide text-zinc-100 uppercase ${badgeFrameClass}`}>
+                {isEmergency ? (
+                  <>
+                    <ShieldAlert className="w-3 h-3 text-rose-300" />
+                    Civic SOS
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    {agent.verified ? 'Verified' : 'Standard'}
+                  </>
+                )}
+              </span>
+            </div>
 
-            {/* Top-Right Badge */}
-            <div className="relative z-10">
+            <div className="relative z-10 flex items-center gap-1.5">
+              {onCustomize && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCustomize(agent);
+                  }}
+                  className="w-6 h-6 rounded-md bg-white/15 hover:bg-white/30 backdrop-blur-xs flex items-center justify-center text-white transition-colors"
+                  title="Customize Card Style"
+                  aria-label="Customize Card Style"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {isPersona ? (
                 <a
                   href={`https://${linkedinOrWeb}`}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-white flex items-center justify-center shadow-sm hover:scale-105 transition-transform"
+                  className="w-6 h-6 rounded-md bg-white flex items-center justify-center shadow-xs hover:scale-105 transition-transform"
                   title={linkedinOrWeb}
                 >
-                  <span className="font-display font-extrabold text-sm sm:text-base leading-none text-[#0A66C2]">
+                  <span className="font-display font-bold text-xs leading-none text-[#0A66C2]">
                     in
                   </span>
                 </a>
@@ -309,13 +517,11 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
           </div>
 
-          {/* WHITE BODY SECTION WITH OVERLAPPING AVATAR / LOGO */}
-          <div className="relative bg-white text-slate-900 rounded-b-[18px] px-3.5 pt-7 sm:pt-9 pb-2 shadow-md flex-1 min-h-0 flex flex-col justify-between">
-            <div className="absolute -top-7 sm:-top-8 left-1/2 -translate-x-1/2 w-[56px] h-[56px] sm:w-[68px] sm:h-[68px] rounded-full p-0.5 bg-white shadow-lg">
-              <div
-                className="w-full h-full rounded-full overflow-hidden border-[2.5px]"
-                style={{ borderColor: isPersona ? '#0B4C84' : agent.brandColor || '#0F172A' }}
-              >
+          {/* Card Core Content */}
+          <div className="relative px-4 pt-7 sm:pt-8 pb-3 flex-1 min-h-0 flex flex-col justify-between">
+            {/* Avatar / Brand Emblem */}
+            <div className="absolute -top-7 sm:-top-8 left-1/2 -translate-x-1/2 w-[56px] h-[56px] sm:w-[64px] sm:h-[64px] rounded-full p-0.5 bg-white dark:bg-zinc-900 shadow-md border border-zinc-300 dark:border-white/15">
+              <div className="w-full h-full rounded-full overflow-hidden">
                 {isPersona ? (
                   <PersonaPortraitSvg
                     variant={agent.avatarVariant}
@@ -327,36 +533,44 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               </div>
             </div>
 
-            {/* Name, Subtitle & Brief Summary */}
-            <div className="text-center">
-              <h3 className="font-display text-[16px] sm:text-[18px] font-extrabold text-slate-950 leading-tight tracking-tight truncate">
+            {/* Identity: Name, Handle, Role, Brief Summary */}
+            <div className="text-center space-y-0.5">
+              <h3 className="font-display text-[17px] sm:text-[19px] font-bold text-zinc-950 dark:text-zinc-50 leading-tight tracking-tight truncate">
                 {agent.displayName}
               </h3>
-              <p
-                className="text-[11px] font-semibold mt-0.5 truncate"
-                style={{
-                  color: isPersona ? '#0A66C2' : isEmergency ? '#BE123C' : agent.brandColor || '#0B4C84',
-                }}
-              >
+              <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">{agent.handle}</p>
+              <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate pt-0.5">
                 {agent.roleTitle}
               </p>
-              <p className="text-[10.5px] sm:text-[11px] text-slate-600 leading-snug mt-0.5 line-clamp-2 px-1">
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug line-clamp-2 pt-0.5">
                 {summaryText}
               </p>
             </div>
 
-            {/* Info + QR Code Split */}
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <div className="space-y-0.5 min-w-0 flex-1">
+            {/* 3 Concise Skill Pills */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5 my-1">
+              {agent.skills.slice(0, 3).map((skill) => (
+                <span
+                  key={skill}
+                  className="max-w-[115px] truncate rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 py-0.5 text-[10px] font-medium text-zinc-800 dark:text-zinc-200"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+
+            {/* Contact Links + Handshake QR */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200 dark:border-white/10">
+              <div className="space-y-1 min-w-0 flex-1">
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDial(agent);
                   }}
-                  className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 hover:text-[#0A66C2] text-left w-full"
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white w-full text-left"
                 >
-                  <Phone className="w-3 h-3 text-[#0B4C84] shrink-0" />
+                  <Phone className="w-3 h-3 text-zinc-600 dark:text-zinc-400 shrink-0" />
                   <span className="truncate font-mono tabular-nums">{agent.voiceNumber}</span>
                 </button>
 
@@ -365,255 +579,233 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1.5 text-[11px] font-medium text-slate-700 hover:text-[#0A66C2] w-full"
+                  className="flex items-center gap-1.5 text-[11px] text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white w-full"
                 >
                   {isPersona ? (
-                    <span className="w-3.5 h-3.5 rounded-[3px] bg-[#0A66C2] text-white font-bold text-[9px] flex items-center justify-center shrink-0">
+                    <span className="w-3.5 h-3.5 rounded-[3px] bg-[#0A66C2] text-white font-bold text-[8.5px] flex items-center justify-center shrink-0">
                       in
                     </span>
                   ) : (
-                    <Globe className="w-3 h-3 text-[#0B4C84] shrink-0" />
+                    <Globe className="w-3 h-3 text-zinc-600 dark:text-zinc-400 shrink-0" />
                   )}
                   <span className="truncate">{linkedinOrWeb}</span>
                 </a>
-
-                <div className="pt-0.5 flex flex-wrap gap-1">
-                  {agent.skills.slice(0, 3).map((skill) => (
-                    <span
-                      key={skill}
-                      className="inline-block max-w-full truncate rounded-md bg-slate-100 border border-slate-200/80 px-1.5 py-0.5 text-[9.5px] font-medium text-slate-700"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
               </div>
 
-              {/* Right QR + NFC Handshake Block */}
               <button
                 type="button"
-                onClick={(e) => copyText(e, 'qr', endpointValue)}
-                className="flex flex-col items-center shrink-0 group cursor-pointer"
+                onClick={(e) => copyText(e, 'qr', endpointValue, 'agent endpoint')}
+                className="flex flex-col items-center shrink-0 cursor-pointer group"
                 title="Copy endpoint"
               >
                 <DeterministicQrSvg seed={agent.handle} />
-                <div className="mt-0.5 flex items-center gap-0.5 text-[8px] font-bold tracking-tight text-slate-800 leading-tight text-center">
-                  <Wifi className="w-2.5 h-2.5 rotate-90 text-slate-900 shrink-0" />
-                  <span>
-                    {copiedField === 'qr' ? (
-                      <span className="text-emerald-700">COPIED</span>
-                    ) : (
-                      <>SCAN / NFC</>
-                    )}
-                  </span>
-                </div>
+                <span className="mt-0.5 inline-flex items-center gap-0.5 text-[8px] font-mono font-semibold text-zinc-600 dark:text-zinc-400">
+                  <Wifi className="w-2.5 h-2.5 rotate-90 shrink-0" />
+                  {copiedField === 'qr' ? 'COPIED' : 'NFC'}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* DARK NAVY PROTOCOL & ENDPOINTS FOOTER */}
-          <div
-            className="px-2.5 pt-1.5 pb-1.5 shrink-0"
-            style={{
-              background: isEmergency
-                ? 'linear-gradient(180deg, #4C0519 0%, #310412 100%)'
-                : 'linear-gradient(180deg, #073763 0%, #042545 100%)',
-            }}
-          >
-            <div className="rounded-xl bg-[#0D1B2E]/95 border border-sky-300/20 overflow-hidden shadow-inner">
-              <div className="px-2.5 py-0.5 bg-white/5 border-b border-white/10 flex items-center justify-between">
-                <span className="text-[8.5px] font-semibold tracking-wider text-slate-200 uppercase">
-                  AGENT PROTOCOL &amp; ENDPOINTS
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onFlipToggle();
-                  }}
-                  className="text-[9.5px] font-mono text-cyan-300 hover:text-white inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10"
-                  aria-label="Flip card"
-                >
-                  <RotateCw className="w-2.5 h-2.5" />
-                  <span>Specs</span>
-                </button>
-              </div>
-
-              <div className="px-2 py-1.5 space-y-0.5 font-mono text-[9px] sm:text-[9.5px] leading-tight text-slate-200">
-                <div className="flex gap-1.5">
-                  <span className="text-sky-300 shrink-0">agent_id:</span>
-                  <span className="truncate text-white">{didValue}</span>
-                </div>
-                <div className="flex gap-1.5">
-                  <span className="text-sky-300 shrink-0">protocol:</span>
-                  <span className="truncate text-slate-200">{protocolValue}</span>
-                </div>
-                <div className="flex gap-1.5">
-                  <span className="text-sky-300 shrink-0">endpoint:</span>
-                  <span className="truncate text-emerald-300">{endpointValue}</span>
-                </div>
-                <div className="flex gap-1.5">
-                  <span className="text-sky-300 shrink-0">skills:</span>
-                  <span className="truncate text-amber-200">
-                    [{capabilitySlugs.map((c) => `"${c}"`).join(', ')}]
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
-                  <span className="text-sky-300 shrink-0">auth:</span>
-                  <span className="truncate text-slate-200">{authValue}</span>
-                </div>
-              </div>
-            </div>
-
-            <p className="mt-1 text-center text-[9.5px] italic text-sky-100/85 truncate">
-              {agent.tagline ||
-                (isPersona
-                  ? 'Human-verified identity. Agent-ready interface.'
-                  : 'Enterprise-verified identity. Agent-ready commerce.')}
-            </p>
-          </div>
-        </div>
-
-        {/* BACK FACE (Smoothly rotated 180deg) */}
-        <div
-          aria-hidden={!flipped}
-          className={`absolute inset-0 backface-hidden rotate-y-180 rounded-[24px] glass-panel border ${
-            isEmergency ? 'border-rose-500/50' : 'border-cyan-400/35'
-          } shadow-2xl overflow-hidden flex flex-col justify-between p-4 text-left`}
-          style={{
-            pointerEvents: flipped ? 'auto' : 'none',
-          }}
-        >
-          {/* Back Header */}
-          <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800 shrink-0">
-            <div className="min-w-0">
-              <p className="text-[11px] font-mono text-cyan-300 truncate">{agent.handle}</p>
-              <h3 className="text-sm sm:text-base font-semibold text-white truncate">{agent.displayName}</h3>
-            </div>
+          {/* Crisp Front Action Bar (Flip, Pitch, Dial) */}
+          <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-950/80 border-t border-zinc-200 dark:border-white/10 grid grid-cols-4 gap-1.5 shrink-0">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onFlipToggle();
               }}
-              className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 hover:border-cyan-400 flex items-center justify-center shrink-0"
-              title="Flip to Front"
-              aria-label="Flip to Front"
+              className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors"
             >
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className="w-3 h-3" />
+              <span>Flip</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPitch(agent);
+              }}
+              className={`col-span-2 min-h-[36px] rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors ${
+                isEmergency
+                  ? 'bg-rose-600 text-white hover:bg-rose-500'
+                  : 'bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Pitch</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDial(agent);
+              }}
+              className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors"
+            >
+              <Phone className="w-3 h-3" />
+              <span>Dial</span>
             </button>
           </div>
+        </div>
 
-          {/* Scrollable Middle Spec Content (prevents clipping on short phones) */}
-          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2.5 space-y-2.5">
-            {(agent.summary || agent.passerbyIncentive) && (
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {agent.summary || agent.passerbyIncentive}
-              </p>
-            )}
+        {/* BACK FACE — Key-Value Protocol Spec Sheet */}
+        <div
+          aria-hidden={!flipped}
+          className={`absolute inset-0 backface-hidden rotate-y-180 ${edgeRadiusClass} ${surfaceThemeClass} ${borderClass} shadow-lg dark:shadow-2xl overflow-hidden flex flex-col justify-between p-4 text-left text-zinc-950 dark:text-zinc-100 transition-all`}
+          style={{ ...borderStyleObj, pointerEvents: flipped ? 'auto' : 'none' }}
+        >
+          {/* Subtle Background Watermark Pattern */}
+          <CardBackgroundPatternOverlay pattern={cardStyle?.backgroundPattern} agentId={`back-${agent.id}`} />
 
-            {/* Clean Typographic Metric Grid (minimal boxed clutter) */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 py-2 border-y border-slate-800/80 text-[11px]">
-              <div>
-                <span className="text-slate-400 block">Auto-Spend Cap</span>
-                <span className="font-mono tabular-nums font-semibold text-emerald-300">
-                  {isEmergency ? 'CIVIC FREE' : formatMoney(agent.guardrails.maxAutoSpendZAR, currency)}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">Min Discount</span>
-                <span className="font-mono tabular-nums font-semibold text-amber-300">
-                  {agent.guardrails.minDiscountPct}%
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> Hours
-                </span>
-                <span className="font-mono text-slate-200">
-                  {agent.guardrails.workingHoursSAST || '08:00-17:00'}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Compliance
-                </span>
-                <span className="text-emerald-300 font-medium">
-                  {agent.popiaConsentActive ? 'POPIA Verified' : 'Standard'}
-                </span>
-              </div>
+          {/* Back Header */}
+          <div className="relative z-10 flex items-center justify-between gap-2 pb-2.5 border-b border-zinc-200 dark:border-white/10 shrink-0">
+            <div className="min-w-0">
+              <p className="text-[11px] font-mono text-sky-700 dark:text-sky-400 truncate">{agent.handle}</p>
+              <h3 className="font-display text-sm font-semibold text-zinc-950 dark:text-white truncate">
+                {agent.displayName}
+              </h3>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onCustomize && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCustomize(agent);
+                  }}
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
+                  title="Customize Card Style"
+                  aria-label="Customize Card Style"
+                >
+                  <Palette className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFlipToggle();
+                }}
+                className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
+                title="Flip to Front"
+                aria-label="Flip to Front"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Key-Value Spec Sheet Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 divide-y divide-zinc-200 dark:divide-white/[0.07] text-[11px]">
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Protocol</span>
+              <span className="font-mono text-zinc-900 dark:text-zinc-200 truncate">{protocolValue}</span>
             </div>
 
-            {/* Presence & BLE Toggle */}
-            <div className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="text-slate-300 inline-flex items-center gap-1.5 truncate">
-                <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="truncate">{agent.geoLocation?.label || 'Sandton Corridor'}</span>
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">DID</span>
+              <button
+                type="button"
+                onClick={(e) => copyText(e, 'did', didValue, 'DID')}
+                className="font-mono text-zinc-900 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1 min-w-0"
+              >
+                <span className="truncate">{didValue}</span>
+                {copiedField === 'did' ? (
+                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                ) : (
+                  <Copy className="w-3 h-3 text-zinc-500 shrink-0" />
+                )}
+              </button>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Endpoint</span>
+              <button
+                type="button"
+                onClick={(e) => copyText(e, 'ep', endpointValue, 'endpoint')}
+                className="font-mono text-emerald-700 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 min-w-0"
+              >
+                <span className="truncate">{endpointValue}</span>
+                <Copy className="w-3 h-3 text-zinc-500 shrink-0" />
+              </button>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Poppy v1.0</span>
+              <a
+                href={poppyPath}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="font-mono text-sky-700 dark:text-sky-400 hover:underline truncate"
+              >
+                {poppyPath}
+              </a>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Auth</span>
+              <span className="font-mono text-zinc-800 dark:text-zinc-300 truncate">{authValue}</span>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Spend Cap / Disc</span>
+              <span className="font-mono tabular-nums text-zinc-950 dark:text-zinc-100 font-medium">
+                {isEmergency ? 'CIVIC FREE' : formatMoney(agent.guardrails.maxAutoSpendZAR, currency)} ·{' '}
+                <span className="text-amber-700 dark:text-amber-400">{agent.guardrails.minDiscountPct}%</span>
               </span>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Hours · POPIA</span>
+              <span className="font-mono tabular-nums text-zinc-800 dark:text-zinc-300">
+                {agent.guardrails.workingHoursSAST || '08:00-17:00'} ·{' '}
+                <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                  {agent.popiaConsentActive ? 'Verified' : 'Standard'}
+                </span>
+              </span>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 truncate">{agent.geoLocation?.label || 'Sandton Corridor'}</span>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleDiscoverable(agent.id);
                 }}
-                className={`min-h-[34px] px-3 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 transition-colors ${
+                className={`px-2 py-0.5 rounded-md text-[10.5px] font-medium inline-flex items-center gap-1 shrink-0 transition-colors ${
                   agent.discoverableByPassersby
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                    : 'bg-slate-900 text-slate-400 border border-slate-700'
+                    ? 'bg-emerald-50 border border-emerald-300 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                    : 'bg-zinc-100 text-zinc-700 border border-zinc-300 dark:bg-zinc-900 dark:text-zinc-400 dark:border-white/15'
                 }`}
               >
-                <Radio className="w-3 h-3" />
+                <Radio className="w-2.5 h-2.5" />
                 {agent.discoverableByPassersby ? 'Beacon Live' : 'Off'}
               </button>
             </div>
 
-            {/* Poppy Discovery Route */}
-            <div className="flex items-center justify-between gap-2 text-[10.5px] pt-1 border-t border-slate-800/60">
-              <div className="min-w-0">
-                <span className="text-slate-400 block font-medium">
-                  Poppy v1.0 · {agent.agentRoleCategory || (isPersona ? 'job_seeker' : 'commerce')}
-                </span>
-                <a
-                  href={poppyPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="font-mono text-cyan-300 hover:underline truncate block"
-                >
-                  {poppyPath}
-                </a>
-              </div>
-              <span className="font-mono text-[10px] text-emerald-300 shrink-0">
-                {agent.poppyScopes?.length || 2} scopes
-              </span>
-            </div>
-
-            {/* Verified Video + 1-Tap Video Studio Jump */}
             {(agent.interviewVideo || (isPersona && onOpenVideoStudio)) && (
-              <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-2.5 flex items-center justify-between gap-2 text-[11px]">
-                <div className="min-w-0">
-                  <span
-                    className={`inline-flex items-center gap-1.5 font-medium truncate ${
-                      agent.interviewVideo
-                        ? agent.interviewVideo.verification.verdict === 'VERIFIED_HUMAN'
-                          ? 'text-emerald-300'
-                          : 'text-rose-300'
-                        : 'text-slate-300'
-                    }`}
-                  >
-                    <Video className="w-3.5 h-3.5 shrink-0" />
-                    {agent.interviewVideo
+              <div className="py-1.5 flex items-center justify-between gap-2">
+                <span
+                  className={`inline-flex items-center gap-1 font-medium truncate ${
+                    agent.interviewVideo
                       ? agent.interviewVideo.verification.verdict === 'VERIFIED_HUMAN'
-                        ? `Video Real (${agent.interviewVideo.verification.authenticityScore}%)`
-                        : `Deepfake Risk (${agent.interviewVideo.verification.deepfakeRiskPct}%)`
-                      : 'Video Screening Studio'}
-                  </span>
-                  {agent.interviewVideo && (
-                    <span className="block font-mono text-[10px] text-slate-400">
-                      {agent.interviewVideo.preScreenReviews.length} pre-screen(s)
-                    </span>
-                  )}
-                </div>
+                        ? 'text-emerald-700 dark:text-emerald-400'
+                        : 'text-rose-700 dark:text-rose-400'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}
+                >
+                  <Video className="w-3 h-3 shrink-0" />
+                  {agent.interviewVideo
+                    ? agent.interviewVideo.verification.verdict === 'VERIFIED_HUMAN'
+                      ? `Real (${agent.interviewVideo.verification.authenticityScore}%)`
+                      : `Risk (${agent.interviewVideo.verification.deepfakeRiskPct}%)`
+                    : 'Video Screen'}
+                </span>
                 {onOpenVideoStudio && isPersona && (
                   <button
                     type="button"
@@ -621,39 +813,36 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                       e.stopPropagation();
                       onOpenVideoStudio(agent);
                     }}
-                    className="min-h-[32px] px-2.5 rounded-lg bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-semibold text-[10.5px] hover:bg-cyan-500/30 shrink-0"
+                    className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 font-medium text-[10.5px] hover:bg-zinc-200 dark:hover:bg-zinc-700 shrink-0"
                   >
-                    Open Video
+                    Open Studio
                   </button>
                 )}
               </div>
             )}
 
             {agentBookings.length > 0 && (
-              <div className="text-xs pt-1 border-t border-slate-800/60">
-                <p className="font-medium text-white truncate">{agentBookings[0].title}</p>
-                <p className="text-[10.5px] font-mono text-slate-400 mt-0.5">
-                  Next Call ·{' '}
-                  {new Date(agentBookings[0].startTime).toLocaleString('en-ZA', {
+              <div className="py-1.5 flex items-center justify-between gap-2">
+                <span className="text-zinc-800 dark:text-zinc-300 truncate">{agentBookings[0].title}</span>
+                <span className="font-mono text-[10px] text-zinc-600 dark:text-zinc-400 shrink-0 tabular-nums">
+                  {new Date(agentBookings[0].startTime).toLocaleDateString('en-ZA', {
                     month: 'short',
                     day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
                   })}
-                </p>
+                </span>
               </div>
             )}
           </div>
 
           {/* Back Actions Footer */}
-          <div className="grid grid-cols-4 gap-2 pt-2.5 border-t border-slate-800 shrink-0">
+          <div className="grid grid-cols-4 gap-2 pt-2.5 border-t border-zinc-200 dark:border-white/10 shrink-0">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onPitch(agent);
               }}
-              className="col-span-2 min-h-[44px] rounded-xl bg-cyan-400 text-slate-950 font-semibold text-xs inline-flex items-center justify-center gap-1 hover:bg-cyan-300"
+              className="col-span-2 min-h-[38px] rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white font-semibold text-xs inline-flex items-center justify-center gap-1 transition-colors"
             >
               Pitch <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
@@ -663,15 +852,15 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 e.stopPropagation();
                 onDial(agent);
               }}
-              className={`min-h-[44px] rounded-xl font-semibold text-xs flex items-center justify-center ${
+              className={`min-h-[38px] rounded-lg font-semibold text-xs flex items-center justify-center transition-colors ${
                 isEmergency
-                  ? 'bg-rose-500 text-white hover:bg-rose-400'
-                  : 'bg-slate-800 text-white hover:bg-slate-700'
+                  ? 'bg-rose-600 text-white hover:bg-rose-500'
+                  : 'bg-zinc-100 border border-zinc-300 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-white/15 dark:text-white dark:hover:bg-zinc-700'
               }`}
               aria-label="Dial"
               title="Dial"
             >
-              <Phone className="w-4 h-4" />
+              <Phone className="w-3.5 h-3.5" />
             </button>
             {!isEmergency ? (
               <button
@@ -680,21 +869,25 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   e.stopPropagation();
                   onEmail(agent);
                 }}
-                className="min-h-[44px] rounded-xl bg-slate-900 border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400"
+                className="min-h-[38px] rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-900 dark:border-white/15 dark:text-zinc-200 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"
                 aria-label="Email"
                 title="Email"
               >
-                <Mail className="w-4 h-4" />
+                <Mail className="w-3.5 h-3.5" />
               </button>
             ) : (
               <button
                 type="button"
-                onClick={(e) => copyText(e, 'did', didValue)}
-                className="min-h-[44px] rounded-xl bg-slate-900 border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400"
+                onClick={(e) => copyText(e, 'did2', didValue, 'DID')}
+                className="min-h-[38px] rounded-lg bg-zinc-100 border border-zinc-300 text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-900 dark:border-white/15 dark:text-zinc-200 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"
                 aria-label="Copy DID"
                 title="Copy DID"
               >
-                {copiedField === 'did' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copiedField === 'did2' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
               </button>
             )}
           </div>

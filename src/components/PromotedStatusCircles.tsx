@@ -23,7 +23,7 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
   if (promoted.length === 0) return null;
 
   return (
-    <div className="shrink-0 z-20 -mx-1 px-1 pb-1">
+    <div className="shrink-0 z-20 -mx-1 px-1 pb-1.5">
       <SwipeScrollArea
         direction="horizontal"
         stepPx={180}
@@ -47,10 +47,10 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
               .toUpperCase();
 
           const ringClass = isEmergency
-            ? 'from-rose-500 via-amber-400 to-rose-600'
-            : isPersona
-            ? 'from-cyan-400 via-sky-500 to-emerald-400'
-            : 'from-amber-400 via-emerald-400 to-cyan-400';
+            ? 'bg-rose-500'
+            : agent.discoverableByPassersby
+            ? 'bg-emerald-500 dark:bg-emerald-400'
+            : 'bg-zinc-400 dark:bg-zinc-600';
 
           return (
             <button
@@ -62,35 +62,35 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
               aria-label={`Open ${agent.displayName} reel`}
             >
               <div
-                className={`relative p-[2px] rounded-full bg-gradient-to-tr ${ringClass} shadow-[0_4px_14px_rgba(2,6,23,0.65)] transition-transform duration-150 ${
-                  isSelected ? 'scale-105 ring-2 ring-white/75' : 'opacity-95 group-hover:scale-105'
+                className={`relative p-[2px] rounded-full ${ringClass} transition-transform duration-150 ${
+                  isSelected
+                    ? 'scale-105 ring-2 ring-zinc-950/75 dark:ring-white/80'
+                    : 'opacity-95 group-hover:scale-105'
                 }`}
               >
                 <div
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-[#050811] flex items-center justify-center overflow-hidden text-white font-display font-bold text-[10.5px] relative"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-zinc-100 dark:border-[#09090b] flex items-center justify-center overflow-hidden text-white font-display font-bold text-[10.5px] relative"
                   style={{
-                    background: isPersona
-                      ? 'linear-gradient(135deg, #0B4C84 0%, #06325C 100%)'
-                      : agent.brandColor || '#0F172A',
+                    backgroundColor: isPersona ? '#18181b' : agent.brandColor || '#18181b',
                   }}
                 >
                   {isEmergency ? (
-                    <ShieldAlert className="w-4 h-4 text-white" />
+                    <ShieldAlert className="w-4 h-4 text-rose-400" />
                   ) : (
                     <span>{initials}</span>
                   )}
-                  <span className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <Play className="w-3 h-3 text-white fill-white" />
                   </span>
                 </div>
 
                 <span
-                  className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border border-[#050811] flex items-center justify-center text-[7px] font-bold ${
+                  className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border border-zinc-100 dark:border-[#09090b] flex items-center justify-center text-[7px] font-bold ${
                     isEmergency
                       ? 'bg-rose-500 text-white'
                       : isPersona
                       ? 'bg-[#0A66C2] text-white'
-                      : 'bg-amber-400 text-slate-950'
+                      : 'bg-white text-zinc-950 dark:bg-zinc-100'
                   }`}
                 >
                   {isPersona ? 'in' : <Sparkles className="w-2 h-2" />}
@@ -99,7 +99,9 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
 
               <span
                 className={`px-1 rounded text-[9.5px] font-medium truncate max-w-[54px] ${
-                  isSelected ? 'text-cyan-300 font-semibold' : 'text-slate-300'
+                  isSelected
+                    ? 'text-zinc-950 dark:text-white font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400'
                 }`}
               >
                 {shortName}

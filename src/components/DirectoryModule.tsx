@@ -6,6 +6,11 @@ import {
   BookingDoc,
   CurrencyMode,
   ZAR_PER_USD,
+  CardBannerStyle,
+  CardBackgroundPattern,
+  CardBackgroundTheme,
+  CardEdgeRadius,
+  CardBorderStyle,
 } from '../types/firestore';
 import { quoteHandlePricing } from '../services/paymentRails';
 import { AgentCardCarousel } from './AgentCardCarousel';
@@ -13,6 +18,7 @@ import { AgentIdentityCard } from './AgentIdentityCard';
 import { PromotedStatusCircles } from './PromotedStatusCircles';
 import { StatusReelsViewer } from './StatusReelsViewer';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { emitToast } from '../lib/toast';
 
 export type DirectoryFilterType = 'all' | 'persona' | 'business' | 'discoverable';
 export type DirectoryViewMode = 'carousel' | 'grid';
@@ -38,6 +44,7 @@ interface DirectoryModuleProps {
   onDeployAgent: (agent: AgentDoc) => Promise<void>;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
+  onCustomizeCard?: (agent: AgentDoc) => void;
   openDeployModalInitially?: boolean;
   onCloseDeployModal?: () => void;
 }
@@ -63,6 +70,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   onDeployAgent,
   onToggleDiscoverable,
   onOpenVideoStudio,
+  onCustomizeCard,
   openDeployModalInitially = false,
   onCloseDeployModal,
 }) => {
@@ -88,6 +96,14 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   const [buyerKind, setBuyerKind] = useState<'human' | 'bot'>('human');
   const [deploying, setDeploying] = useState(false);
   const [deployNotice, setDeployNotice] = useState<string | null>(null);
+
+  // Deploy Card Styling Customization State
+  const [newBannerStyle, setNewBannerStyle] = useState<CardBannerStyle>('gradient');
+  const [newBgPattern, setNewBgPattern] = useState<CardBackgroundPattern>('subtle-grid');
+  const [newBgTheme, setNewBgTheme] = useState<CardBackgroundTheme>('default');
+  const [newEdgeRadius, setNewEdgeRadius] = useState<CardEdgeRadius>('rounded-2xl');
+  const [newBorderStyle, setNewBorderStyle] = useState<CardBorderStyle>('hairline');
+  const [newAccentColor, setNewAccentColor] = useState('#0284c7');
 
   React.useEffect(() => {
     setShowDeploy(openDeployModalInitially);
@@ -154,12 +170,23 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         newType === 'business'
           ? cleanUrl || `${baseSlug || 'enterprise'}.co.za`
           : undefined,
-      brandColor: newType === 'business' ? '#0F766E' : undefined,
+      brandColor: newAccentColor,
       brandLogoCode:
         newType === 'business'
           ? (newBrandCode.trim() || newDisplayName.trim().slice(0, 3)).toUpperCase()
           : undefined,
       avatarVariant: 'persona',
+      cardStyle: {
+        bannerStyle: newBannerStyle,
+        bannerBgColor: newAccentColor,
+        bannerHeight: 'normal',
+        bannerBadgeStyle: 'glass',
+        backgroundPattern: newBgPattern,
+        backgroundTheme: newBgTheme,
+        edgeRadius: newEdgeRadius,
+        borderStyle: newBorderStyle,
+        borderAccentColor: newAccentColor,
+      },
       did:
         newType === 'persona'
           ? `did:linkedin:${baseSlug || 'operator'}-agent-v1`
@@ -208,19 +235,17 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
     await onDeployAgent(created);
     setDeploying(false);
     setSelectedAgentId(created.id);
-    setDeployNotice(`Deployed ${created.handle}`);
+    emitToast(`Deployed ${created.handle}`);
     setNewHandle('');
     setNewDisplayName('');
     setNewProfileUrl('');
     setNewSummary('');
-    setTimeout(() => {
-      closeDeploy();
-    }, 650);
+    closeDeploy();
   };
 
   return (
     <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-      {/* Non-overlapping Top Stories / Promoted Agent Circles Strip */}
+      {/* Top Stories / Promoted Agent Circles Strip */}
       <PromotedStatusCircles
         agents={agents}
         selectedAgentId={selectedAgentId}
@@ -232,7 +257,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         }}
       />
 
-      {/* Compact Single-Row Filter & View Toolbar (Replaces hidden icon hunting) */}
+      {/* Compact Single-Row Filter & View Toolbar */}
       <div className="shrink-0 flex items-center justify-between gap-2 pb-1.5">
         <SwipeScrollArea
           direction="horizontal"
@@ -257,8 +282,8 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                 onClick={() => onFilterChange(f.id)}
                 className={`min-h-[34px] px-2.5 rounded-lg text-[11px] font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                   active
-                    ? 'bg-cyan-400 text-slate-950 font-semibold'
-                    : 'bg-slate-900/75 border border-slate-800 text-slate-300 hover:text-white'
+                    ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-2xs'
+                    : 'bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25'
                 }`}
               >
                 {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
@@ -274,10 +299,10 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
             onClick={onToggleSearchBar}
             className={`w-9 h-[34px] rounded-lg border flex items-center justify-center transition-colors ${
               searchBarOpen || searchQuery
-                ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200'
-                : 'bg-slate-900/75 border-slate-800 text-slate-300 hover:text-white'
+                ? 'bg-zinc-950 border-zinc-950 text-white dark:bg-zinc-50 dark:border-white dark:text-zinc-950'
+                : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400'
             }`}
-            aria-label="Filter by text"
+            aria-label="Filter cards"
             title="Filter cards"
           >
             <Search className="w-3.5 h-3.5" />
@@ -285,7 +310,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
           <button
             type="button"
             onClick={() => onViewModeChange(viewMode === 'carousel' ? 'grid' : 'carousel')}
-            className="w-9 h-[34px] rounded-lg bg-slate-900/75 border border-slate-800 text-slate-200 hover:border-cyan-400/50 flex items-center justify-center transition-colors"
+            className="w-9 h-[34px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-white/25 flex items-center justify-center transition-colors"
             aria-label={viewMode === 'carousel' ? 'Switch to Grid view' : 'Switch to Deck view'}
             title={viewMode === 'carousel' ? 'Grid View' : 'Deck View'}
           >
@@ -298,20 +323,20 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         </div>
       </div>
 
-      {/* Inline Collapsible Search Strip (Never covers card avatar/details) */}
+      {/* Inline Collapsible Search Strip */}
       {(searchBarOpen || searchQuery) && (
         <div className="shrink-0 pb-1.5">
-          <div className="flex items-center rounded-xl bg-slate-950/90 border border-cyan-400/45 px-3 h-10 max-w-md mx-auto">
-            <Search className="w-3.5 h-3.5 text-cyan-400 shrink-0 mr-2" />
+          <div className="flex items-center rounded-xl bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 h-10 max-w-md mx-auto shadow-2xs">
+            <Search className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0 mr-2" />
             <input
               type="text"
               autoFocus={searchBarOpen}
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
               placeholder="Search name, company, handle or skill..."
-              className="w-full bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none"
+              className="w-full bg-transparent text-xs text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none"
             />
-            <span className="text-[10px] font-mono text-slate-400 mr-2 shrink-0 tabular-nums">
+            <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400 mr-2 shrink-0 tabular-nums">
               {filtered.length}
             </span>
             <button
@@ -320,7 +345,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                 onSearchQueryChange('');
                 onCloseSearchBar();
               }}
-              className="w-7 h-7 rounded-lg text-slate-400 hover:text-white flex items-center justify-center shrink-0"
+              className="w-7 h-7 rounded-lg text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
               aria-label="Close search"
             >
               <X className="w-3.5 h-3.5" />
@@ -338,11 +363,11 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       >
         {filtered.length === 0 ? (
           <div className="glass-panel rounded-2xl p-8 text-center my-8 space-y-3 max-w-sm mx-auto">
-            <p className="text-sm font-medium text-slate-200">No matching agent cards</p>
+            <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">No matching agent cards</p>
             <button
               type="button"
               onClick={onResetFilters}
-              className="min-h-[40px] px-4 rounded-xl bg-cyan-400 text-slate-950 text-xs font-semibold hover:bg-cyan-300"
+              className="min-h-[38px] px-4 rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 text-xs font-semibold dark:hover:bg-white"
             >
               Reset Filters
             </button>
@@ -360,6 +385,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               onEmailAgent={onEmailAgent}
               onToggleDiscoverable={onToggleDiscoverable}
               onOpenVideoStudio={onOpenVideoStudio}
+              onCustomizeCard={onCustomizeCard}
             />
           </div>
         ) : (
@@ -384,6 +410,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   onEmail={onEmailAgent}
                   onToggleDiscoverable={onToggleDiscoverable}
                   onOpenVideoStudio={onOpenVideoStudio}
+                  onCustomize={onCustomizeCard}
                 />
               </div>
             ))}
@@ -394,25 +421,27 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       {/* Deploy Card Modal */}
       {showDeploy && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={closeDeploy}
         >
           <form
             onSubmit={handleDeploySubmit}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xl glass-panel rounded-t-3xl sm:rounded-2xl border border-slate-700 p-4 sm:p-5 space-y-4 max-h-[90dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))]"
+            className="w-full max-w-xl glass-panel rounded-t-3xl sm:rounded-2xl p-4 sm:p-5 space-y-4 max-h-[90dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))]"
           >
-            <div className="sm:hidden w-10 h-1 rounded-full bg-slate-700 mx-auto -mt-1 mb-1" />
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800">
-              <h2 className="text-base font-semibold text-white">New Agent Card</h2>
+            <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1 mb-1" />
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+              <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight">
+                New Agent Card
+              </h2>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setBuyerKind('human')}
-                  className={`min-h-[34px] px-2.5 rounded-lg text-[11px] font-medium ${
+                  className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
                     buyerKind === 'human'
-                      ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
-                      : 'text-slate-400 border border-slate-800'
+                      ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
                   }`}
                 >
                   Human
@@ -420,10 +449,10 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                 <button
                   type="button"
                   onClick={() => setBuyerKind('bot')}
-                  className={`min-h-[34px] px-2.5 rounded-lg text-[11px] font-medium ${
+                  className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
                     buyerKind === 'bot'
-                      ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
-                      : 'text-slate-400 border border-slate-800'
+                      ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
                   }`}
                 >
                   Bot (x402)
@@ -431,7 +460,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                 <button
                   type="button"
                   onClick={closeDeploy}
-                  className="w-9 h-9 rounded-lg bg-slate-900 text-slate-400 hover:text-white flex items-center justify-center ml-1"
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center ml-1"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4" />
@@ -441,16 +470,16 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="text-slate-400 block mb-1">.agent Handle</label>
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">.agent Handle</label>
                 <input
                   type="text"
                   required
                   value={newHandle}
                   onChange={(e) => setNewHandle(e.target.value)}
                   placeholder="thabo.founder"
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 font-mono text-cyan-200"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono text-zinc-950 dark:text-white placeholder:text-zinc-500"
                 />
-                <span className="text-[10px] font-mono text-emerald-400 mt-0.5 block">
+                <span className="text-[10.5px] font-mono text-emerald-700 dark:text-emerald-400 mt-0.5 block">
                   {handleQuote.normalizedHandle} ·{' '}
                   {handleQuote.isProtectedCivic
                     ? 'LOCKED'
@@ -463,7 +492,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">
                   {newType === 'persona' ? 'Full Name' : 'Company Name'}
                 </label>
                 <input
@@ -472,12 +501,12 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   value={newDisplayName}
                   onChange={(e) => setNewDisplayName(e.target.value)}
                   placeholder={newType === 'persona' ? 'Thabo Mokoena' : 'Discovery Bank'}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-white"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white placeholder:text-zinc-500"
                 />
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">Card Type</label>
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Card Type</label>
                 <select
                   value={newType}
                   onChange={(e) => {
@@ -485,7 +514,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                     setNewType(nextType);
                     setNewRoleCategory(nextType === 'persona' ? 'job_seeker' : 'hiring');
                   }}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-slate-200"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-900 dark:text-zinc-200"
                 >
                   <option value="persona">Personal (LinkedIn)</option>
                   <option value="business">Business (Company Logo)</option>
@@ -493,48 +522,31 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">Poppy Agent Role</label>
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Poppy Role</label>
                 <select
                   value={newRoleCategory}
                   onChange={(e) => setNewRoleCategory(e.target.value as AgentRoleCategory)}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-slate-200"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-900 dark:text-zinc-200"
                 >
-                  <option value="job_seeker">Job Seeker Agent</option>
-                  <option value="hiring">Company Hiring Agent</option>
+                  <option value="job_seeker">Job Seeker</option>
+                  <option value="hiring">Company Hiring</option>
                   <option value="recruiter">Recruiter / Agency</option>
                   <option value="commerce">Commerce / B2B Desk</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">Role / Desk</label>
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Role / Desk</label>
                 <input
                   type="text"
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-white"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="text-slate-400 block mb-1">
-                  {newType === 'persona' ? 'Brief User Summary' : 'Brief Business Summary'}
-                </label>
-                <input
-                  type="text"
-                  value={newSummary}
-                  onChange={(e) => setNewSummary(e.target.value)}
-                  placeholder={
-                    newType === 'persona'
-                      ? 'Short bio & what your agent negotiates...'
-                      : 'Brief overview of products, SLAs & deals...'
-                  }
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-white"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">
                   {newType === 'persona' ? 'LinkedIn URL' : 'Website URL'}
                 </label>
                 <input
@@ -542,77 +554,213 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   value={newProfileUrl}
                   onChange={(e) => setNewProfileUrl(e.target.value)}
                   placeholder={newType === 'persona' ? 'linkedin.com/in/thabo' : 'discovery.co.za'}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-white"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white placeholder:text-zinc-500"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">
+                  {newType === 'persona' ? 'Summary' : 'Company Summary'}
+                </label>
+                <input
+                  type="text"
+                  value={newSummary}
+                  onChange={(e) => setNewSummary(e.target.value)}
+                  placeholder={
+                    newType === 'persona'
+                      ? 'Short bio & capabilities...'
+                      : 'Brief overview of products & SLAs...'
+                  }
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white placeholder:text-zinc-500"
                 />
               </div>
 
               {newType === 'business' ? (
                 <div>
-                  <label className="text-slate-400 block mb-1">Logo Code (2–3 Chars)</label>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Logo Code (2–3 Chars)</label>
                   <input
                     type="text"
                     maxLength={3}
                     value={newBrandCode}
                     onChange={(e) => setNewBrandCode(e.target.value)}
                     placeholder="DSC"
-                    className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 font-mono uppercase text-white"
+                    className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono uppercase text-zinc-950 dark:text-white placeholder:text-zinc-500"
                   />
                 </div>
               ) : (
                 <div>
-                  <label className="text-slate-400 block mb-1">Organization</label>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Organization</label>
                   <input
                     type="text"
                     value={newOrg}
                     onChange={(e) => setNewOrg(e.target.value)}
                     placeholder="Studio / Org"
-                    className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 text-white"
+                    className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white placeholder:text-zinc-500"
                   />
                 </div>
               )}
 
-              <div>
-                <label className="text-slate-400 block mb-1">Auto-Spend Cap (ZAR)</label>
-                <input
-                  type="number"
-                  value={maxSpendZAR}
-                  onChange={(e) => setMaxSpendZAR(Number(e.target.value))}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 font-mono text-white"
-                />
-                <span className="text-[10px] font-mono text-slate-500">
-                  ≈ ${(maxSpendZAR / ZAR_PER_USD).toFixed(0)} USD
-                </span>
-              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Cap (ZAR)</label>
+                  <input
+                    type="number"
+                    value={maxSpendZAR}
+                    onChange={(e) => setMaxSpendZAR(Number(e.target.value))}
+                    className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono tabular-nums text-zinc-950 dark:text-white"
+                  />
+                  <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-500">
+                    ≈ ${(maxSpendZAR / ZAR_PER_USD).toFixed(0)} USD
+                  </span>
+                </div>
 
-              <div>
-                <label className="text-slate-400 block mb-1">Min Discount (%)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={minDiscountPct}
-                  onChange={(e) => setMinDiscountPct(Number(e.target.value))}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 font-mono text-white"
-                />
+                <div>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Min Disc (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={minDiscountPct}
+                    onChange={(e) => setMinDiscountPct(Number(e.target.value))}
+                    className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono tabular-nums text-zinc-950 dark:text-white"
+                  />
+                </div>
               </div>
 
               <div className="sm:col-span-2">
-                <label className="text-slate-400 block mb-1">Skills (Comma-separated)</label>
+                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Skills (Comma-separated)</label>
                 <input
                   type="text"
                   value={skillsCsv}
                   onChange={(e) => setSkillsCsv(e.target.value)}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/85 border border-slate-800 px-3 py-2 font-mono text-slate-200"
+                  className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono text-zinc-900 dark:text-zinc-200"
                 />
+              </div>
+
+              {/* Card Personalization & Edges Section */}
+              <div className="sm:col-span-2 pt-2 border-t border-zinc-200 dark:border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-display font-bold text-xs text-zinc-950 dark:text-white">
+                    Card Personalization & Frame
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
+                    Bespoke Visual Identity
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Banner Motif</label>
+                    <select
+                      value={newBannerStyle}
+                      onChange={(e) => setNewBannerStyle(e.target.value as CardBannerStyle)}
+                      className="w-full min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-zinc-900 dark:text-zinc-200 capitalize"
+                    >
+                      <option value="gradient">Gradient Linear</option>
+                      <option value="circuit">Circuit Traces</option>
+                      <option value="mesh">Radiant Mesh</option>
+                      <option value="geometric">Geometric Wireframe</option>
+                      <option value="horizon">Horizon Bands</option>
+                      <option value="monogram">Monogram Crest</option>
+                      <option value="wave">Carrier Waves</option>
+                      <option value="carbon">Carbon Fiber</option>
+                      <option value="minimal">Minimal Matte</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Surface Tint</label>
+                    <select
+                      value={newBgTheme}
+                      onChange={(e) => setNewBgTheme(e.target.value as CardBackgroundTheme)}
+                      className="w-full min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-zinc-900 dark:text-zinc-200 capitalize"
+                    >
+                      <option value="default">Default Neutral</option>
+                      <option value="pearl">Pearl Luster</option>
+                      <option value="obsidian">Obsidian Midnight</option>
+                      <option value="sapphire">Sapphire Oceanic</option>
+                      <option value="emerald">Emerald Mint</option>
+                      <option value="amber">Amber Honey</option>
+                      <option value="amethyst">Amethyst Royal</option>
+                      <option value="cyber">Cyber Steel</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Pattern Overlay</label>
+                    <select
+                      value={newBgPattern}
+                      onChange={(e) => setNewBgPattern(e.target.value as CardBackgroundPattern)}
+                      className="w-full min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-zinc-900 dark:text-zinc-200 capitalize"
+                    >
+                      <option value="subtle-grid">Subtle Grid</option>
+                      <option value="dots">Dot Matrix</option>
+                      <option value="aurora">Aurora Glow</option>
+                      <option value="topo">Topo Contours</option>
+                      <option value="stripes">Speed Stripes</option>
+                      <option value="circuit">Circuit Corner</option>
+                      <option value="none">Solid / None</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Corner Edges</label>
+                    <select
+                      value={newEdgeRadius}
+                      onChange={(e) => setNewEdgeRadius(e.target.value as CardEdgeRadius)}
+                      className="w-full min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-zinc-900 dark:text-zinc-200"
+                    >
+                      <option value="rounded-2xl">Modern (16px)</option>
+                      <option value="rounded-3xl">Squircle (24px)</option>
+                      <option value="rounded-[28px]">Organic (28px)</option>
+                      <option value="rounded-xl">Crisp (12px)</option>
+                      <option value="rounded-none">Sharp (0px)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Border Style</label>
+                    <select
+                      value={newBorderStyle}
+                      onChange={(e) => setNewBorderStyle(e.target.value as CardBorderStyle)}
+                      className="w-full min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-zinc-900 dark:text-zinc-200 capitalize"
+                    >
+                      <option value="hairline">Hairline</option>
+                      <option value="bold-accent">Bold Accent</option>
+                      <option value="cyber-glow">Cyber Glow</option>
+                      <option value="double">Double Luxury Rim</option>
+                      <option value="dashed-tech">Dashed Tech</option>
+                      <option value="frosted-glass">Frosted Glass</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Accent Color</label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={newAccentColor}
+                        onChange={(e) => setNewAccentColor(e.target.value)}
+                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5"
+                      />
+                      <input
+                        type="text"
+                        value={newAccentColor}
+                        onChange={(e) => setNewAccentColor(e.target.value)}
+                        className="flex-1 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2 font-mono text-[11px] text-zinc-900 dark:text-zinc-200"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2">
-              <span className="text-xs text-emerald-300">{deployNotice || ''}</span>
+              <span className="text-xs text-rose-600 dark:text-rose-400">{deployNotice || ''}</span>
               <button
                 type="submit"
                 disabled={deploying || handleQuote.isProtectedCivic}
-                className="min-h-[44px] rounded-xl bg-emerald-400 px-5 text-xs font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50"
+                className="min-h-[42px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white px-5 text-xs font-semibold disabled:opacity-50"
               >
                 {deploying ? 'Deploying...' : 'Deploy Card'}
               </button>

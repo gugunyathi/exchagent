@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { emitToast } from '../lib/toast';
 
 interface SkillSpec {
   id: string;
@@ -171,6 +172,7 @@ export const AgentSkillsPage: React.FC = () => {
   const copyText = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
+    emitToast('Copied to clipboard', 'success');
     setTimeout(() => setCopiedKey(null), 1600);
   };
 
@@ -200,15 +202,16 @@ export const AgentSkillsPage: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Compact Machine-Readable Discovery Bar */}
       <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center shrink-0">
-            <Bot className="w-4 h-4 text-cyan-300" />
+          <div className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center shrink-0">
+            <Bot className="w-4 h-4 text-sky-600 dark:text-sky-400" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm sm:text-base font-semibold text-white truncate">Agent Skills & Discovery</h2>
-            <p className="text-[11px] font-mono text-slate-400 truncate">
+            <h2 className="text-sm sm:text-base font-display font-bold text-zinc-950 dark:text-zinc-50 truncate">
+              Agent Skills &amp; Discovery
+            </h2>
+            <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
               {origin}/skills.md
             </p>
           </div>
@@ -223,25 +226,25 @@ export const AgentSkillsPage: React.FC = () => {
             { id: 'skill_json', label: 'OpenAPI', path: '/api/skill.json' },
             { id: 'well_known', label: 'agent.json', path: '/.well-known/agent.json' },
           ].map((item) => (
-            <div key={item.id} className="inline-flex items-center rounded-xl bg-slate-950/80 border border-slate-800 overflow-hidden shrink-0">
+            <div key={item.id} className="inline-flex items-center rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 overflow-hidden shrink-0">
               <a
                 href={item.path}
                 target="_blank"
                 rel="noreferrer"
-                className="min-h-[36px] px-2.5 py-1.5 text-[11px] font-mono text-cyan-300 hover:text-white inline-flex items-center gap-1 whitespace-nowrap"
+                className="min-h-[34px] px-2.5 text-[11px] font-mono font-medium text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1 whitespace-nowrap"
               >
-                <FileCode2 className="w-3 h-3" />
+                <FileCode2 className="w-3 h-3 text-sky-600 dark:text-sky-400" />
                 {item.label}
-                <ExternalLink className="w-2.5 h-2.5" />
+                <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
               </a>
               <button
                 type="button"
                 onClick={() => copyText(item.id, `${origin}${item.path}`)}
-                className="min-h-[36px] px-2.5 py-1.5 border-l border-slate-800 text-slate-400 hover:text-white"
+                className="min-h-[34px] px-2 border-l border-zinc-300 dark:border-white/15 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
                 aria-label={`Copy ${item.path}`}
               >
                 {copiedKey === item.id ? (
-                  <Check className="w-3 h-3 text-emerald-400" />
+                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 ) : (
                   <Copy className="w-3 h-3" />
                 )}
@@ -251,17 +254,16 @@ export const AgentSkillsPage: React.FC = () => {
         </SwipeScrollArea>
       </div>
 
-      {/* Horizontal Skill Selector + Live Runner */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <div className="lg:col-span-5 glass-panel rounded-2xl p-3.5 sm:p-4 space-y-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-white">Skills ({SWITCHBOARD_SKILLS.length})</span>
-            <span className="text-[11px] font-mono text-emerald-400 inline-flex items-center gap-1">
+        <div className="lg:col-span-5 glass-panel rounded-2xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="font-display font-bold text-zinc-950 dark:text-zinc-100">Skills ({SWITCHBOARD_SKILLS.length})</span>
+            <span className="text-[11px] font-mono font-semibold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5" /> MCP Ready
             </span>
           </div>
 
-          <SwipeScrollArea direction="vertical" className="max-h-[340px]" innerClassName="space-y-2 pr-1">
+          <SwipeScrollArea direction="vertical" className="max-h-[360px]" innerClassName="space-y-1.5 pr-1">
             {SWITCHBOARD_SKILLS.map((skill) => {
               const active = selectedSkill.id === skill.id;
               return (
@@ -270,22 +272,22 @@ export const AgentSkillsPage: React.FC = () => {
                   onClick={() => setSelectedSkill(skill)}
                   className={`rounded-xl p-3 border cursor-pointer transition-colors ${
                     active
-                      ? 'bg-cyan-500/12 border-cyan-400/45'
-                      : 'bg-slate-950/65 border-slate-800 hover:border-slate-700'
+                      ? 'bg-zinc-100 dark:bg-zinc-900 border-zinc-400 dark:border-white/25'
+                      : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-white/10 hover:border-zinc-400 dark:hover:border-white/20'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${
                           skill.method === 'GET'
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : 'bg-amber-500/20 text-amber-300'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-500/15 dark:border-emerald-400/25 dark:text-emerald-300'
+                            : 'bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-500/15 dark:border-amber-400/25 dark:text-amber-300'
                         }`}
                       >
                         {skill.method}
                       </span>
-                      <span className="text-xs font-mono font-semibold text-white truncate">
+                      <span className="text-xs font-mono font-semibold text-zinc-950 dark:text-zinc-100 truncate">
                         {skill.name}
                       </span>
                     </div>
@@ -295,34 +297,33 @@ export const AgentSkillsPage: React.FC = () => {
                         e.stopPropagation();
                         executeSkill(skill);
                       }}
-                      className="w-9 h-9 rounded-lg bg-cyan-400 text-slate-950 flex items-center justify-center hover:bg-cyan-300 shrink-0"
+                      className="w-8 h-8 rounded-lg bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 flex items-center justify-center hover:bg-zinc-800 dark:hover:bg-white shrink-0 transition-colors"
                       aria-label={`Run ${skill.name}`}
                       title="Run Live"
                     >
                       <Play className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1 truncate">{skill.summary}</p>
+                  <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1 truncate">{skill.summary}</p>
                 </div>
               );
             })}
           </SwipeScrollArea>
         </div>
 
-        {/* Live Skill Runner */}
-        <div className="lg:col-span-7 glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
+        <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-[11px] font-mono text-cyan-300 truncate">
+              <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
                 {selectedSkill.method} {selectedSkill.endpoint}
               </p>
-              <h3 className="text-sm font-semibold text-white">{selectedSkill.name}</h3>
+              <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">{selectedSkill.name}</h3>
             </div>
             <button
               type="button"
               disabled={running}
               onClick={() => executeSkill(selectedSkill)}
-              className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-emerald-400 px-3.5 text-xs font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50 shrink-0 whitespace-nowrap"
+              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3.5 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-50 shrink-0 whitespace-nowrap transition-colors"
             >
               <Play className="w-3.5 h-3.5" />
               {running ? 'Running...' : 'Test'}
@@ -333,33 +334,41 @@ export const AgentSkillsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => copyText('curl', curlSnippet)}
-              className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-cyan-300 hover:text-white z-10"
+              className="absolute right-2 top-2 p-1.5 rounded-md bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white z-10"
               aria-label="Copy cURL"
             >
-              {copiedKey === 'curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedKey === 'curl' ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
             <SwipeScrollArea direction="horizontal" showArrows={true}>
-              <pre className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 pr-10 text-[11px] font-mono text-cyan-200 whitespace-pre">
+              <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 pr-10 text-[11px] font-mono text-zinc-900 dark:text-zinc-200 whitespace-pre">
                 {curlSnippet}
               </pre>
             </SwipeScrollArea>
           </div>
 
-          <SwipeScrollArea direction="vertical" className="max-h-[220px]">
-            <pre className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 text-[11px] font-mono text-emerald-300 whitespace-pre-wrap">
-              {liveOutput || 'Tap Test to inspect live JSON response.'}
-            </pre>
-          </SwipeScrollArea>
+          {running ? (
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-4 space-y-2.5">
+              <div className="skeleton-line h-3 w-1/2" />
+              <div className="skeleton-line h-3 w-4/5" />
+              <div className="skeleton-line h-3 w-2/3" />
+            </div>
+          ) : (
+            <SwipeScrollArea direction="vertical" className="max-h-[220px]">
+              <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-900 dark:text-emerald-300 whitespace-pre-wrap">
+                {liveOutput || 'Tap Test to inspect live JSON response.'}
+              </pre>
+            </SwipeScrollArea>
+          )}
 
-          <div className="flex items-center justify-between rounded-xl bg-slate-950/70 border border-slate-800 px-3 py-2 text-xs">
-            <span className="font-mono text-slate-300 truncate flex items-center gap-2">
-              <Terminal className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <div className="flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 px-3 py-2 text-xs">
+            <span className="font-mono text-zinc-800 dark:text-zinc-300 truncate flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               {origin}/skills.md
             </span>
             <button
               type="button"
               onClick={() => copyText('prompt', `${origin}/skills.md`)}
-              className="text-cyan-300 hover:text-white inline-flex items-center gap-1 shrink-0 text-[11px]"
+              className="text-sky-700 dark:text-sky-400 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1 shrink-0 text-[11px] font-medium"
             >
               {copiedKey === 'prompt' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               Copy URL

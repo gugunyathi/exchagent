@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Send,
   Zap,
   ShieldCheck,
   Radio,
@@ -8,6 +7,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   XCircle,
+  Terminal,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -23,6 +23,7 @@ import {
 import { createX402Challenge } from '../services/paymentRails';
 import { evaluateCalendarGuardrails } from '../services/calendarAgentTool';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { emitToast } from '../lib/toast';
 
 interface NegotiationArenaModuleProps {
   agents: AgentDoc[];
@@ -80,7 +81,6 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
   const [runningNeg, setRunningNeg] = useState(false);
   const [activeNegId, setActiveNegId] = useState<string>(negotiations[0]?.id || '');
   const [x402StatusBanner, setX402StatusBanner] = useState<string | null>(null);
-  const [settlementBanner, setSettlementBanner] = useState<string | null>(null);
 
   // Reverse-RFP State
   const [rfpTitle, setRfpTitle] = useState('Solar Smart Inverter Fleet for Randburg Retail Strip');
@@ -116,7 +116,6 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
     if (!target || !initiator) return;
 
     setRunningNeg(true);
-    setSettlementBanner(null);
     setX402StatusBanner(null);
 
     try {
@@ -157,7 +156,6 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       await onSaveNegotiation(newNeg);
       setActiveNegId(sessionId);
 
-      // Autonomous Calendar Scheduling when deal is accepted
       if (newNeg.status === 'OFFER_ACCEPTED' && newNeg.agreedPriceZAR) {
         const calCheck = evaluateCalendarGuardrails(target, newNeg.agreedPriceZAR);
         if (calCheck.guardrailCheckPassed) {
@@ -178,6 +176,9 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
             status: 'CONFIRMED',
           });
         }
+        emitToast(`Deal accepted at ${formatMoney(newNeg.agreedPriceZAR, currency)}`, 'success');
+      } else {
+        emitToast('Negotiation escalated — margin guardrail triggered', 'warning');
       }
     } finally {
       setRunningNeg(false);
@@ -189,9 +190,9 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
     if (selectedRail.startsWith('x402_')) {
       const challenge = createX402Challenge(activeNeg.agreedPriceZAR, selectedRail);
       setX402StatusBanner(
-        `HTTP 402 Payment Required Challenge issued (${challenge.nonce}) → ${challenge.payToAddress} ($${challenge.amountUSD} USDC). Signing X-402-Payment-Token...`
+        `402 Challenge ${challenge.nonce} -> ${challenge.payToAddress} ($${challenge.amountUSD} USDC)`
       );
-      await new Promise((r) => setTimeout(r, 450));
+      await new Promise((r) => setTimeout(r, 400));
     }
     await onSettleDeal({
       sessionId: activeNeg.id,
@@ -202,8 +203,9 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       agreedPriceZAR: activeNeg.agreedPriceZAR,
       rail: selectedRail,
     });
-    setSettlementBanner(
-      `Settled ${formatMoney(activeNeg.agreedPriceZAR, currency)} via ${selectedRail.toUpperCase()} — Enterprise Audit Ledger updated.`
+    emitToast(
+      `Settled ${formatMoney(activeNeg.agreedPriceZAR, currency)} via ${selectedRail.toUpperCase()}`,
+      'success'
     );
   };
 
@@ -248,6 +250,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       });
       const data = await res.json();
       setRfpProposals(data.proposals || []);
+      emitToast(`Reverse-RFP broadcast across ${rfpChannels.length} channels`, 'success');
     } finally {
       setBroadcasting(false);
     }
@@ -269,29 +272,29 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       : 0;
 
   return (
-    <div className="space-y-4 sm:space-y-5">
-      {/* Sub-navigation bar */}
+    <div className="space-y-4">
+      {/* Header */}
       <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-cyan-400">
-            Gemini A2A · POPIA Guardrails
-          </p>
-          <h2 className="text-base sm:text-lg font-semibold text-white mt-0.5">
+          <h2 className="text-base sm:text-lg font-display font-bold text-zinc-950 dark:text-zinc-50 tracking-tight">
             Negotiation Arena
           </h2>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            Autonomous A2A deal threads &amp; ambient Reverse-RFP broadcasts
+          </p>
         </div>
 
         <SwipeScrollArea
           direction="horizontal"
-          innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-950/75 border border-slate-800"
+          innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
         >
           <button
             type="button"
             onClick={() => setSubTab('arena')}
-            className={`min-h-[38px] px-3.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs transition-colors whitespace-nowrap shrink-0 ${
               subTab === 'arena'
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/30 font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
             }`}
           >
             Bilateral A2A
@@ -299,10 +302,10 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
           <button
             type="button"
             onClick={() => setSubTab('rfp')}
-            className={`min-h-[38px] px-3.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs transition-colors whitespace-nowrap shrink-0 ${
               subTab === 'rfp'
-                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
             }`}
           >
             Reverse-RFP ({rfps.length})
@@ -311,19 +314,17 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       </div>
 
       {subTab === 'arena' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-          {/* Left: Pitch Initiator Console */}
-          <form onSubmit={handleRunNegotiation} className="lg:col-span-5 glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
-            <h3 className="text-sm sm:text-base font-semibold text-white">New A2A Pitch</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Left Pane: Compact Pitch Composer & Recent Threads */}
+          <form onSubmit={handleRunNegotiation} className="lg:col-span-4 glass-panel rounded-2xl p-4 space-y-3">
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">New A2A Pitch</h3>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                From Agent
-              </label>
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              From
               <select
                 value={initiatorHandle}
                 onChange={(e) => setInitiatorHandle(e.target.value)}
-                className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-xs font-mono text-slate-100"
+                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -331,16 +332,14 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                To Agent
-              </label>
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              To
               <select
                 value={targetHandle}
                 onChange={(e) => setTargetHandle(e.target.value)}
-                className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-xs font-mono text-cyan-200"
+                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -348,38 +347,32 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Proposal
-              </label>
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Proposal
               <textarea
                 rows={2}
                 value={proposalTitle}
                 onChange={(e) => setProposalTitle(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-cyan-400"
+                className="mt-1 w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               />
-            </div>
+            </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Sticker (ZAR)
-                </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                Sticker (ZAR)
                 <input
                   type="number"
                   min={500}
                   value={stickerPriceZAR}
                   onChange={(e) => setStickerPriceZAR(Number(e.target.value))}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-sm font-mono tabular-nums text-white"
+                  className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  USD Value
-                </label>
-                <div className="w-full min-h-[42px] rounded-xl bg-slate-950/50 border border-slate-800/70 px-3 py-2 flex items-center text-sm font-mono tabular-nums text-slate-300">
+              </label>
+              <div className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                <span>USD Equiv</span>
+                <div className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-100 dark:bg-zinc-950/60 border border-zinc-300 dark:border-white/10 px-3 flex items-center text-xs font-mono tabular-nums text-zinc-800 dark:text-zinc-300">
                   ${(stickerPriceZAR / ZAR_PER_USD).toFixed(2)}
                 </div>
               </div>
@@ -388,31 +381,30 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
             <button
               type="submit"
               disabled={runningNeg}
-              className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50 transition-colors"
+              className="w-full min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-4 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-50 transition-colors"
             >
-              <Zap className="w-4 h-4" />
-              {runningNeg ? 'Negotiating...' : 'Launch A2A Pitch'}
+              <Zap className="w-3.5 h-3.5" />
+              {runningNeg ? 'Negotiating...' : 'Run A2A Pitch'}
             </button>
 
-            {/* Recent Session Switcher */}
-            <div className="pt-3 border-t border-slate-800/80">
-              <p className="text-xs font-medium text-slate-400 mb-2">Recent Negotiation Sessions</p>
-              <SwipeScrollArea direction="vertical" className="max-h-40" innerClassName="space-y-1.5">
+            <div className="pt-3 border-t border-zinc-200 dark:border-white/10">
+              <p className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-2">Recent Threads</p>
+              <SwipeScrollArea direction="vertical" className="max-h-40" innerClassName="space-y-1">
                 {negotiations.map((neg) => (
                   <button
                     key={neg.id}
                     type="button"
                     onClick={() => setActiveNegId(neg.id)}
-                    className={`w-full min-h-[38px] text-left rounded-lg px-3 py-2 text-xs transition-colors flex items-center justify-between ${
+                    className={`w-full min-h-[36px] text-left rounded-lg px-2.5 py-1.5 text-xs transition-colors flex items-center justify-between border ${
                       activeNeg?.id === neg.id
-                        ? 'bg-cyan-500/15 border border-cyan-400/30 text-white'
-                        : 'bg-slate-950/50 border border-slate-800/70 text-slate-400 hover:text-slate-200'
+                        ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-950 dark:text-zinc-50 border-zinc-400 dark:border-white/20 font-medium'
+                        : 'bg-zinc-50 dark:bg-zinc-950/60 border-zinc-200 dark:border-white/10 text-zinc-700 dark:text-zinc-400 hover:border-zinc-300 dark:hover:text-zinc-200'
                     }`}
                   >
-                    <span className="font-mono truncate">
-                      {neg.initiatorHandle} → {neg.targetHandle}
+                    <span className="font-mono text-[11px] truncate">
+                      {neg.initiatorHandle.replace('.agent', '')} → {neg.targetHandle.replace('.agent', '')}
                     </span>
-                    <span className="font-mono tabular-nums text-emerald-300 shrink-0 ml-2">
+                    <span className="font-mono text-[10px] tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 shrink-0 ml-2">
                       {neg.status}
                     </span>
                   </button>
@@ -421,77 +413,93 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
             </div>
           </form>
 
-          {/* Right: Live A2A Packet Stream + Dual Payment Settlement */}
-          <div className="lg:col-span-7 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-4">
-            {activeNeg ? (
+          {/* Right Pane: Split Chat Stream & Settlement Bar */}
+          <div className="lg:col-span-8 glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
+            {runningNeg ? (
+              <div className="space-y-3 py-6">
+                <div className="skeleton-line h-4 w-1/3" />
+                <div className="skeleton-line h-16 w-4/5" />
+                <div className="skeleton-line h-16 w-4/5 ml-auto" />
+                <div className="skeleton-line h-14 w-3/4" />
+              </div>
+            ) : activeNeg ? (
               <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-200 dark:border-white/10">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
-                      <span className="font-mono text-cyan-300 truncate">{activeNeg.initiatorHandle}</span>
-                      <span>→</span>
-                      <span className="font-mono text-emerald-300 truncate">{activeNeg.targetHandle}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="font-mono font-medium text-zinc-900 dark:text-zinc-200 truncate">{activeNeg.initiatorHandle}</span>
+                      <span className="text-zinc-500">→</span>
+                      <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300 truncate">{activeNeg.targetHandle}</span>
                     </div>
-                    <p className="text-[11px] font-mono text-slate-500 mt-0.5 truncate">
-                      POPIA Audit: {activeNeg.popiaAuditHash}
+                    <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                      Audit: {activeNeg.popiaAuditHash}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3 sm:text-right shrink-0">
-                    <div>
-                      <p className="text-[11px] text-slate-500">
-                        Sticker → Agreed {activeSavingsPct > 0 ? `(−${activeSavingsPct}%)` : ''}
-                      </p>
-                      <p className="text-sm font-mono tabular-nums text-white">
-                        {formatMoney(activeNeg.stickerPriceZAR, currency)} →{' '}
-                        <span className="text-emerald-400 font-semibold">
-                          {formatMoney(activeNeg.agreedPriceZAR || activeNeg.currentOfferZAR, currency)}
-                        </span>
-                      </p>
-                    </div>
+                  <div className="sm:text-right shrink-0">
+                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
+                      Sticker → Agreed {activeSavingsPct > 0 ? `(−${activeSavingsPct}%)` : ''}
+                    </p>
+                    <p className="text-sm font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
+                      {formatMoney(activeNeg.stickerPriceZAR, currency)} →{' '}
+                      <span className="text-emerald-700 dark:text-emerald-300 font-semibold">
+                        {formatMoney(activeNeg.agreedPriceZAR || activeNeg.currentOfferZAR, currency)}
+                      </span>
+                    </p>
                   </div>
                 </div>
 
-                {/* Structured JSON A2A Packet Messages */}
+                {/* Buyer / Seller Turn Bubbles */}
                 <div className="space-y-2.5">
-                  {activeNeg.messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`rounded-xl p-3.5 border ${
-                        msg.senderRole === 'seller'
-                          ? 'bg-slate-950/60 border-slate-800'
-                          : 'bg-cyan-950/20 border-cyan-500/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-xs">
-                        <span className="font-mono font-medium text-slate-200 truncate">
-                          {msg.sender} · {msg.type.toUpperCase()}
-                        </span>
-                        <span className="font-mono tabular-nums font-semibold text-emerald-300 shrink-0">
-                          {formatMoney(msg.priceZAR, currency)}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-xs sm:text-sm text-slate-300 leading-relaxed">{msg.rationale}</p>
-                      {msg.toolCall && (
-                        <p className="mt-1.5 text-xs font-mono text-cyan-400 truncate">
-                          Tool: {msg.toolCall}
+                  {activeNeg.messages.map((msg, idx) => {
+                    const isSeller = msg.senderRole === 'seller';
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-xl p-3.5 border max-w-[92%] ${
+                          isSeller
+                            ? 'bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-white/10 mr-auto'
+                            : 'bg-sky-50/70 dark:bg-zinc-900/90 border-sky-200 dark:border-white/15 ml-auto'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200 truncate">
+                              {msg.sender}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-white/10 text-[10px] font-mono text-zinc-700 dark:text-zinc-300 uppercase shrink-0">
+                              {msg.type}
+                            </span>
+                          </div>
+                          <span className="font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
+                            {formatMoney(msg.priceZAR, currency)}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-xs sm:text-[13px] text-zinc-800 dark:text-zinc-300 leading-relaxed">
+                          {msg.rationale}
                         </p>
-                      )}
-                    </div>
-                  ))}
+                        {msg.toolCall && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 px-2 py-0.5 text-[11px] font-mono text-sky-700 dark:text-sky-400 max-w-full truncate">
+                            <Terminal className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{msg.toolCall}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Payment Settlement Rail Selector */}
+                {/* Settlement Bar */}
                 {activeNeg.status === 'OFFER_ACCEPTED' && (
-                  <div className="pt-3.5 border-t border-slate-800/80 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-300">
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        <span>Accepted Within Guardrails</span>
-                      </div>
-                      <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
-                        <CalendarCheck className="w-3.5 h-3.5 text-cyan-400" />
-                        Auto-Booked
+                  <div className="pt-3.5 border-t border-zinc-200 dark:border-white/10 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 className="w-4 h-4" />
+                        Guardrails Satisfied
+                      </span>
+                      <span className="font-mono text-zinc-600 dark:text-zinc-400 inline-flex items-center gap-1">
+                        <CalendarCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        Kickoff Auto-Booked
                       </span>
                     </div>
 
@@ -499,7 +507,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                       {(
                         [
                           { id: 'paypal_vault', label: 'PayPal Vault' },
-                          { id: 'x402_base', label: 'x402 Base USDC' },
+                          { id: 'x402_base', label: 'x402 Base' },
                           { id: 'x402_arc', label: 'x402 Arc' },
                           { id: 'x402_solana', label: 'x402 Solana' },
                         ] as const
@@ -508,10 +516,10 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                           key={rail.id}
                           type="button"
                           onClick={() => setSelectedRail(rail.id)}
-                          className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors whitespace-nowrap ${
+                          className={`min-h-[36px] px-3 rounded-lg text-xs border transition-colors whitespace-nowrap ${
                             selectedRail === rail.id
-                              ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
-                              : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                              ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                              : 'bg-white dark:bg-zinc-950 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-white/25 font-medium'
                           }`}
                         >
                           {rail.label}
@@ -520,7 +528,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                     </div>
 
                     {x402StatusBanner && (
-                      <div className="rounded-xl bg-amber-500/10 border border-amber-400/30 p-3 text-xs font-mono text-amber-200">
+                      <div className="rounded-lg bg-amber-50 dark:bg-zinc-950 border border-amber-300 dark:border-amber-400/30 p-2.5 text-[11px] font-mono text-amber-800 dark:text-amber-300">
                         {x402StatusBanner}
                       </div>
                     )}
@@ -528,89 +536,89 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                     <button
                       type="button"
                       onClick={handleTriggerSettlement}
-                      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition-colors"
+                      className="w-full min-h-[42px] inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-400 dark:hover:bg-emerald-300 px-4 text-xs font-semibold text-white dark:text-zinc-950 transition-colors"
                     >
                       <CreditCard className="w-4 h-4" />
-                      Execute Autonomous Settlement ({formatMoney(activeNeg.agreedPriceZAR || 0, currency)})
+                      Settle Deal ({formatMoney(activeNeg.agreedPriceZAR || 0, currency)})
                     </button>
                   </div>
                 )}
 
                 {activeNeg.status === 'SETTLED' && (
-                  <div className="rounded-xl bg-emerald-500/10 border border-emerald-400/30 p-4 flex items-center gap-3 text-sm text-emerald-200">
-                    <ShieldCheck className="w-5 h-5 shrink-0" />
-                    <span>
-                      {settlementBanner ||
-                        'Deal settled on-chain / PayPal Vault and recorded in the Enterprise Audit Ledger.'}
-                    </span>
+                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-400/25 p-3.5 flex items-center gap-2.5 text-xs font-medium text-emerald-800 dark:text-emerald-200">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                    <span>Settled and recorded in the Audit Ledger.</span>
                   </div>
                 )}
 
                 {activeNeg.status === 'REJECTED' && (
-                  <div className="rounded-xl bg-rose-500/10 border border-rose-400/30 p-4 flex items-center gap-3 text-sm text-rose-200">
-                    <XCircle className="w-5 h-5 shrink-0" />
-                    <span>Offer rejected by buyer margin/spend guardrails. Escalated to human owner.</span>
+                  <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-400/25 p-3.5 flex items-center gap-2.5 text-xs font-medium text-rose-800 dark:text-rose-200">
+                    <XCircle className="w-4 h-4 text-rose-700 dark:text-rose-400 shrink-0" />
+                    <span>Rejected by margin/spend guardrails. Escalated to owner.</span>
                   </div>
                 )}
               </>
             ) : (
-              <p className="text-sm text-slate-400">Launch a negotiation on the left to stream live A2A packets.</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 py-8 text-center">
+                Launch a pitch to stream live A2A negotiation turns.
+              </p>
             )}
           </div>
         </div>
       ) : (
-        /* Reverse-RFP Broadcaster */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-          <form onSubmit={handleBroadcastRfp} className="lg:col-span-5 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-3.5">
-            <h3 className="text-sm sm:text-base font-semibold text-white">Broadcast Ambient Reverse-RFP</h3>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">RFP Title</label>
+        /* Reverse-RFP Tab */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <form onSubmit={handleBroadcastRfp} className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Broadcast Reverse-RFP</h3>
+
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              RFP Title
               <input
                 type="text"
                 required
                 value={rfpTitle}
                 onChange={(e) => setRfpTitle(e.target.value)}
-                className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3.5 py-2 text-sm text-white"
+                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Requirements</label>
+            </label>
+
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Requirements
               <textarea
                 rows={3}
                 value={rfpDesc}
                 onChange={(e) => setRfpDesc(e.target.value)}
-                className="w-full rounded-xl bg-slate-950/80 border border-slate-800 px-3.5 py-2 text-sm text-slate-200"
+                className="mt-1 w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-zinc-200 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Budget (ZAR)</label>
+            </label>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                Budget (ZAR)
                 <input
                   type="number"
                   value={rfpBudgetZAR}
                   onChange={(e) => setRfpBudgetZAR(Number(e.target.value))}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-sm font-mono tabular-nums text-white"
+                  className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Category</label>
+              </label>
+              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                Category
                 <input
                   type="text"
                   value={rfpCategory}
                   onChange={(e) => setRfpCategory(e.target.value)}
-                  className="w-full min-h-[42px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-sm text-slate-200"
+                  className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs text-zinc-950 dark:text-zinc-200 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
-              </div>
+              </label>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Broadcast Channels
-              </label>
-              <div className="grid grid-cols-2 gap-2">
+              <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Channels</span>
+              <div className="grid grid-cols-2 gap-1.5">
                 {(
                   [
-                    { id: 'directory', label: 'Online Directory' },
+                    { id: 'directory', label: 'Directory' },
                     { id: 'google_maps_billboard', label: 'DOOH Billboards' },
                     { id: 'ble_beacon', label: 'BLE 50m Mesh' },
                     { id: 'carplay', label: 'CarPlay / Auto' },
@@ -620,10 +628,10 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                     key={ch.id}
                     type="button"
                     onClick={() => toggleChannel(ch.id)}
-                    className={`min-h-[40px] px-3 py-2 rounded-lg text-xs font-medium border text-left transition-colors ${
+                    className={`min-h-[36px] px-3 rounded-lg text-xs border text-left transition-colors ${
                       rfpChannels.includes(ch.id)
-                        ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-200'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                        : 'bg-white dark:bg-zinc-950 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:border-zinc-400 font-medium'
                     }`}
                   >
                     {ch.label}
@@ -635,32 +643,30 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
             <button
               type="submit"
               disabled={broadcasting}
-              className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50 transition-colors"
+              className="w-full min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-4 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-50 transition-colors"
             >
-              <Radio className="w-4 h-4" />
-              {broadcasting ? 'Broadcasting & Matching...' : 'Publish Reverse-RFP'}
+              <Radio className="w-3.5 h-3.5" />
+              {broadcasting ? 'Broadcasting...' : 'Publish Reverse-RFP'}
             </button>
           </form>
 
           <div className="lg:col-span-7 space-y-4">
             {rfpProposals.length > 0 && (
-              <div className="glass-panel rounded-2xl p-5 border-emerald-500/30 space-y-3">
-                <h4 className="text-sm font-semibold text-emerald-300">
-                  Instant Gemini Auto-Matched Vendor Proposals
-                </h4>
-                <div className="space-y-2.5">
+              <div className="glass-panel rounded-2xl p-4 border-emerald-400 dark:border-emerald-400/25 space-y-2.5">
+                <h4 className="text-xs font-display font-bold text-emerald-700 dark:text-emerald-300">Auto-Matched Vendor Bids</h4>
+                <div className="space-y-2">
                   {rfpProposals.map((p, i) => (
                     <div
                       key={i}
-                      className="rounded-xl bg-slate-950/70 border border-slate-800 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                     >
                       <div>
-                        <p className="text-xs font-mono text-cyan-300">
-                          {p.vendorHandle} · Match {p.matchScore}%
+                        <p className="text-xs font-mono text-zinc-900 dark:text-zinc-200">
+                          {p.vendorHandle} · <span className="text-emerald-700 dark:text-emerald-300 font-semibold">{p.matchScore}% match</span>
                         </p>
-                        <p className="text-xs text-slate-300 mt-1">{p.pitchSummary}</p>
+                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{p.pitchSummary}</p>
                       </div>
-                      <span className="font-mono tabular-nums text-sm font-semibold text-emerald-300 shrink-0">
+                      <span className="font-mono tabular-nums text-xs font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
                         {formatMoney(p.bidZAR, currency)}
                       </span>
                     </div>
@@ -669,25 +675,20 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               </div>
             )}
 
-            <div className="glass-panel rounded-2xl p-3.5 sm:p-5 space-y-3">
-              <h3 className="text-sm sm:text-base font-semibold text-white">Active Reverse-RFPs</h3>
+            <div className="glass-panel rounded-2xl p-4 space-y-3">
+              <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Active Reverse-RFPs</h3>
               <div className="space-y-2.5">
                 {rfps.map((rfp) => (
-                  <div
-                    key={rfp.id}
-                    className="rounded-xl bg-slate-950/60 border border-slate-800/80 p-3.5 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
-                      <span className="font-mono text-cyan-300 truncate">{rfp.publisherHandle}</span>
-                      <span className="font-mono text-emerald-400 shrink-0">{rfp.status}</span>
+                  <div key={rfp.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-mono text-zinc-600 dark:text-zinc-400 truncate">{rfp.publisherHandle}</span>
+                      <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">{rfp.status}</span>
                     </div>
-                    <h4 className="text-sm font-semibold text-white">{rfp.title}</h4>
-                    <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{rfp.description}</p>
-                    <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs border-t border-slate-800/60">
-                      <span className="text-slate-400 truncate">
-                        {rfp.broadcastChannels.join(' · ')}
-                      </span>
-                      <span className="font-mono tabular-nums font-semibold text-white shrink-0">
+                    <h4 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-100">{rfp.title}</h4>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400 line-clamp-2">{rfp.description}</p>
+                    <div className="pt-2 flex items-center justify-between gap-2 text-xs border-t border-zinc-200 dark:border-white/10">
+                      <span className="text-zinc-600 dark:text-zinc-400 truncate">{rfp.broadcastChannels.join(' · ')}</span>
+                      <span className="font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-100 shrink-0">
                         {formatMoney(rfp.budgetZAR, currency)}
                       </span>
                     </div>

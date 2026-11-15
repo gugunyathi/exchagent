@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AgentDoc } from '../types/firestore';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { emitToast } from '../lib/toast';
 
 interface ChromeExtensionHubProps {
   agents: AgentDoc[];
@@ -78,11 +79,10 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
     right: '24px',
     zIndex: '2147483647',
     padding: '10px 16px',
-    borderRadius: '12px',
-    border: '1px solid rgba(34,211,238,0.45)',
-    background: 'rgba(5,8,17,0.92)',
-    backdropFilter: 'blur(16px)',
-    color: '#67e8f9',
+    borderRadius: '10px',
+    border: '1px solid rgba(255,255,255,0.16)',
+    background: '#121215',
+    color: '#f4f4f5',
     fontFamily: 'system-ui, sans-serif',
     fontSize: '13px',
     fontWeight: '600',
@@ -100,18 +100,18 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
 <head>
   <meta charset="utf-8" />
   <style>
-    body { width: 320px; margin: 0; padding: 16px; background: #050811; color: #f1f5f9; font-family: system-ui, sans-serif; }
-    h3 { margin: 0 0 8px; font-size: 14px; color: #22d3ee; }
-    .box { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 12px; }
-    textarea { width: 100%; box-sizing: border-box; background: #020617; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px; font-size: 12px; }
-    button { width: 100%; margin-top: 8px; padding: 9px; border: 0; border-radius: 8px; background: #22d3ee; color: #050811; font-weight: 700; cursor: pointer; }
+    body { width: 320px; margin: 0; padding: 16px; background: #09090b; color: #f4f4f5; font-family: system-ui, sans-serif; }
+    h3 { margin: 0 0 8px; font-size: 14px; color: #fafafa; }
+    .box { background: #18181b; border: 1px solid #27272a; border-radius: 10px; padding: 10px; margin-bottom: 10px; font-size: 12px; }
+    textarea { width: 100%; box-sizing: border-box; background: #09090b; color: #e4e4e7; border: 1px solid #27272a; border-radius: 8px; padding: 8px; font-size: 12px; }
+    button { width: 100%; margin-top: 8px; padding: 9px; border: 0; border-radius: 8px; background: #fafafa; color: #09090b; font-weight: 600; cursor: pointer; }
   </style>
 </head>
 <body>
   <h3>Switchboard AgentPages</h3>
   <div class="box" id="status">Scanning active tab for .agent handle...</div>
   <textarea id="pitch" rows="3" placeholder="Enter your A2A pitch or RFP offer..."></textarea>
-  <button id="send">Launch Gemini A2A Pitch</button>
+  <button id="send">Launch A2A Pitch</button>
   <div id="result" style="margin-top:10px;font-size:11px;color:#6ee7b7;"></div>
   <script src="popup.js"></script>
 </body>
@@ -156,13 +156,14 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      emitToast('Downloaded extension ZIP', 'success');
     } finally {
       setDownloadingZip(false);
     }
   };
 
   const handleRunSimPopupPitch = async () => {
-    setSimResult('Running live Gemini A2A handshake from simulated toolbar...');
+    setSimResult('Running A2A handshake...');
     const res = await fetch('/api/a2a/negotiate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -175,14 +176,15 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
       }),
     });
     const data = await res.json();
-    setSimResult(
-      `${data.finalStatus} at R${Number(data.agreedPriceZAR || 78000).toLocaleString('en-ZA')} (${data.engine})`
-    );
+    const summary = `${data.finalStatus} at R${Number(data.agreedPriceZAR || 78000).toLocaleString('en-ZA')}`;
+    setSimResult(summary);
+    emitToast(summary, 'success');
   };
 
   const copySnippet = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
+    emitToast('Snippet copied', 'success');
     setTimeout(() => setCopiedId(null), 1800);
   };
 
@@ -202,35 +204,33 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
   const metaTagSnippet = `<meta name="agent-handle" content="${selectedSimAgent.handle}" />\n<link rel="agent-manifest" href="${appOrigin}/.well-known/agent.json" />`;
 
   return (
-    <div className="space-y-4 sm:space-y-5">
-      {/* Header + 1-Click ZIP Download */}
+    <div className="space-y-4">
       <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-cyan-400">
-            Manifest V3 Extension &amp; Discovery Embeds
-          </p>
-          <h2 className="text-base sm:text-lg font-semibold text-white mt-0.5">
-            Chrome Extension &amp; Website Kit
+          <h2 className="text-base sm:text-lg font-display font-bold text-zinc-950 dark:text-zinc-50 tracking-tight">
+            Chrome Extension &amp; Embeds
           </h2>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            Manifest V3 LinkedIn scanner &amp; `.well-known/agent.json` snippets
+          </p>
         </div>
 
         <button
           onClick={handleDownloadExtensionZip}
           disabled={downloadingZip}
-          className="min-h-[42px] w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2 text-xs sm:text-sm font-semibold text-slate-950 hover:bg-cyan-300 transition-colors whitespace-nowrap shrink-0"
+          className="min-h-[38px] w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-4 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white transition-colors whitespace-nowrap shrink-0"
         >
           <Download className="w-4 h-4" />
-          {downloadingZip ? 'Bundling ZIP...' : 'Download Extension (.zip)'}
+          {downloadingZip ? 'Bundling...' : 'Download Extension (.zip)'}
         </button>
       </div>
 
-      {/* Live In-Browser LinkedIn & Extension Simulator */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-        <div className="lg:col-span-7 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
-              <Globe className="w-4 h-4 text-cyan-400" />
-              Live LinkedIn Profile Scanner Simulator
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
+              <Globe className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              LinkedIn Badge Simulator
             </h3>
             <select
               value={selectedSimAgent.id}
@@ -241,7 +241,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                   setSimResult(null);
                 }
               }}
-              className="min-h-[40px] rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-1.5 text-xs font-mono text-cyan-200"
+              className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-200 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
             >
               {agents
                 .filter((a) => a.handle !== '911.emergency.agent')
@@ -253,50 +253,42 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
             </select>
           </div>
 
-          {/* Simulated LinkedIn Profile Card */}
-          <div className="rounded-2xl bg-[#0B1120] border border-slate-800 overflow-hidden relative">
-            <div className="h-24 bg-gradient-to-r from-cyan-950/80 via-slate-900 to-emerald-950/70 border-b border-slate-800" />
-            <div className="p-5 pt-10 relative">
-              <div className="w-16 h-16 rounded-full bg-slate-900 border-2 border-cyan-400/50 flex items-center justify-center text-lg font-bold text-cyan-200 absolute -top-8 left-5">
+          <div className="rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 overflow-hidden relative">
+            <div className="h-20 bg-gradient-to-r from-[#0a66c2] to-[#004182] dark:from-zinc-900 dark:to-zinc-900 border-b border-zinc-300 dark:border-white/10" />
+            <div className="p-4 pt-10 relative">
+              <div className="w-14 h-14 rounded-full bg-white dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-950 flex items-center justify-center text-base font-bold text-zinc-900 dark:text-zinc-100 absolute -top-7 left-4 shadow-sm">
                 {selectedSimAgent.displayName.slice(0, 2).toUpperCase()}
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div>
-                  <h4 className="text-lg font-semibold text-white">
+                  <h4 className="text-base font-display font-bold text-zinc-950 dark:text-zinc-50">
                     {selectedSimAgent.displayName}
                   </h4>
-                  <p className="text-xs text-slate-300">
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
                     {selectedSimAgent.roleTitle} at {selectedSimAgent.organization}
                   </p>
-                  <p className="text-xs text-slate-400 mt-2">
-                    Bio: Reach my autonomous procurement delegate directly at{' '}
-                    <span className="font-mono text-cyan-300 underline">
-                      {selectedSimAgent.handle}
-                    </span>{' '}
-                    · Voice: {selectedSimAgent.voiceNumber}
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 font-mono">
+                    {selectedSimAgent.handle} · {selectedSimAgent.voiceNumber}
                   </p>
                 </div>
 
-                {/* Injected Glassmorphic Extension Badge */}
                 <button
+                  type="button"
                   onClick={() => setPopupOpen((v) => !v)}
-                  className="min-h-[40px] inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500/20 border border-cyan-400/50 px-3.5 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/30 shadow-lg whitespace-nowrap shrink-0"
+                  className="min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap shrink-0 transition-colors"
                 >
-                  <Zap className="w-3.5 h-3.5 text-cyan-300" />
-                  Pitch via Switchboard Agent
+                  <Zap className="w-3.5 h-3.5" />
+                  Pitch Agent
                 </button>
               </div>
             </div>
 
-            {/* Simulated Toolbar Popup Drawer */}
             {popupOpen && (
-              <div className="m-3 sm:m-4 rounded-xl bg-slate-950/95 border border-cyan-500/40 p-3.5 sm:p-4 space-y-3 shadow-2xl">
+              <div className="m-3 sm:m-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-3.5 space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-cyan-300">
-                    Extension Quick-Pitch Drawer
-                  </span>
-                  <span className="text-emerald-400 flex items-center gap-1">
+                  <span className="font-display font-bold text-zinc-950 dark:text-zinc-100">Extension Quick-Pitch</span>
+                  <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 text-[11px]">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     POPIA Verified
                   </span>
@@ -305,80 +297,74 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                   rows={2}
                   value={quickPitchText}
                   onChange={(e) => setQuickPitchText(e.target.value)}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 p-2.5 text-xs text-slate-100"
+                  className="w-full rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 p-2.5 text-xs text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleRunSimPopupPitch}
-                    className="flex-1 min-h-[40px] rounded-xl bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-300"
+                    className="flex-1 min-h-[36px] rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white transition-colors"
                   >
-                    Trigger Quick A2A Pitch
+                    Send Quick Pitch
                   </button>
                   <button
+                    type="button"
                     onClick={() => onTriggerPitchFromSim(selectedSimAgent)}
-                    className="min-h-[40px] rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-200 hover:border-cyan-400 whitespace-nowrap"
+                    className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 whitespace-nowrap"
                   >
-                    Open in Full Arena
+                    Open in Arena
                   </button>
                 </div>
                 {simResult && (
-                  <p className="text-xs font-mono text-emerald-300">{simResult}</p>
+                  <p className="text-xs font-mono font-semibold text-emerald-700 dark:text-emerald-300">{simResult}</p>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Embeddable Website & LinkedIn Kit */}
-        <div className="lg:col-span-5 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-4">
-          <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-2">
-            <FileCode2 className="w-4 h-4 text-emerald-400" />
-            Embeddable Website & Bio Kit
+        <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-4">
+          <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
+            <FileCode2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            Website &amp; Bio Snippets
           </h3>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-300 font-medium">1. HTML Meta & Well-Known Link</span>
+              <span className="text-zinc-700 dark:text-zinc-300 font-semibold">HTML Meta Tags</span>
               <button
+                type="button"
                 onClick={() => copySnippet('meta', metaTagSnippet)}
-                className="min-h-[32px] px-2 inline-flex items-center gap-1 text-cyan-300 hover:text-cyan-200"
+                className="min-h-[28px] px-2 inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:text-zinc-950 dark:hover:text-white font-medium"
               >
                 {copiedId === 'meta' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedId === 'meta' ? 'Copied' : 'Copy'}
               </button>
             </div>
             <SwipeScrollArea direction="horizontal" showArrows={true}>
-              <pre className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 text-[11px] font-mono text-slate-300 whitespace-pre">
+              <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-800 dark:text-zinc-300 whitespace-pre">
                 {metaTagSnippet}
               </pre>
             </SwipeScrollArea>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-300 font-medium">2. /.well-known/agent.json</span>
+              <span className="text-zinc-700 dark:text-zinc-300 font-semibold">/.well-known/agent.json</span>
               <button
+                type="button"
                 onClick={() => copySnippet('agentjson', agentJsonSnippet)}
-                className="min-h-[32px] px-2 inline-flex items-center gap-1 text-cyan-300 hover:text-cyan-200"
+                className="min-h-[28px] px-2 inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:text-zinc-950 dark:hover:text-white font-medium"
               >
                 {copiedId === 'agentjson' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copiedId === 'agentjson' ? 'Copied' : 'Copy'}
               </button>
             </div>
             <SwipeScrollArea direction="horizontal" showArrows={true}>
-              <pre className="rounded-xl bg-slate-950/90 border border-slate-800 p-3 text-[11px] font-mono text-emerald-300 whitespace-pre">
+              <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-900 dark:text-emerald-300 whitespace-pre">
                 {agentJsonSnippet}
               </pre>
             </SwipeScrollArea>
-          </div>
-
-          <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3.5 text-xs text-slate-400 space-y-1">
-            <p className="font-medium text-slate-200">Load Unpacked in Chrome:</p>
-            <p>
-              1. Click <strong>Download Unpacked Extension (.zip)</strong> and unzip.<br />
-              2. Open <code className="text-cyan-300">chrome://extensions</code> → enable <strong>Developer mode</strong>.<br />
-              3. Click <strong>Load unpacked</strong> and select the unzipped folder.
-            </p>
           </div>
         </div>
       </div>

@@ -233,7 +233,7 @@ export const SwipeScrollArea: React.FC<SwipeScrollAreaProps> = ({
           type="button"
           onClick={() => scrollByDir(0, -stepPx)}
           aria-label="Scroll up"
-          className="absolute top-1.5 left-1/2 -translate-x-1/2 z-20 w-8 h-8 rounded-full bg-slate-900/85 backdrop-blur-md border border-cyan-400/35 text-cyan-200 flex items-center justify-center shadow-lg hover:bg-slate-800 transition-transform active:scale-95"
+          className="absolute top-1.5 left-1/2 -translate-x-1/2 z-20 w-8 h-8 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shadow-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-transform active:scale-95"
         >
           <ChevronUp className="w-4 h-4" />
         </button>
@@ -244,7 +244,7 @@ export const SwipeScrollArea: React.FC<SwipeScrollAreaProps> = ({
           type="button"
           onClick={() => scrollByDir(0, stepPx)}
           aria-label="Scroll down"
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 w-8 h-8 rounded-full bg-slate-900/85 backdrop-blur-md border border-cyan-400/35 text-cyan-200 flex items-center justify-center shadow-lg hover:bg-slate-800 transition-transform active:scale-95"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 w-8 h-8 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shadow-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-transform active:scale-95"
         >
           <ChevronDown className="w-4 h-4" />
         </button>
@@ -255,7 +255,7 @@ export const SwipeScrollArea: React.FC<SwipeScrollAreaProps> = ({
           type="button"
           onClick={() => scrollByDir(-stepPx, 0)}
           aria-label="Scroll left"
-          className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-slate-900/90 backdrop-blur-md border border-cyan-400/35 text-cyan-200 flex items-center justify-center shadow-lg hover:bg-slate-800 transition-transform active:scale-95"
+          className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shadow-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-transform active:scale-95"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -266,7 +266,7 @@ export const SwipeScrollArea: React.FC<SwipeScrollAreaProps> = ({
           type="button"
           onClick={() => scrollByDir(stepPx, 0)}
           aria-label="Scroll right"
-          className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-slate-900/90 backdrop-blur-md border border-cyan-400/35 text-cyan-200 flex items-center justify-center shadow-lg hover:bg-slate-800 transition-transform active:scale-95"
+          className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shadow-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-transform active:scale-95"
         >
           <ChevronRight className="w-4 h-4" />
         </button>

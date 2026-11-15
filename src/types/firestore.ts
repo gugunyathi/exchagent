@@ -92,6 +92,65 @@ export interface SeekerCvProfile {
   rawCvExcerpt?: string;
 }
 
+export type CardBannerStyle =
+  | 'gradient'
+  | 'circuit'
+  | 'mesh'
+  | 'geometric'
+  | 'horizon'
+  | 'monogram'
+  | 'wave'
+  | 'carbon'
+  | 'minimal';
+
+export type CardBackgroundPattern =
+  | 'none'
+  | 'subtle-grid'
+  | 'dots'
+  | 'aurora'
+  | 'topo'
+  | 'stripes'
+  | 'circuit';
+
+export type CardBackgroundTheme =
+  | 'default'
+  | 'pearl'
+  | 'obsidian'
+  | 'emerald'
+  | 'sapphire'
+  | 'amber'
+  | 'amethyst'
+  | 'cyber';
+
+export type CardEdgeRadius =
+  | 'rounded-none'
+  | 'rounded-xl'
+  | 'rounded-2xl'
+  | 'rounded-3xl'
+  | 'rounded-[28px]';
+
+export type CardBorderStyle =
+  | 'hairline'
+  | 'bold-accent'
+  | 'cyber-glow'
+  | 'double'
+  | 'dashed-tech'
+  | 'frosted-glass';
+
+export interface AgentCardCustomization {
+  bannerStyle: CardBannerStyle;
+  bannerBgColor?: string;
+  bannerTextColor?: string;
+  bannerHeight?: 'compact' | 'normal' | 'tall';
+  bannerBadgeStyle?: 'pill' | 'outline' | 'glass' | 'none';
+  backgroundPattern: CardBackgroundPattern;
+  backgroundTheme: CardBackgroundTheme;
+  customBgColor?: string;
+  edgeRadius: CardEdgeRadius;
+  borderStyle: CardBorderStyle;
+  borderAccentColor?: string;
+}
+
 export interface AgentDoc {
   id: string;
   handle: string;
@@ -117,6 +176,7 @@ export interface AgentDoc {
   brandColor?: string;
   brandLogoCode?: string;
   avatarVariant?: 'chris' | 'alex' | 'thandi' | 'persona';
+  cardStyle?: AgentCardCustomization;
   did?: string;
   protocol?: string;
   interactEndpoint?: string;

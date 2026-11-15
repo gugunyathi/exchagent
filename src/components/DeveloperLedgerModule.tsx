@@ -4,7 +4,6 @@ import {
   Terminal,
   Play,
   ExternalLink,
-  CheckCircle2,
 } from 'lucide-react';
 import {
   SettlementDoc,
@@ -64,112 +63,127 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-5">
+    <div className="space-y-4">
       <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-cyan-400">
-            x402 &amp; PayPal Audit · OpenAPI 3.1
-          </p>
-          <h2 className="text-base sm:text-lg font-semibold text-white mt-0.5">
-            Audit Ledger &amp; Developer Hub
+          <h2 className="text-base sm:text-lg font-display font-bold text-zinc-950 dark:text-zinc-50 tracking-tight">
+            Audit Ledger &amp; OpenAPI
           </h2>
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            Cryptographic settlements, Poppy operations &amp; discovery endpoints
+          </p>
         </div>
 
-        <SwipeScrollArea direction="horizontal" className="w-full lg:w-auto" innerClassName="flex items-center gap-1 p-1 rounded-xl bg-slate-950/70 border border-slate-800">
+        <SwipeScrollArea
+          direction="horizontal"
+          className="w-full lg:w-auto"
+          innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+        >
           <button
             onClick={() => setSubTab('ledger')}
-            className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs whitespace-nowrap shrink-0 transition-colors ${
               subTab === 'ledger'
-                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
             }`}
           >
-            Audit Ledger ({settlements.length})
+            Settlements ({settlements.length})
           </button>
           <button
             onClick={() => setSubTab('poppy_audit')}
-            className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs whitespace-nowrap shrink-0 transition-colors ${
               subTab === 'poppy_audit'
-                ? 'bg-amber-500/20 text-amber-200 border border-amber-400/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
             }`}
           >
             Poppy Ops ({poppyOperations.length})
           </button>
           <button
             onClick={() => setSubTab('openapi')}
-            className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs whitespace-nowrap shrink-0 transition-colors ${
               subTab === 'openapi'
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
             }`}
           >
-            OpenAPI & SDK Tools
+            OpenAPI
           </button>
         </SwipeScrollArea>
       </div>
 
       {subTab === 'ledger' ? (
         <div className="space-y-4">
-          {/* Summary Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div className="glass-panel rounded-xl p-3.5 sm:p-4">
-              <p className="text-[11px] sm:text-xs text-slate-400">Negotiated Savings</p>
-              <p className="text-lg sm:text-2xl font-mono tabular-nums font-semibold text-emerald-300 mt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="glass-panel rounded-xl p-3.5">
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Negotiated Savings</p>
+              <p className="text-lg sm:text-2xl font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-300 mt-1">
                 {formatMoney(totalSavedZAR, currency)}
               </p>
             </div>
-            <div className="glass-panel rounded-xl p-3.5 sm:p-4">
-              <p className="text-[11px] sm:text-xs text-slate-400">Settled Volume</p>
-              <p className="text-lg sm:text-2xl font-mono tabular-nums font-semibold text-white mt-1">
+            <div className="glass-panel rounded-xl p-3.5">
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Settled Volume</p>
+              <p className="text-lg sm:text-2xl font-mono tabular-nums font-bold text-zinc-950 dark:text-zinc-50 mt-1">
                 {formatMoney(totalVolumeZAR, currency)}
               </p>
             </div>
-            <div className="glass-panel rounded-xl p-3.5 sm:p-4 col-span-2 sm:col-span-1">
-              <p className="text-[11px] sm:text-xs text-slate-400">Rail Filter</p>
-              <select
-                value={railFilter}
-                onChange={(e) => setRailFilter(e.target.value as 'all' | PaymentRail)}
-                className="mt-1.5 w-full min-h-[38px] rounded-lg bg-slate-950/80 border border-slate-800 px-3 py-1.5 text-xs text-slate-200"
-              >
-                <option value="all">All Payment Rails</option>
-                <option value="paypal_vault">PayPal Agentic Vault</option>
-                <option value="x402_base">x402 Base USDC</option>
-                <option value="x402_arc">x402 Arc Network</option>
-                <option value="x402_solana">x402 Solana USDC</option>
-              </select>
+            <div className="glass-panel rounded-xl p-3.5 col-span-2 sm:col-span-1 flex flex-col justify-between">
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Payment Rail</p>
+              <SwipeScrollArea direction="horizontal" innerClassName="flex items-center gap-1 mt-1.5">
+                {(
+                  [
+                    { id: 'all', label: 'All' },
+                    { id: 'paypal_vault', label: 'PayPal' },
+                    { id: 'x402_base', label: 'Base' },
+                    { id: 'x402_arc', label: 'Arc' },
+                    { id: 'x402_solana', label: 'Solana' },
+                  ] as const
+                ).map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setRailFilter(r.id)}
+                    className={`min-h-[28px] px-2 rounded-md text-[11px] whitespace-nowrap border transition-colors ${
+                      railFilter === r.id
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                        : 'bg-white dark:bg-zinc-950 text-zinc-700 dark:text-zinc-400 border-zinc-300 dark:border-white/10 hover:text-zinc-950 dark:hover:text-zinc-200 font-medium'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </SwipeScrollArea>
             </div>
           </div>
 
-          <div className="glass-panel rounded-2xl p-3.5 sm:p-5 space-y-3">
+          <div className="glass-panel rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <h3 className="text-sm sm:text-base font-semibold text-white">Cryptographic Settlement Ledger</h3>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Cryptographic Ledger</h3>
             </div>
 
-            {/* Mobile Card List */}
-            <div className="md:hidden space-y-2.5">
+            <div className="md:hidden space-y-2">
               {filteredSettlements.map((tx) => (
-                <div key={tx.id} className="rounded-xl bg-slate-950/75 border border-slate-800 p-3 space-y-1.5">
+                <div key={tx.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 space-y-1.5">
                   <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="font-mono text-slate-400">
+                    <span className="font-mono text-zinc-600 dark:text-zinc-400 tabular-nums">
                       {new Date(tx.settledAt).toLocaleString('en-ZA', {
                         month: 'short',
                         day: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit',
                       })}{' '}
-                      · {tx.channel} · <span className="text-cyan-300">{tx.rail.toUpperCase()}</span>
+                      · {tx.rail.toUpperCase()}
                     </span>
-                    <span className="font-mono tabular-nums text-emerald-300 shrink-0">-{tx.savedPct}%</span>
+                    <span className="font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">-{tx.savedPct}%</span>
                   </div>
-                  <p className="text-xs font-mono text-slate-200 truncate">
+                  <p className="text-xs font-mono font-medium text-zinc-900 dark:text-zinc-200 truncate">
                     {tx.buyerHandle} ← {tx.sellerHandle}
                   </p>
-                  <div className="flex items-center justify-between gap-2 text-xs pt-1 border-t border-slate-800/70">
-                    <span className="font-mono text-[11px] text-slate-500 truncate">{tx.txHash}</span>
-                    <span className="font-mono tabular-nums font-semibold text-white shrink-0">
-                      <span className="text-slate-500 line-through font-normal mr-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs pt-1 border-t border-zinc-200 dark:border-white/10">
+                    <span className="font-mono text-[11px] text-zinc-500 truncate">{tx.txHash}</span>
+                    <span className="font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-50 shrink-0">
+                      <span className="text-zinc-500 line-through font-normal mr-1.5">
                         {formatMoney(tx.stickerPriceZAR, currency)}
                       </span>
                       {formatMoney(tx.amountZAR, currency)}
@@ -181,21 +195,21 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
 
             <table className="hidden md:table w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400">
-                  <th className="py-2.5 pr-3 font-medium">Timestamp</th>
-                  <th className="py-2.5 px-3 font-medium">Counterparties</th>
-                  <th className="py-2.5 px-3 font-medium">Channel</th>
-                  <th className="py-2.5 px-3 font-medium text-right">Sticker</th>
-                  <th className="py-2.5 px-3 font-medium text-right">Settled</th>
-                  <th className="py-2.5 px-3 font-medium text-right">Savings</th>
-                  <th className="py-2.5 px-3 font-medium">Rail</th>
-                  <th className="py-2.5 pl-3 font-medium">Settlement Hash</th>
+                <tr className="border-b border-zinc-300 dark:border-white/10 text-zinc-600 dark:text-zinc-400">
+                  <th className="py-2 pr-3 font-semibold">Timestamp</th>
+                  <th className="py-2 px-3 font-semibold">Counterparties</th>
+                  <th className="py-2 px-3 font-semibold">Channel</th>
+                  <th className="py-2 px-3 font-semibold text-right">Sticker</th>
+                  <th className="py-2 px-3 font-semibold text-right">Settled</th>
+                  <th className="py-2 px-3 font-semibold text-right">Saved</th>
+                  <th className="py-2 px-3 font-semibold">Rail</th>
+                  <th className="py-2 pl-3 font-semibold">Tx Hash</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/70">
+              <tbody className="divide-y divide-zinc-200 dark:divide-white/10">
                 {filteredSettlements.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-900/40">
-                    <td className="py-3 pr-3 font-mono text-slate-400 whitespace-nowrap">
+                  <tr key={tx.id} className="hover:bg-zinc-100/70 dark:hover:bg-zinc-900/50 h-10">
+                    <td className="py-2 pr-3 font-mono text-zinc-600 dark:text-zinc-400 whitespace-nowrap tabular-nums">
                       {new Date(tx.settledAt).toLocaleString('en-ZA', {
                         month: 'short',
                         day: 'numeric',
@@ -203,23 +217,23 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
                         minute: '2-digit',
                       })}
                     </td>
-                    <td className="py-3 px-3 font-mono text-slate-200 whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono font-medium text-zinc-900 dark:text-zinc-200 whitespace-nowrap">
                       {tx.buyerHandle} ← {tx.sellerHandle}
                     </td>
-                    <td className="py-3 px-3 text-slate-300 whitespace-nowrap">{tx.channel}</td>
-                    <td className="py-3 px-3 font-mono tabular-nums text-slate-400 text-right whitespace-nowrap">
+                    <td className="py-2 px-3 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{tx.channel}</td>
+                    <td className="py-2 px-3 font-mono tabular-nums text-zinc-500 text-right whitespace-nowrap">
                       {formatMoney(tx.stickerPriceZAR, currency)}
                     </td>
-                    <td className="py-3 px-3 font-mono tabular-nums font-semibold text-white text-right whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-50 text-right whitespace-nowrap">
                       {formatMoney(tx.amountZAR, currency)}
                     </td>
-                    <td className="py-3 px-3 font-mono tabular-nums text-emerald-300 text-right whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 text-right whitespace-nowrap">
                       -{tx.savedPct}%
                     </td>
-                    <td className="py-3 px-3 font-mono text-cyan-300 whitespace-nowrap">
+                    <td className="py-2 px-3 font-mono text-zinc-700 dark:text-zinc-300 whitespace-nowrap">
                       {tx.rail.toUpperCase()}
                     </td>
-                    <td className="py-3 pl-3 font-mono text-slate-400 max-w-[160px] truncate">
+                    <td className="py-2 pl-3 font-mono text-zinc-500 max-w-[160px] truncate">
                       {tx.txHash}
                     </td>
                   </tr>
@@ -230,22 +244,19 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
         </div>
       ) : subTab === 'poppy_audit' ? (
         <div className="space-y-4">
-          <div className="glass-panel rounded-2xl p-3.5 sm:p-5 space-y-3">
-            <h3 className="text-sm sm:text-base font-semibold text-white">
-              Poppy Operations v3 Approval & Execution Ledger
-            </h3>
+          <div className="glass-panel rounded-2xl p-4 space-y-3">
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Operations v3 Ledger</h3>
 
-            {/* Mobile Operation Cards */}
-            <div className="md:hidden space-y-2.5">
+            <div className="md:hidden space-y-2">
               {poppyOperations.map((op) => (
-                <div key={op.operation_id} className="rounded-xl bg-slate-950/75 border border-slate-800 p-3 space-y-1">
+                <div key={op.operation_id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 space-y-1">
                   <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
-                    <span className="text-cyan-300 truncate">{op.operation_id}</span>
-                    <span className="uppercase text-emerald-300 shrink-0">{op.status}</span>
+                    <span className="text-zinc-900 dark:text-zinc-200 font-semibold truncate">{op.operation_id}</span>
+                    <span className="uppercase font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">{op.status}</span>
                   </div>
-                  <p className="text-xs text-slate-200">{op.summary}</p>
-                  <p className="text-[11px] font-mono text-slate-400 truncate">
-                    Approver: {op.approver || 'pending'} · Ref: <span className="text-amber-300">{op.reference || '—'}</span>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">{op.summary}</p>
+                  <p className="text-[11px] font-mono text-zinc-500 truncate">
+                    {op.approver || 'pending'} · {op.reference || '—'}
                   </p>
                 </div>
               ))}
@@ -253,38 +264,41 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
 
             <table className="hidden md:table w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400">
-                  <th className="py-2 pr-3 font-medium">Operation ID</th>
-                  <th className="py-2 px-3 font-medium">Summary</th>
-                  <th className="py-2 px-3 font-medium">Status</th>
-                  <th className="py-2 px-3 font-medium">Approver</th>
-                  <th className="py-2 pl-3 font-medium">Idempotent Reference</th>
+                <tr className="border-b border-zinc-300 dark:border-white/10 text-zinc-600 dark:text-zinc-400">
+                  <th className="py-2 pr-3 font-semibold">Operation ID</th>
+                  <th className="py-2 px-3 font-semibold">Summary</th>
+                  <th className="py-2 px-3 font-semibold">Status</th>
+                  <th className="py-2 px-3 font-semibold">Approver</th>
+                  <th className="py-2 pl-3 font-semibold">Reference</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/70">
+              <tbody className="divide-y divide-zinc-200 dark:divide-white/10">
                 {poppyOperations.map((op) => (
-                  <tr key={op.operation_id}>
-                    <td className="py-2.5 pr-3 font-mono text-cyan-300">{op.operation_id}</td>
-                    <td className="py-2.5 px-3 text-slate-200">{op.summary}</td>
-                    <td className="py-2.5 px-3 font-mono uppercase text-emerald-300">{op.status}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-300">{op.approver || 'pending'}</td>
-                    <td className="py-2.5 pl-3 font-mono text-amber-300">{op.reference || '—'}</td>
+                  <tr key={op.operation_id} className="h-10">
+                    <td className="py-2 pr-3 font-mono font-medium text-zinc-900 dark:text-zinc-200">{op.operation_id}</td>
+                    <td className="py-2 px-3 text-zinc-700 dark:text-zinc-300">{op.summary}</td>
+                    <td className="py-2 px-3 font-mono font-semibold uppercase text-emerald-700 dark:text-emerald-300">{op.status}</td>
+                    <td className="py-2 px-3 font-mono text-zinc-600 dark:text-zinc-400">{op.approver || 'pending'}</td>
+                    <td className="py-2 pl-3 font-mono text-zinc-600 dark:text-zinc-400">{op.reference || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="glass-panel rounded-2xl p-3.5 sm:p-5 space-y-2.5">
-            <h3 className="text-sm font-semibold text-white">Poppy Compliance & Consent Audit Log</h3>
+          <div className="glass-panel rounded-2xl p-4 space-y-2">
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Compliance Log</h3>
             {poppyAuditLogs.map((entry) => (
-              <div key={entry.id} className="rounded-xl bg-slate-950/75 border border-slate-800 p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div
+                key={entry.id}
+                className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              >
                 <div>
-                  <span className="font-mono text-cyan-300">{entry.action}</span>
-                  <span className="text-slate-500 mx-2">·</span>
-                  <span className="text-slate-300">{entry.details}</span>
+                  <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200">{entry.action}</span>
+                  <span className="text-zinc-400 dark:text-zinc-600 mx-2">·</span>
+                  <span className="text-zinc-600 dark:text-zinc-400">{entry.details}</span>
                 </div>
-                <span className="font-mono text-[10px] text-emerald-300 shrink-0">
+                <span className="font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
                   {entry.popiaMinimized ? 'POPIA Minimized' : 'Standard'}
                 </span>
               </div>
@@ -292,22 +306,21 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
           </div>
         </div>
       ) : (
-        /* Developer & OpenAPI Hub */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
-          <div className="lg:col-span-5 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-4">
-            <h3 className="text-base font-semibold text-white flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-cyan-400" />
-              Live OpenAPI & Agent Endpoints
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              Endpoints &amp; Runtime
             </h3>
 
-            <div className="space-y-2 text-xs">
+            <div className="space-y-1.5 text-xs">
               {(
                 [
                   { ep: '/.well-known/poppy.json', label: 'GET /.well-known/poppy.json' },
                   { ep: '/api/poppy/tasks', label: 'GET /api/poppy/tasks' },
                   { ep: '/.well-known/oauth-authorization-server', label: 'GET /.well-known/oauth-authorization-server' },
                   { ep: '/api/agents/directory', label: 'GET /api/agents/directory' },
-                  { ep: '/api/skill.json', label: 'GET /api/skill.json (OpenAPI 3.1)' },
+                  { ep: '/api/skill.json', label: 'GET /api/skill.json' },
                   { ep: '/api/names/search?q=007', label: 'GET /api/names/search?q=007' },
                   { ep: '/.well-known/agent.json', label: 'GET /.well-known/agent.json' },
                 ] as const
@@ -318,36 +331,35 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
                     setSelectedEndpoint(item.ep);
                     runEndpointTest(item.ep);
                   }}
-                  className={`w-full text-left rounded-xl px-3.5 py-2.5 font-mono border flex items-center justify-between transition-colors ${
+                  className={`w-full text-left rounded-lg px-3 py-2 font-mono border flex items-center justify-between transition-colors ${
                     selectedEndpoint === item.ep
-                      ? 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                      ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-400 dark:border-white/20 text-zinc-950 dark:text-zinc-50 font-semibold'
+                      : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-white/10 text-zinc-700 dark:text-zinc-400 hover:border-zinc-400 dark:hover:text-zinc-200'
                   }`}
                 >
-                  <span>{item.label}</span>
-                  <Play className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                  <Play className="w-3 h-3 shrink-0" />
                 </button>
               ))}
             </div>
 
-            <div className="pt-4 border-t border-slate-800/80 space-y-2 text-xs">
-              <p className="font-semibold text-slate-200">Runtime Integration State</p>
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Cloud Firestore</span>
-                <span className="font-mono text-emerald-300">
-                  {firestoreOnline ? 'Connected (with local cache)' : 'Local Adapter Active'}
+            <div className="pt-3 border-t border-zinc-200 dark:border-white/10 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                <span>Firestore</span>
+                <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200">
+                  {firestoreOnline ? 'Connected' : 'Local Adapter'}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Google Maps Platform</span>
-                <span className="font-mono text-emerald-300">
-                  {hasGoogleMapsKey ? 'Live Maps JS + Vector Fallback' : 'Interactive Vector Radar'}
+              <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                <span>Maps Platform</span>
+                <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200">
+                  {hasGoogleMapsKey ? 'Live JS + Radar' : 'Vector Radar'}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Calendar & Gmail OAuth</span>
-                <span className="font-mono text-emerald-300">
-                  {workspaceConnected ? 'Authorized Token Active' : 'Simulated Engine Ready'}
+              <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+                <span>Workspace OAuth</span>
+                <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200">
+                  {workspaceConnected ? 'Active' : 'Ready'}
                 </span>
               </div>
             </div>
@@ -357,7 +369,7 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
                 href="/llms.txt"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-cyan-300 hover:underline font-mono"
+                className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline font-mono font-medium"
               >
                 /llms.txt <ExternalLink className="w-3 h-3" />
               </a>
@@ -365,29 +377,38 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
                 href="/api/skill.json"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-cyan-300 hover:underline font-mono"
+                className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400 hover:underline font-mono font-medium"
               >
                 /api/skill.json <ExternalLink className="w-3 h-3" />
               </a>
             </div>
           </div>
 
-          <div className="lg:col-span-7 glass-panel rounded-2xl p-3.5 sm:p-5 space-y-3">
+          <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-mono text-cyan-300 truncate">{selectedEndpoint}</span>
+              <span className="text-xs font-mono font-semibold text-zinc-900 dark:text-zinc-200 truncate">{selectedEndpoint}</span>
               <button
                 onClick={() => runEndpointTest(selectedEndpoint)}
                 disabled={loadingApi}
-                className="min-h-[38px] rounded-xl bg-cyan-400 px-3.5 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-300 whitespace-nowrap"
+                className="min-h-[34px] rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap"
               >
-                {loadingApi ? 'Fetching...' : 'Execute Request'}
+                {loadingApi ? 'Fetching...' : 'Execute'}
               </button>
             </div>
-            <SwipeScrollArea direction="both" className="rounded-xl bg-slate-950/90 border border-slate-800 max-h-[360px]">
-              <pre className="p-3.5 text-xs font-mono text-emerald-300 whitespace-pre">
-                {apiResponse || 'Tap any endpoint to inspect live JSON output.'}
-              </pre>
-            </SwipeScrollArea>
+
+            {loadingApi ? (
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-4 space-y-2.5">
+                <div className="skeleton-line h-3 w-1/2" />
+                <div className="skeleton-line h-3 w-4/5" />
+                <div className="skeleton-line h-3 w-2/3" />
+              </div>
+            ) : (
+              <SwipeScrollArea direction="both" className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 max-h-[360px]">
+                <pre className="p-3.5 text-xs font-mono text-zinc-900 dark:text-emerald-300 whitespace-pre">
+                  {apiResponse || 'Select any endpoint to inspect JSON output.'}
+                </pre>
+              </SwipeScrollArea>
+            )}
           </div>
         </div>
       )}

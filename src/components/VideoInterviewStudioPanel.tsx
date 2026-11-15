@@ -14,6 +14,8 @@ import {
   Play,
   Square,
   FileSpreadsheet,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -31,6 +33,7 @@ import {
   downloadScheduleCsv,
   insertGoogleCalendarEvent,
 } from '../services/calendarAgentTool';
+import { emitToast } from '../lib/toast';
 
 interface VideoInterviewStudioPanelProps {
   candidate: AgentDoc;
@@ -102,7 +105,7 @@ async function sampleVideoFrames(
             frames.push(canvas.toDataURL('image/jpeg', 0.65));
           }
         } catch {
-          // ignore frame seek failure
+          // ignore
         }
       }
       cleanup();
@@ -134,23 +137,21 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
 
-  // Store session-only playable video URLs in state (avoids localStorage quota issues)
   const [sessionVideoUrls, setSessionVideoUrls] = useState<Record<string, string>>({});
   const [recording, setRecording] = useState(false);
   const [challengeCode] = useState(() => `SWB-${Math.floor(100 + Math.random() * 899)}`);
   const [verifying, setVerifying] = useState(false);
-  const [showAllForensics, setShowAllForensics] = useState(false);
-  const [videoTitle, setVideoTitle] = useState(`${candidate.displayName} — Video Intro`);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [showForensicDetails, setShowForensicDetails] = useState(false);
+  const [videoTitle, setVideoTitle] = useState(`${candidate.displayName} — Intro`);
 
   // Pre-screen state
   const [selectedJobId, setSelectedJobId] = useState<string>(jobs[0]?.id || '');
   const [prescreening, setPrescreening] = useState(false);
   const [humanDecision, setHumanDecision] = useState<PreScreenReview['decision']>('SHORTLIST');
   const [humanScore, setHumanScore] = useState(91);
-  const [humanNotes, setHumanNotes] = useState('Verified authentic human presenter; articulate architecture walkthrough.');
+  const [humanNotes, setHumanNotes] = useState('Verified authentic presenter; clear technical walkthrough.');
 
-  // Interview Scheduler state
+  // Scheduler state
   const businesses = allAgents.filter((a) => a.type === 'business' && a.handle !== '911.emergency.agent');
   const [interviewerHandle, setInterviewerHandle] = useState<string>(
     businesses[0]?.handle || 'ceo.woolworths.agent'
@@ -183,7 +184,6 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
     objectUrl?: string;
   }) => {
     setVerifying(true);
-    setStatusMsg(null);
     try {
       let frames: string[] = [];
       let durationSeconds = 42;
@@ -231,10 +231,11 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
       };
 
       onSaveVideo(candidate.id, record);
-      setStatusMsg(
+      emitToast(
         vData.verdict === 'VERIFIED_HUMAN'
-          ? `Deepfake Check Passed: ${vData.authenticityScore}% Real Human (${vData.verifierEngine})`
-          : `Deepfake Alert: Flagged as ${vData.verdict} (${vData.deepfakeRiskPct}% synthetic risk)`
+          ? `Verified Real Human (${vData.authenticityScore}%)`
+          : `Deepfake Flagged (${vData.deepfakeRiskPct}% risk)`,
+        vData.verdict === 'VERIFIED_HUMAN' ? 'success' : 'error'
       );
     } finally {
       setVerifying(false);
@@ -257,10 +258,9 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   };
 
   const handleStartRecording = async () => {
-    setStatusMsg(null);
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-        setStatusMsg('Camera MediaRecorder unavailable in this browser — use Video Upload or Simulated Deepfake Test.');
+        emitToast('Webcam unavailable — upload video or run deepfake check', 'warning');
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -290,7 +290,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
       mr.start();
       setRecording(true);
     } catch {
-      setStatusMsg('Camera access blocked — upload a video file or run forensic sample test below.');
+      emitToast('Camera access blocked — use Upload Video', 'warning');
     }
   };
 
@@ -326,6 +326,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
         notes: data.notes || 'Agent pre-screen completed.',
         timestamp: new Date().toISOString(),
       });
+      emitToast(`Agent pre-screen logged (${data.decision || 'PASS'})`, 'success');
     } finally {
       setPrescreening(false);
     }
@@ -343,6 +344,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
       notes: humanNotes,
       timestamp: new Date().toISOString(),
     });
+    emitToast(`Human review logged (${humanDecision})`, 'success');
   };
 
   const handleScheduleInterview = async (e: React.FormEvent) => {
@@ -382,10 +384,11 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
       }
 
       await onAddBooking(newBooking);
-      setStatusMsg(
+      emitToast(
         newBooking.googleSynced
-          ? 'Live Interview scheduled and synced directly to Google Calendar!'
-          : 'Live Interview scheduled! Use Google, Outlook, Office 365, or Download .ics below.'
+          ? 'Synced to Google Calendar'
+          : 'Interview scheduled (.ics ready)',
+        'success'
       );
     } finally {
       setScheduling(false);
@@ -393,17 +396,17 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   };
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      {/* Row 1: Video Upload/Record + Deepfake Forensic Verdict */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-start">
-        <div className="lg:col-span-6 glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-1.5">
-              <Video className="w-4 h-4 text-cyan-300 shrink-0" />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        {/* Left: Clean Media Frame + Compact Forensic Authenticity Badge */}
+        <div className="lg:col-span-6 glass-panel rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
+              <Video className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
               Profile Video &amp; Liveness
             </h3>
-            <span className="text-xs font-mono text-amber-300 tabular-nums">
-              {challengeCode}
+            <span className="text-xs font-mono text-zinc-600 dark:text-zinc-400 tabular-nums">
+              Challenge {challengeCode}
             </span>
           </div>
 
@@ -411,11 +414,10 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
             type="text"
             value={videoTitle}
             onChange={(e) => setVideoTitle(e.target.value)}
-            placeholder="Video intro title..."
-            className="w-full min-h-[40px] rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-xs sm:text-sm text-white"
+            placeholder="Video title..."
+            className="w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
           />
 
-          {/* Upload / Webcam Record Controls */}
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <input
               ref={fileInputRef}
@@ -428,10 +430,10 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               type="button"
               disabled={verifying || recording}
               onClick={() => fileInputRef.current?.click()}
-              className="min-h-[40px] rounded-xl bg-cyan-400 px-3 text-xs font-semibold text-slate-950 hover:bg-cyan-300 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+              className="min-h-[38px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 px-3 text-xs font-semibold dark:text-zinc-950 dark:hover:bg-white inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
             >
               <Upload className="w-3.5 h-3.5" />
-              {verifying ? 'Analyzing...' : 'Upload Video'}
+              {verifying ? 'Scanning...' : 'Upload Video'}
             </button>
 
             {!recording ? (
@@ -439,16 +441,16 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                 type="button"
                 disabled={verifying}
                 onClick={handleStartRecording}
-                className="min-h-[40px] rounded-xl bg-emerald-500/20 border border-emerald-400/40 px-3 text-xs font-medium text-emerald-200 hover:bg-emerald-500/30 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                className="min-h-[38px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-900 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-white/25 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
               >
-                <Camera className="w-3.5 h-3.5" />
+                <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 Record Live
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleStopRecording}
-                className="min-h-[40px] rounded-xl bg-rose-500 px-3 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 animate-pulse whitespace-nowrap"
+                className="min-h-[38px] rounded-xl bg-rose-600 px-3 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
               >
                 <Square className="w-3.5 h-3.5" />
                 Stop &amp; Verify
@@ -465,8 +467,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                   capturedVia: 'upload',
                 })
               }
-              className="col-span-2 sm:col-span-1 min-h-[40px] rounded-xl bg-slate-900 border border-slate-700 px-3 text-xs text-amber-300 hover:border-amber-400 whitespace-nowrap"
-              title="Simulate testing a synthetic deepfake clip"
+              className="col-span-2 sm:col-span-1 min-h-[38px] rounded-xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 dark:bg-zinc-900 dark:border-white/15 px-3 text-xs font-medium dark:text-amber-300 dark:hover:border-amber-400/40 whitespace-nowrap"
             >
               Test Deepfake Check
             </button>
@@ -478,7 +479,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               autoPlay
               muted
               playsInline
-              className="w-full aspect-video rounded-xl bg-black border border-emerald-400/40 object-cover"
+              className="w-full aspect-video rounded-xl bg-black border border-emerald-500/60 dark:border-emerald-400/40 object-cover"
             />
           )}
 
@@ -487,107 +488,96 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               src={playableUrl}
               controls
               playsInline
-              className="w-full aspect-video rounded-xl bg-black border border-slate-800"
+              className="w-full aspect-video rounded-xl bg-black border border-zinc-300 dark:border-white/15"
             />
           )}
 
-          {statusMsg && (
-            <p className="text-xs font-medium text-cyan-200 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2">
-              {statusMsg}
-            </p>
-          )}
-
-          {/* Deepfake & Liveness Forensic Scorecard */}
+          {/* Compact Forensic Trust Badge + Expandable Liveness Breakdown */}
           {currentVideo && (
-            <div
-              className={`rounded-xl border p-3.5 space-y-2.5 ${
-                currentVideo.verification.verdict === 'VERIFIED_HUMAN'
-                  ? 'bg-emerald-950/25 border-emerald-500/35'
-                  : 'bg-rose-950/30 border-rose-500/40'
-              }`}
-            >
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {currentVideo.verification.verdict === 'VERIFIED_HUMAN' ? (
-                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                   ) : (
-                    <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                    <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                   )}
-                  <span className="text-xs sm:text-sm font-semibold text-white">
+                  <span className="text-xs font-semibold text-zinc-950 dark:text-zinc-50">
                     {currentVideo.verification.verdict === 'VERIFIED_HUMAN'
                       ? 'Verified Human'
-                      : 'Deepfake Flagged'}
+                      : 'Synthetic Risk Flagged'}
                   </span>
                 </div>
-                <span className="font-mono text-xs font-bold text-emerald-300 tabular-nums">
-                  {currentVideo.verification.authenticityScore}% Real · {currentVideo.verification.deepfakeRiskPct}% Risk
-                </span>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`font-mono text-xs font-semibold tabular-nums ${
+                      currentVideo.verification.verdict === 'VERIFIED_HUMAN'
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}
+                  >
+                    {currentVideo.verification.authenticityScore}% Real
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowForensicDetails((v) => !v)}
+                    className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-0.5"
+                  >
+                    {showForensicDetails ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
-                {[
-                  { label: 'Micro-Expr', val: currentVideo.verification.livenessSignals.facialMicroExpressions },
-                  { label: 'Lip Sync', val: currentVideo.verification.livenessSignals.lipAudioSync },
-                  { label: 'Texture', val: currentVideo.verification.livenessSignals.lightingSkinTexture },
-                  { label: 'Codec', val: currentVideo.verification.livenessSignals.compressionArtifactCheck },
-                ].map((metric) => (
-                  <div key={metric.label} className="rounded-lg bg-slate-950/80 p-2 space-y-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-400 truncate text-[11px]">{metric.label}</span>
-                      <span className="text-cyan-300 font-semibold tabular-nums text-[11px]">{metric.val}%</span>
-                    </div>
-                    <div className="h-1 w-full rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          metric.val >= 75 ? 'bg-emerald-400' : 'bg-rose-400'
-                        }`}
-                        style={{ width: `${Math.min(100, Math.max(0, metric.val))}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-xs text-slate-200 leading-relaxed line-clamp-2">
-                {currentVideo.verification.transcriptSummary}
-              </p>
-
-              {currentVideo.verification.forensicNotes.length > 0 && (
-                <div className="space-y-1">
-                  <ul className="space-y-0.5 text-xs text-slate-300 list-disc pl-4">
-                    {(showAllForensics
-                      ? currentVideo.verification.forensicNotes
-                      : currentVideo.verification.forensicNotes.slice(0, 2)
-                    ).map((n, i) => (
-                      <li key={i}>{n}</li>
+              {showForensicDetails && (
+                <div className="space-y-2.5 pt-2 border-t border-zinc-200 dark:border-white/10">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+                    {[
+                      { label: 'Micro-Expr', val: currentVideo.verification.livenessSignals.facialMicroExpressions },
+                      { label: 'Lip Sync', val: currentVideo.verification.livenessSignals.lipAudioSync },
+                      { label: 'Texture', val: currentVideo.verification.livenessSignals.lightingSkinTexture },
+                      { label: 'Codec', val: currentVideo.verification.livenessSignals.compressionArtifactCheck },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 p-2 space-y-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-zinc-600 dark:text-zinc-400 truncate text-[10px]">{metric.label}</span>
+                          <span className="text-zinc-950 dark:text-zinc-200 font-semibold tabular-nums text-[10px]">{metric.val}%</span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              metric.val >= 75 ? 'bg-emerald-600 dark:bg-emerald-400' : 'bg-rose-600 dark:bg-rose-400'
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(0, metric.val))}%` }}
+                          />
+                        </div>
+                      </div>
                     ))}
-                  </ul>
-                  {currentVideo.verification.forensicNotes.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllForensics((v) => !v)}
-                      className="text-xs text-cyan-300 hover:underline"
-                    >
-                      {showAllForensics ? 'Show less' : `Show all ${currentVideo.verification.forensicNotes.length} checks`}
-                    </button>
-                  )}
+                  </div>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-400 leading-relaxed">
+                    {currentVideo.verification.transcriptSummary}
+                  </p>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Right: Agent & Human Pre-Screening Reviews */}
-        <div className="lg:col-span-6 glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
+        {/* Right: Pre-Screening & Live Video Launch */}
+        <div className="lg:col-span-6 glass-panel rounded-2xl p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-emerald-300 shrink-0" />
+            <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               Pre-Screening
             </h3>
             <select
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
-              className="min-h-[38px] rounded-lg bg-slate-950 border border-slate-800 px-2.5 py-1 text-xs text-cyan-200 max-w-full sm:max-w-[220px]"
+              className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-xs text-zinc-900 dark:text-zinc-200 max-w-full sm:max-w-[220px]"
             >
               {jobs.map((j) => (
                 <option key={j.id} value={j.id}>
@@ -602,10 +592,10 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               type="button"
               disabled={!currentVideo || prescreening}
               onClick={handleRunAgentPreScreen}
-              className="min-h-[40px] rounded-xl bg-cyan-400 px-3.5 text-xs font-semibold text-slate-950 hover:bg-cyan-300 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+              className="min-h-[38px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 px-3.5 text-xs font-semibold dark:text-zinc-950 dark:hover:bg-white disabled:opacity-50 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
             >
               <Bot className="w-3.5 h-3.5" />
-              {prescreening ? 'Agent Screening...' : 'Run Agent Pre-Screen'}
+              {prescreening ? 'Screening...' : 'Run Agent Screen'}
             </button>
             <button
               type="button"
@@ -617,24 +607,23 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                   interviewerName: selectedJob?.companyName || 'Hiring Panel',
                 })
               }
-              className="min-h-[40px] rounded-xl bg-rose-500 px-3.5 text-xs font-semibold text-white hover:bg-rose-400 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+              className="min-h-[38px] rounded-xl bg-rose-600 px-3.5 text-xs font-semibold text-white hover:bg-rose-500 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
             >
               <Video className="w-3.5 h-3.5" />
-              Start Live Video Interview
+              Launch Live Interview
             </button>
           </div>
 
-          {/* Human Pre-Screen Entry */}
-          <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3 space-y-2 text-xs">
-            <p className="font-semibold text-slate-200 flex items-center gap-1.5">
-              <UserCheck className="w-3.5 h-3.5 text-amber-300" />
-              Human HR Pre-Screen Evaluation
+          <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 space-y-2 text-xs">
+            <p className="font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+              HR Evaluation
             </p>
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={humanDecision}
                 onChange={(e) => setHumanDecision(e.target.value as PreScreenReview['decision'])}
-                className="min-h-[38px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white"
+                className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
               >
                 <option value="SHORTLIST">SHORTLIST</option>
                 <option value="PASS">PASS</option>
@@ -647,7 +636,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                 max={100}
                 value={humanScore}
                 onChange={(e) => setHumanScore(Number(e.target.value))}
-                className="min-h-[38px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs font-mono tabular-nums text-white"
+                className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-mono tabular-nums text-zinc-950 dark:text-white"
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -655,53 +644,52 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                 type="text"
                 value={humanNotes}
                 onChange={(e) => setHumanNotes(e.target.value)}
-                className="flex-1 min-h-[38px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white"
+                className="flex-1 min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
               />
               <button
                 type="button"
                 disabled={!currentVideo}
                 onClick={handleSaveHumanPreScreen}
-                className="min-h-[38px] rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-emerald-300 disabled:opacity-50 whitespace-nowrap"
+                className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 whitespace-nowrap"
               >
                 Log Review
               </button>
             </div>
           </div>
 
-          {/* Review Feed */}
-          <div className="space-y-2 max-h-[220px] overflow-y-auto no-scrollbar">
+          <div className="space-y-2 max-h-[200px] overflow-y-auto no-scrollbar">
             {(currentVideo?.preScreenReviews || []).map((rev) => (
-              <div key={rev.id} className="rounded-xl bg-slate-950/80 border border-slate-800 p-2.5 space-y-1">
+              <div key={rev.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] gap-2">
-                  <span className="font-semibold text-white inline-flex items-center gap-1.5 truncate">
+                  <span className="font-semibold text-zinc-950 dark:text-zinc-100 inline-flex items-center gap-1.5 truncate">
                     {rev.reviewerType === 'agent' ? (
-                      <Bot className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                      <Bot className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                     ) : (
-                      <UserCheck className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <UserCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                     )}
                     {rev.reviewerName}
                   </span>
-                  <span className="font-mono text-emerald-300 font-bold tabular-nums shrink-0">
+                  <span className="font-mono text-emerald-700 dark:text-emerald-300 font-semibold tabular-nums shrink-0">
                     {rev.decision} · {rev.score}%
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300">{rev.notes}</p>
+                <p className="text-[11px] text-zinc-700 dark:text-zinc-400">{rev.notes}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Row 2: Live Video Interview Scheduler + Multi-Calendar Export */}
-      <div className="glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3.5">
+      {/* Bottom: Streamlined Calendar Booking */}
+      <div className="glass-panel rounded-2xl p-4 space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm sm:text-base font-semibold text-white flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-cyan-300 shrink-0" />
-              Interview Scheduler &amp; Calendar Sync
+            <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-zinc-700 dark:text-zinc-300 shrink-0" />
+              Schedule Live Interview
             </h3>
-            <p className="text-xs text-slate-400">
-              Google, Outlook, Office 365, Apple `.ics` &amp; `.csv` exports.
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
+              Google, Outlook, Office 365 &amp; .ics downloads
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -709,37 +697,43 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               <button
                 type="button"
                 onClick={() => onConnectGoogle()}
-                className="min-h-[36px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 text-[11px] text-cyan-300 hover:border-cyan-400 whitespace-nowrap"
+                className="min-h-[34px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-white/25 whitespace-nowrap"
               >
-                Connect Google OAuth
+                Connect Google
               </button>
             )}
             <button
               type="button"
-              onClick={() => downloadScheduleIcs(interviewBookings)}
-              className="min-h-[36px] rounded-lg bg-emerald-500/20 border border-emerald-400/40 px-2.5 text-[11px] font-medium text-emerald-200 inline-flex items-center gap-1 whitespace-nowrap"
+              onClick={() => {
+                downloadScheduleIcs(interviewBookings);
+                emitToast('Downloaded interviews.ics', 'success');
+              }}
+              className="min-h-[34px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-white/25 inline-flex items-center gap-1 whitespace-nowrap"
             >
               <Download className="w-3 h-3" />
-              Schedule (.ics)
+              .ics
             </button>
             <button
               type="button"
-              onClick={() => downloadScheduleCsv(interviewBookings)}
-              className="min-h-[36px] rounded-lg bg-slate-900 border border-slate-700 px-2.5 text-[11px] text-slate-200 inline-flex items-center gap-1 whitespace-nowrap"
+              onClick={() => {
+                downloadScheduleCsv(interviewBookings);
+                emitToast('Downloaded agenda.csv', 'success');
+              }}
+              className="min-h-[34px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:border-zinc-400 dark:hover:border-white/25 inline-flex items-center gap-1 whitespace-nowrap"
             >
               <FileSpreadsheet className="w-3 h-3" />
-              Agenda (.csv)
+              .csv
             </button>
           </div>
         </div>
 
         <form onSubmit={handleScheduleInterview} className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-          <label className="col-span-2 sm:col-span-1 text-slate-400">
-            Company / Recruiter
+          <label className="col-span-2 sm:col-span-1 text-zinc-700 dark:text-zinc-400 font-medium">
+            Interviewer
             <select
               value={interviewerHandle}
               onChange={(e) => setInterviewerHandle(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white"
+              className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
             >
               {businesses.map((b) => (
                 <option key={b.id} value={b.handle}>
@@ -748,32 +742,32 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               ))}
             </select>
           </label>
-          <label className="text-slate-400">
+          <label className="text-zinc-700 dark:text-zinc-400 font-medium">
             Date
             <input
               type="date"
               value={scheduleDate}
               onChange={(e) => setScheduleDate(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white"
+              className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
               required
             />
           </label>
-          <label className="text-slate-400">
+          <label className="text-zinc-700 dark:text-zinc-400 font-medium">
             Start (SAST)
             <input
               type="time"
               value={scheduleTime}
               onChange={(e) => setScheduleTime(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white"
+              className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
               required
             />
           </label>
-          <label className="col-span-2 sm:col-span-1 text-slate-400">
+          <label className="col-span-2 sm:col-span-1 text-zinc-700 dark:text-zinc-400 font-medium">
             Duration
             <select
               value={durationMins}
               onChange={(e) => setDurationMins(Number(e.target.value))}
-              className="mt-1 w-full min-h-[40px] rounded-xl bg-slate-950 border border-slate-800 px-2.5 py-2 text-xs text-white"
+              className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
             >
               <option value={30}>30 mins</option>
               <option value={45}>45 mins</option>
@@ -784,28 +778,27 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
             <button
               type="submit"
               disabled={scheduling}
-              className="w-full min-h-[40px] rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-semibold text-xs whitespace-nowrap"
+              className="w-full min-h-[38px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-white dark:text-zinc-950 font-semibold text-xs whitespace-nowrap"
             >
-              {scheduling ? 'Booking...' : 'Schedule Interview'}
+              {scheduling ? 'Booking...' : 'Book Slot'}
             </button>
           </div>
         </form>
 
-        {/* Scheduled Interview Cards with Join + Calendar Provider Links */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {interviewBookings.map((b) => (
-            <div key={b.id} className="rounded-xl bg-slate-950/80 border border-slate-800 p-3 space-y-2">
+            <div key={b.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{b.title}</p>
-                  <p className="text-[11px] font-mono text-slate-400 mt-0.5 tabular-nums">
+                  <p className="text-xs font-semibold text-zinc-950 dark:text-zinc-100 truncate">{b.title}</p>
+                  <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 mt-0.5 tabular-nums">
                     {new Date(b.startTime).toLocaleString('en-ZA', {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit',
                     })}{' '}
-                    · {b.organizerHandle} ↔ {b.attendeeHandle}
+                    · {b.organizerHandle}
                   </p>
                 </div>
                 <button
@@ -819,19 +812,19 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                       interviewerName: b.organizerHandle,
                     })
                   }
-                  className="shrink-0 min-h-[36px] rounded-lg bg-rose-500 hover:bg-rose-400 px-3 text-[11px] font-semibold text-white inline-flex items-center gap-1 whitespace-nowrap"
+                  className="shrink-0 min-h-[32px] rounded-lg bg-rose-600 hover:bg-rose-500 px-3 text-xs font-semibold text-white inline-flex items-center gap-1 whitespace-nowrap"
                 >
                   <Play className="w-3 h-3" />
-                  Join Call
+                  Join
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/80 text-[10.5px]">
+              <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-zinc-200 dark:border-white/10 text-[11px]">
                 <a
                   href={buildGoogleCalendarUrl(b)}
                   target="_blank"
                   rel="noreferrer"
-                  className="min-h-[34px] rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 text-cyan-300 hover:border-cyan-400 inline-flex items-center justify-center gap-1"
+                  className="min-h-[32px] rounded-md bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-zinc-800 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center justify-center gap-1"
                 >
                   Google <ExternalLink className="w-2.5 h-2.5" />
                 </a>
@@ -839,7 +832,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                   href={buildOutlookCalendarUrl(b)}
                   target="_blank"
                   rel="noreferrer"
-                  className="min-h-[34px] rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 text-sky-300 hover:border-sky-400 inline-flex items-center justify-center gap-1"
+                  className="min-h-[32px] rounded-md bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-zinc-800 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center justify-center gap-1"
                 >
                   Outlook <ExternalLink className="w-2.5 h-2.5" />
                 </a>
@@ -847,14 +840,17 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                   href={buildOffice365CalendarUrl(b)}
                   target="_blank"
                   rel="noreferrer"
-                  className="min-h-[34px] rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 text-indigo-300 hover:border-indigo-400 inline-flex items-center justify-center gap-1"
+                  className="min-h-[32px] rounded-md bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-zinc-800 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center justify-center gap-1"
                 >
-                  Office 365 <ExternalLink className="w-2.5 h-2.5" />
+                  365 <ExternalLink className="w-2.5 h-2.5" />
                 </a>
                 <button
                   type="button"
-                  onClick={() => downloadIcsFile(b)}
-                  className="min-h-[34px] rounded-md bg-emerald-500/15 border border-emerald-400/30 px-2.5 py-1 text-emerald-300 inline-flex items-center justify-center gap-1"
+                  onClick={() => {
+                    downloadIcsFile(b);
+                    emitToast('Downloaded .ics invite', 'success');
+                  }}
+                  className="min-h-[32px] rounded-md bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-emerald-700 dark:text-emerald-300 font-medium inline-flex items-center justify-center gap-1"
                 >
                   <Download className="w-2.5 h-2.5" /> .ics
                 </button>

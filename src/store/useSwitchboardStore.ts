@@ -89,8 +89,16 @@ function loadInitialSlice(): Required<PersistedSlice> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedSlice>;
+      const loadedAgents = parsed.agents?.length ? parsed.agents : SEED_AGENTS;
+      const mergedAgents = loadedAgents.map((a) => {
+        const seed = SEED_AGENTS.find((s) => s.id === a.id);
+        if (seed?.cardStyle && !a.cardStyle) {
+          return { ...a, cardStyle: seed.cardStyle };
+        }
+        return a;
+      });
       return {
-        agents: parsed.agents?.length ? parsed.agents : SEED_AGENTS,
+        agents: mergedAgents,
         rfps: parsed.rfps?.length ? parsed.rfps : SEED_RFPS,
         negotiations: parsed.negotiations?.length ? parsed.negotiations : SEED_NEGOTIATIONS,
         settlements: parsed.settlements?.length ? parsed.settlements : SEED_SETTLEMENTS,

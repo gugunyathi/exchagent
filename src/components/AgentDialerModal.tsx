@@ -98,7 +98,7 @@ function playDtmfTone(digit: string) {
       ctx.close();
     }, 80);
   } catch {
-    // ignore audio restrictions
+    // ignore
   }
 }
 
@@ -140,7 +140,6 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
     }
   }, [open, initialAgent]);
 
-  // Predictive User & Business Search by Phone Digits, Shortcode, T9 Letters, or Handle
   const predictiveMatches = useMemo(() => {
     const raw = dialInput.trim().toLowerCase();
     if (!raw) return agents.slice(0, 4);
@@ -200,7 +199,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
       utter.rate = 1.04;
       window.speechSynthesis.speak(utter);
     } catch {
-      // ignore synthesis errors
+      // ignore
     }
   };
 
@@ -341,7 +340,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end bg-black/70 backdrop-blur-sm p-0 sm:p-6"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-0 sm:p-6"
       onClick={() => {
         if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -350,24 +349,26 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
       }}
     >
       <div
-        className="w-full sm:w-[400px] max-h-[92dvh] rounded-t-3xl sm:rounded-2xl glass-panel border border-slate-700/80 shadow-2xl flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]"
+        className="w-full sm:w-[400px] max-h-[92dvh] rounded-t-3xl sm:rounded-2xl glass-panel shadow-2xl flex flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sm:hidden w-10 h-1 rounded-full bg-slate-700 mx-auto mt-2 shrink-0" />
+        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
         {/* Header */}
         <div
-          className={`px-4 py-2.5 sm:py-3 border-b flex items-center justify-between shrink-0 ${
-            isEmergency ? 'bg-rose-950/50 border-rose-500/40' : 'border-slate-800'
+          className={`px-4 py-3 border-b flex items-center justify-between shrink-0 ${
+            isEmergency
+              ? 'bg-rose-50 border-rose-300 dark:bg-rose-950/50 dark:border-rose-500/30'
+              : 'border-zinc-200 dark:border-white/10'
           }`}
         >
           <div className="min-w-0">
-            <p className="text-[11px] font-mono text-cyan-300 truncate">
-              {isEmergency ? 'CIVIC PRIORITY · FREE' : 'Predictive Voice & Chat Dialer'}
+            <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
+              {isEmergency ? 'CIVIC SOS · FREE' : 'Predictive Voice & Chat'}
             </p>
-            <h3 className="text-sm sm:text-base font-semibold text-white truncate">
+            <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-white truncate tracking-tight">
               {isEmergency
                 ? '911 Dispatch Agent'
-                : matchedAgent?.displayName || 'Dial Number or Name'}
+                : matchedAgent?.displayName || 'Dial Number or Handle'}
             </h3>
           </div>
           <button
@@ -378,7 +379,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
               }
               onClose();
             }}
-            className="w-10 h-10 rounded-xl bg-slate-900 text-slate-400 hover:text-white flex items-center justify-center shrink-0"
+            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
             aria-label="Close Dialer"
           >
             <X className="w-4 h-4" />
@@ -393,14 +394,14 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
               type="text"
               value={dialInput}
               onChange={(e) => setDialInput(e.target.value)}
-              placeholder="Digits (e.g. 083, 338, 24747) or handle..."
-              className="w-full min-h-[44px] rounded-xl bg-slate-950/90 border border-slate-700 pl-3.5 pr-12 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-cyan-400"
+              placeholder="Digits (e.g. 083, 24747) or .agent handle..."
+              className="w-full min-h-[42px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-3.5 pr-11 py-2 text-sm font-mono text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-950 dark:focus:border-sky-400/60"
             />
             {dialInput && (
               <button
                 type="button"
                 onClick={() => setDialInput((prev) => prev.slice(0, -1))}
-                className="absolute right-1.5 w-9 h-9 rounded-lg bg-slate-900 text-slate-300 hover:text-white flex items-center justify-center"
+                className="absolute right-1.5 w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center"
                 aria-label="Backspace"
                 title="Backspace"
               >
@@ -411,11 +412,10 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
 
           {!inCall ? (
             <>
-              {/* Live Predictive Search Matches */}
               <div className="space-y-1.5">
                 {predictiveMatches.length === 0 ? (
-                  <p className="text-[11px] font-mono text-slate-500 px-1">
-                    No matching directory agent — press Call to dial raw address.
+                  <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-500 px-1">
+                    No matching directory card — tap Call to dial direct.
                   </p>
                 ) : (
                   <div className="space-y-1.5">
@@ -427,20 +427,14 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                             agent.handle === '911.emergency.agent' ? '911' : agent.handle
                           )
                         }
-                        className={`min-h-[48px] rounded-xl px-3 py-2 border cursor-pointer flex items-center justify-between gap-2 transition-colors ${
+                        className={`min-h-[46px] rounded-xl px-3 py-2 border cursor-pointer flex items-center justify-between gap-2 transition-colors ${
                           matchedAgent?.id === agent.id
-                            ? 'bg-cyan-500/15 border-cyan-400/45'
-                            : 'bg-slate-950/65 border-slate-800/80 hover:border-slate-700'
+                            ? 'bg-zinc-100 border-zinc-400 dark:bg-zinc-800 dark:border-white/25'
+                            : 'bg-zinc-50 dark:bg-zinc-950 border-zinc-300 dark:border-white/10 hover:border-zinc-400 dark:hover:border-white/20'
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span
-                            className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                              agent.type === 'persona'
-                                ? 'bg-[#0A66C2]/30 text-sky-300'
-                                : 'bg-amber-500/20 text-amber-300'
-                            }`}
-                          >
+                          <span className="w-8 h-8 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center shrink-0 text-zinc-700 dark:text-zinc-300">
                             {agent.type === 'persona' ? (
                               <User className="w-3.5 h-3.5" />
                             ) : (
@@ -448,10 +442,10 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                             )}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-white truncate">
+                            <p className="text-xs font-semibold text-zinc-950 dark:text-white truncate">
                               {agent.displayName}
                             </p>
-                            <p className="text-[10px] font-mono text-slate-400 truncate tabular-nums">
+                            <p className="text-[10.5px] font-mono text-zinc-600 dark:text-zinc-400 truncate tabular-nums">
                               {agent.voiceNumber} · {agent.handle}
                             </p>
                           </div>
@@ -463,7 +457,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                             e.stopPropagation();
                             startSession('voice', agent);
                           }}
-                          className="w-9 h-9 rounded-full bg-emerald-400 text-slate-950 flex items-center justify-center hover:bg-emerald-300 shrink-0 transition-transform active:scale-95"
+                          className="w-8 h-8 rounded-full bg-emerald-600 text-white dark:bg-emerald-400 dark:text-zinc-950 flex items-center justify-center hover:bg-emerald-500 dark:hover:bg-emerald-300 shrink-0 transition-transform active:scale-95"
                           aria-label={`Call ${agent.displayName}`}
                         >
                           <Phone className="w-3.5 h-3.5" />
@@ -474,8 +468,8 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 )}
               </div>
 
-              {/* T9 Predictive DTMF Keypad */}
-              <div className="grid grid-cols-3 gap-2">
+              {/* T9 DTMF Keypad */}
+              <div className="grid grid-cols-3 gap-1.5">
                 {KEYPAD_BUTTONS.map(({ digit, letters }) => (
                   <button
                     key={digit}
@@ -486,13 +480,13 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                         prev.includes('.agent') ? digit : prev + digit
                       );
                     }}
-                    className="h-12 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-400/50 flex flex-col items-center justify-center transition-all active:scale-95"
+                    className="h-11 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 hover:border-zinc-400 dark:hover:border-white/25 hover:bg-zinc-100 dark:hover:bg-zinc-900 flex flex-col items-center justify-center transition-all active:scale-95"
                   >
-                    <span className="text-base font-mono font-bold text-slate-100 leading-none tabular-nums">
+                    <span className="text-sm font-mono font-semibold text-zinc-950 dark:text-zinc-100 leading-none tabular-nums">
                       {digit}
                     </span>
                     {letters && (
-                      <span className="text-[8.5px] font-mono tracking-widest text-slate-400 mt-0.5 leading-none">
+                      <span className="text-[8.5px] font-mono tracking-widest text-zinc-600 dark:text-zinc-500 mt-0.5 leading-none">
                         {letters}
                       </span>
                     )}
@@ -500,14 +494,14 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => startSession('voice')}
-                  className={`min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition-colors ${
+                  className={`min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition-colors ${
                     isEmergency
-                      ? 'bg-rose-500 text-white hover:bg-rose-400'
-                      : 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
+                      ? 'bg-rose-600 text-white hover:bg-rose-500'
+                      : 'bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white'
                   }`}
                 >
                   <Phone className="w-4 h-4" />
@@ -516,7 +510,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => startSession('chat')}
-                  className="min-h-[46px] inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 px-4 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/30"
+                  className="min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-4 text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Chat
@@ -525,9 +519,9 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
             </>
           ) : (
             <div className="space-y-3">
-              <div className="rounded-xl bg-slate-950/75 border border-slate-800 p-3 flex items-center justify-between text-xs">
-                <span className="font-mono text-slate-300 flex items-center gap-1.5 tabular-nums">
-                  <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 p-3 flex items-center justify-between text-xs">
+                <span className="font-mono text-zinc-800 dark:text-zinc-300 flex items-center gap-1.5 tabular-nums">
+                  <MapPin className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
                 </span>
                 <div className="flex items-end gap-1 h-4">
@@ -535,7 +529,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                     <span
                       key={bar}
                       className={`w-1 rounded-full ${
-                        isEmergency ? 'bg-rose-400' : 'bg-cyan-400'
+                        isEmergency ? 'bg-rose-500 dark:bg-rose-400' : 'bg-emerald-600 dark:bg-emerald-400'
                       } ${listening || sending ? 'animate-bounce' : ''}`}
                       style={{ height: `${6 + ((bar * 3) % 10)}px` }}
                     />
@@ -544,13 +538,13 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
               </div>
 
               {dispatchedUnits.length > 0 && (
-                <div className="rounded-xl bg-rose-950/30 border border-rose-500/40 p-3 space-y-1.5">
-                  <p className="text-xs font-semibold text-rose-200 flex items-center gap-1.5">
+                <div className="rounded-xl bg-rose-50 border border-rose-300 dark:bg-rose-950/30 dark:border-rose-500/35 p-3 space-y-1.5">
+                  <p className="text-xs font-semibold text-rose-800 dark:text-rose-200 flex items-center gap-1.5">
                     <ShieldAlert className="w-4 h-4" />
                     Responders Dispatched
                   </p>
                   {dispatchedUnits.map((u) => (
-                    <div key={u.id} className="text-[11px] font-mono text-rose-100 flex justify-between">
+                    <div key={u.id} className="text-[11px] font-mono text-rose-700 dark:text-rose-100 flex justify-between">
                       <span>{u.unitType}: {u.callsign}</span>
                       <span>ETA {u.etaMinutes}m</span>
                     </div>
@@ -564,8 +558,8 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                     key={i}
                     className={`rounded-xl p-2.5 text-xs leading-relaxed ${
                       entry.role === 'user'
-                        ? 'bg-cyan-500/15 border border-cyan-400/25 text-cyan-100 ml-6'
-                        : 'bg-slate-900/90 border border-slate-800 text-slate-200 mr-4'
+                        ? 'bg-zinc-900 border border-zinc-900 text-white dark:bg-zinc-800 dark:border-white/15 ml-6'
+                        : 'bg-zinc-50 border border-zinc-300 text-zinc-800 dark:bg-zinc-950 dark:border-white/10 dark:text-zinc-300 mr-4'
                     }`}
                   >
                     {entry.text}
@@ -582,8 +576,8 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                   }}
                   className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
                     listening
-                      ? 'bg-emerald-400 text-slate-950 border-emerald-300'
-                      : 'bg-slate-900 border-slate-700 text-slate-200 hover:border-cyan-400'
+                      ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-400 dark:text-zinc-950 dark:border-emerald-300'
+                      : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                   }`}
                   title="Voice Mic"
                 >
@@ -592,7 +586,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSpeakerOn((s) => !s)}
-                  className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 text-slate-200 flex items-center justify-center shrink-0"
+                  className="w-10 h-10 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0"
                   title="Speaker"
                 >
                   {speakerOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -605,13 +599,13 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                     if (e.key === 'Enter') sendTurn(messageInput);
                   }}
                   placeholder={isEmergency ? 'Silent SOS...' : 'Message...'}
-                  className="flex-1 min-h-[40px] rounded-xl bg-slate-950/90 border border-slate-700 px-3 py-2 text-xs text-white"
+                  className="flex-1 min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white focus:outline-none focus:border-zinc-950 dark:focus:border-sky-400/60"
                 />
                 <button
                   type="button"
                   disabled={sending}
                   onClick={() => sendTurn(messageInput)}
-                  className="w-10 h-10 rounded-xl bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-50 flex items-center justify-center shrink-0"
+                  className="w-10 h-10 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white disabled:opacity-50 flex items-center justify-center shrink-0"
                   aria-label="Send message"
                 >
                   <Send className="w-4 h-4" />
@@ -621,7 +615,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
               <button
                 type="button"
                 onClick={() => setInCall(false)}
-                className="w-full min-h-[44px] rounded-xl bg-rose-500/20 border border-rose-500/40 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-500/30"
+                className="w-full min-h-[42px] rounded-xl bg-rose-50 border border-rose-300 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/15 dark:border-rose-500/30 py-2 text-xs font-semibold dark:text-rose-300 dark:hover:bg-rose-500/25"
               >
                 End Call
               </button>

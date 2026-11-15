@@ -22,10 +22,13 @@ import {
 import { CurrencyMode, SurfaceMode, formatMoney } from '../types/firestore';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { PWAInstallButton } from './PWAInstallButton';
+import { emitToast } from '../lib/toast';
+import { ThemeToggle } from '../lib/theme';
 
 export type DrawerRouteTarget =
   | { tab: 'directory' }
-  | { tab: 'arena'; sub?: 'a2a' | 'poppy' }
+  | { tab: 'arena' }
+  | { tab: 'hiring' }
   | { tab: 'registry' }
   | { tab: 'spatial'; sub: 'maps' | 'comms' }
   | { tab: 'toolkit'; sub: 'skills' | 'extension' | 'ledger' };
@@ -34,7 +37,6 @@ interface BurgerMenuDrawerProps {
   open: boolean;
   onClose: () => void;
   activeTab: string;
-  arenaSubView?: 'a2a' | 'poppy';
   spatialSubView: 'maps' | 'comms';
   toolkitSubView: 'skills' | 'extension' | 'ledger';
   surface: SurfaceMode;
@@ -58,7 +60,6 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   open,
   onClose,
   activeTab,
-  arenaSubView = 'a2a',
   spatialSubView,
   toolkitSubView,
   surface,
@@ -88,24 +89,24 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   }> = [
     {
       id: 'dir',
-      label: 'Agent Cards',
+      label: 'Directory',
       icon: Compass,
       target: { tab: 'directory' },
       active: surface === 'desktop' && activeTab === 'directory',
     },
     {
       id: 'arena',
-      label: 'A2A Arena',
+      label: 'Negotiate',
       icon: Zap,
-      target: { tab: 'arena', sub: 'a2a' },
-      active: surface === 'desktop' && activeTab === 'arena' && arenaSubView === 'a2a',
+      target: { tab: 'arena' },
+      active: surface === 'desktop' && activeTab === 'arena',
     },
     {
-      id: 'poppy',
-      label: 'Poppy & Hiring',
+      id: 'hiring',
+      label: 'Poppy Hiring',
       icon: Briefcase,
-      target: { tab: 'arena', sub: 'poppy' },
-      active: surface === 'desktop' && activeTab === 'arena' && arenaSubView === 'poppy',
+      target: { tab: 'hiring' },
+      active: surface === 'desktop' && activeTab === 'hiring',
     },
     {
       id: 'reg',
@@ -123,7 +124,7 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
     },
     {
       id: 'comms',
-      label: 'Mail & Cal',
+      label: 'Inbox & Cal',
       icon: Mail,
       target: { tab: 'spatial', sub: 'comms' },
       active: surface === 'desktop' && activeTab === 'spatial' && spatialSubView === 'comms',
@@ -166,20 +167,26 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex">
       <div
-        className="fixed inset-0 bg-black/65 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/45 dark:bg-black/65 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
-      <aside className="relative z-10 w-[300px] max-w-[85vw] h-full bg-[#070C18] border-r border-slate-800 flex flex-col shadow-2xl">
-        <div className="h-14 px-4 border-b border-slate-800/80 flex items-center justify-between shrink-0">
+      <aside className="relative z-10 w-[308px] max-w-[88vw] h-full bg-white dark:bg-[#0c0c0f] border-r border-zinc-200 dark:border-white/[0.08] flex flex-col shadow-2xl">
+        <div className="h-14 px-4 border-b border-zinc-200 dark:border-white/[0.08] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <img src="/icon.svg" alt="Switchboard" className="w-7 h-7 rounded-lg" />
-            <span className="font-display font-bold text-sm text-white">Switchboard</span>
+            <img
+              src="/icon.svg"
+              alt="Switchboard"
+              className="w-6 h-6 rounded-md border border-zinc-300 dark:border-white/15"
+            />
+            <span className="font-display font-semibold text-sm text-zinc-950 dark:text-white">
+              Switchboard
+            </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-white"
+            className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white"
             aria-label="Close menu"
           >
             <X className="w-4 h-4" />
@@ -189,29 +196,37 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
         <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="p-4 space-y-5">
           {/* Compact 4-Metric Strip */}
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-2.5">
-              <span className="text-[10px] text-slate-400">Agents</span>
-              <p className="font-mono font-bold text-white text-sm tabular-nums">{agentsCount}</p>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/[0.08] p-2.5">
+              <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Agents</span>
+              <p className="font-mono font-semibold text-zinc-950 dark:text-white text-sm tabular-nums mt-0.5">
+                {agentsCount}
+              </p>
             </div>
-            <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-2.5">
-              <span className="text-[10px] text-slate-400">Live RFPs</span>
-              <p className="font-mono font-bold text-cyan-300 text-sm tabular-nums">{openRfpCount}</p>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/[0.08] p-2.5">
+              <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Open RFPs</span>
+              <p className="font-mono font-semibold text-zinc-950 dark:text-zinc-100 text-sm tabular-nums mt-0.5">
+                {openRfpCount}
+              </p>
             </div>
-            <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-2.5">
-              <span className="text-[10px] text-slate-400">Saved</span>
-              <p className="font-mono font-bold text-emerald-300 text-sm tabular-nums">
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/[0.08] p-2.5">
+              <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Saved</span>
+              <p className="font-mono font-semibold text-emerald-700 dark:text-emerald-400 text-sm tabular-nums mt-0.5">
                 {formatMoney(totalSavedZAR, currency)}
               </p>
             </div>
-            <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-2.5">
-              <span className="text-[10px] text-slate-400">Settled</span>
-              <p className="font-mono font-bold text-amber-300 text-sm tabular-nums">{settlementsCount}</p>
+            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/[0.08] p-2.5">
+              <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Settled</span>
+              <p className="font-mono font-semibold text-zinc-950 dark:text-zinc-100 text-sm tabular-nums mt-0.5">
+                {settlementsCount}
+              </p>
             </div>
           </div>
 
           {/* Pages */}
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono text-slate-500 uppercase px-1">Pages</p>
+            <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wide">
+              Workspaces
+            </p>
             <div className="grid grid-cols-2 gap-1.5">
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -223,13 +238,13 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
                       onNavigate(item.target);
                       onClose();
                     }}
-                    className={`min-h-[42px] px-2.5 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-colors ${
+                    className={`min-h-[40px] px-2.5 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition-colors border ${
                       item.active
-                        ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/35'
-                        : 'bg-slate-900/60 text-slate-300 border border-slate-800/80 hover:text-white'
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                        : 'bg-zinc-50 dark:bg-zinc-900/70 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-white/[0.08] hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800'
                     }`}
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">{item.label}</span>
                   </button>
                 );
@@ -239,7 +254,9 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
 
           {/* 5-Surface Device Switcher */}
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono text-slate-500 uppercase px-1">Surface</p>
+            <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wide">
+              Surface Simulator
+            </p>
             <div className="grid grid-cols-5 gap-1">
               {surfaces.map((s) => {
                 const Icon = s.icon;
@@ -251,13 +268,13 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
                       onSetSurface(s.id);
                       onClose();
                     }}
-                    className={`min-h-[44px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                    className={`min-h-[42px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors border ${
                       surface === s.id
-                        ? 'bg-cyan-400 text-slate-950 font-semibold'
-                        : 'bg-slate-900/70 text-slate-400 hover:text-white border border-slate-800'
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                        : 'bg-zinc-50 dark:bg-zinc-900/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white border-zinc-200 dark:border-white/[0.08]'
                     }`}
                   >
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-3.5 h-3.5" />
                     <span>{s.label}</span>
                   </button>
                 );
@@ -265,14 +282,24 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
             </div>
           </div>
 
+          {/* Theme Selector (Light Default / Dark) */}
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wide">
+              Appearance
+            </p>
+            <ThemeToggle variant="segmented" />
+          </div>
+
           {/* Currency & Install */}
           <div className="flex items-center justify-between gap-2 pt-1">
-            <div className="flex items-center rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs font-mono">
+            <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-0.5 text-xs font-mono">
               <button
                 type="button"
                 onClick={() => onSetCurrency('ZAR')}
-                className={`px-3 py-1.5 rounded-lg ${
-                  currency === 'ZAR' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400'
+                className={`px-3 py-1.5 rounded-lg transition-colors ${
+                  currency === 'ZAR'
+                    ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
+                    : 'text-zinc-600 dark:text-zinc-400'
                 }`}
               >
                 ZAR
@@ -280,8 +307,10 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => onSetCurrency('USD')}
-                className={`px-3 py-1.5 rounded-lg ${
-                  currency === 'USD' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400'
+                className={`px-3 py-1.5 rounded-lg transition-colors ${
+                  currency === 'USD'
+                    ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
+                    : 'text-zinc-600 dark:text-zinc-400'
                 }`}
               >
                 USD
@@ -291,32 +320,34 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
           </div>
 
           {/* Auth & Reset */}
-          <div className="space-y-2 pt-2 border-t border-slate-800/80">
+          <div className="space-y-2 pt-3 border-t border-zinc-200 dark:border-white/[0.08]">
             {userMode === 'guest' ? (
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => onLoginGoogle().catch(() => {})}
-                  className="min-h-[40px] rounded-xl bg-slate-900 border border-slate-700 text-xs font-medium text-white hover:border-cyan-400"
+                  className="min-h-[38px] rounded-xl bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-white"
                 >
                   Google Sign In
                 </button>
                 <button
                   type="button"
                   onClick={() => onLoginPasskey()}
-                  className="min-h-[40px] rounded-xl bg-slate-900 border border-slate-700 text-xs font-medium text-cyan-300 inline-flex items-center justify-center gap-1.5 hover:border-cyan-400"
+                  className="min-h-[38px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-800 dark:text-zinc-200 inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                   Passkey
                 </button>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-xl bg-slate-900/70 border border-slate-800 px-3 py-2">
-                <span className="text-xs text-emerald-300 truncate">{userDisplayName}</span>
+              <div className="flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-white/[0.08] px-3 py-2">
+                <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold truncate">
+                  {userDisplayName}
+                </span>
                 <button
                   type="button"
                   onClick={() => onLogout()}
-                  className="p-1.5 text-slate-400 hover:text-white"
+                  className="p-1 text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
                   aria-label="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -328,12 +359,13 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
               type="button"
               onClick={() => {
                 onResetDemo();
+                emitToast('Workspace seed reset to defaults.', 'info');
                 onClose();
               }}
-              className="w-full min-h-[38px] rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 hover:text-cyan-300 inline-flex items-center justify-center gap-1.5"
+              className="w-full min-h-[36px] rounded-xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-300 dark:border-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center justify-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset Demo Seed
+              Reset Seed Data
             </button>
           </div>
         </SwipeScrollArea>

@@ -81,7 +81,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         sponsorHandle: 'ceo.woolworths.agent',
         brandName: 'Woolworths SA',
         brandCode: 'W',
-        accentColor: '#0F172A',
+        accentColor: '#18181b',
         headline: '12% WRewards Corporate Fleet Rebate',
         offerValueZAR: 295000,
         savingsLabel: 'Save 12% via x402',
@@ -92,7 +92,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         sponsorHandle: 'sandton.bistro.agent',
         brandName: 'Marble & Flame',
         brandCode: 'M&F',
-        accentColor: '#047857',
+        accentColor: '#065F46',
         headline: '22% Off Executive Tasting · BLE Beacon',
         offerValueZAR: 28500,
         savingsLabel: '22% Passing Offer',
@@ -103,7 +103,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         sponsorHandle: 'procurement.mtn.agent',
         brandName: 'MTN Enterprise',
         brandCode: 'MTN',
-        accentColor: '#CA8A04',
+        accentColor: '#92400E',
         headline: 'Open 5G Solar Tower Tender',
         offerValueZAR: 420000,
         savingsLabel: 'Live Reverse-RFP',
@@ -114,7 +114,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         sponsorHandle: 'fleet.takealot.agent',
         brandName: 'Takealot Logistics',
         brandCode: 'TKL',
-        accentColor: '#0284C7',
+        accentColor: '#075985',
         headline: 'Same-Day EV Dispatch Slot',
         offerValueZAR: 280000,
         savingsLabel: 'Save 18% Fleet SLA',
@@ -295,13 +295,13 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-[#03060E]/95 backdrop-blur-xl flex flex-col items-center justify-between px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-5 overflow-hidden select-none"
+      className="fixed inset-0 z-50 bg-zinc-100/95 dark:bg-[#09090b]/95 backdrop-blur-lg flex flex-col items-center justify-between px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:p-5 overflow-hidden select-none"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {/* Top Reels Progress Bars + Controls */}
+      {/* Top Reels Progress Bars */}
       <div className="w-full max-w-md space-y-2 shrink-0 z-30">
         <div className="flex items-center gap-1">
           {slides.map((s, idx) => {
@@ -316,13 +316,11 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                   setProgress(0);
                 }}
                 aria-label={`Reel ${idx + 1}`}
-                className={`h-1 flex-1 rounded-full overflow-hidden ${
-                  s.kind === 'ad' ? 'bg-amber-500/25' : 'bg-white/20'
-                }`}
+                className="h-1 flex-1 rounded-full overflow-hidden bg-zinc-300 dark:bg-white/15"
               >
                 <div
                   className={`h-full transition-none ${
-                    s.kind === 'ad' ? 'bg-amber-400' : 'bg-cyan-400'
+                    s.kind === 'ad' ? 'bg-amber-500 dark:bg-amber-400' : 'bg-zinc-950 dark:bg-white'
                   }`}
                   style={{ width: `${fillPct}%` }}
                 />
@@ -334,16 +332,16 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             {activeSlide.kind === 'ad' ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-400/20 border border-amber-400/40 px-2 py-0.5 text-[10px] font-mono font-bold text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 text-amber-800 dark:bg-amber-400/15 dark:border-amber-400/30 dark:text-amber-300 px-2 py-0.5 text-[10px] font-mono font-semibold">
                 <Megaphone className="w-3 h-3" />
-                SPONSORED AD
+                SPONSORED
               </span>
             ) : (
-              <span className="text-xs font-mono text-cyan-300 truncate">
+              <span className="text-xs font-mono text-zinc-900 dark:text-zinc-200 truncate font-medium">
                 {activeSlide.agent.handle}
               </span>
             )}
-            <span className="text-[11px] font-mono text-slate-400 tabular-nums shrink-0">
+            <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-500 tabular-nums shrink-0">
               {currentIdx + 1}/{slides.length}
             </span>
           </div>
@@ -352,20 +350,20 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             <button
               type="button"
               onClick={() => setPaused((p) => !p)}
-              className="w-10 h-10 rounded-full bg-slate-900/90 border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400"
+              className="w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-xs"
               aria-label={paused ? 'Play' : 'Pause'}
               title={paused ? 'Play' : 'Pause'}
             >
-              {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+              {paused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="w-10 h-10 rounded-full bg-slate-900/90 border border-slate-700 text-slate-200 flex items-center justify-center hover:border-rose-400"
+              className="w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-xs"
               aria-label="Close Reels"
               title="Close"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -377,7 +375,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
           type="button"
           onClick={goPrev}
           aria-label="Previous reel"
-          className="hidden sm:flex absolute left-0 z-30 w-11 h-11 rounded-full glass-panel border border-slate-700 items-center justify-center text-slate-200 hover:border-cyan-400 shadow-xl"
+          className="hidden sm:flex absolute left-0 z-30 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 items-center justify-center text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-lg"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -431,29 +429,26 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             </div>
           ) : (
             <div
-              className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-[22px] overflow-hidden shadow-2xl border border-amber-400/50 text-white flex flex-col justify-between h-[364px] sm:h-[416px] p-4 relative"
+              className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-amber-400/35 text-white flex flex-col justify-between h-[358px] sm:h-[404px] p-5 relative"
               style={{
-                background: `linear-gradient(155deg, ${activeSlide.accentColor} 0%, #060D1E 80%)`,
+                backgroundColor: activeSlide.accentColor,
               }}
             >
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 text-slate-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                  <Megaphone className="w-3 h-3" /> Ad
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 text-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                  <Megaphone className="w-3 h-3" /> Sponsored
                 </span>
                 <button
                   type="button"
                   onClick={goNext}
-                  className="min-h-[32px] text-xs font-mono text-white/80 hover:text-white inline-flex items-center gap-1 bg-black/30 px-2.5 py-1 rounded-lg"
+                  className="min-h-[30px] text-xs font-mono text-white/80 hover:text-white inline-flex items-center gap-1 bg-black/30 px-2.5 py-1 rounded-lg"
                 >
                   Skip <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
 
               <div className="my-auto py-2 text-center space-y-3">
-                <div
-                  className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center font-display font-extrabold text-xl border-2 border-white/30 shadow-2xl"
-                  style={{ backgroundColor: activeSlide.accentColor }}
-                >
+                <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center font-display font-bold text-lg border border-white/25 bg-black/30">
                   {activeSlide.brandCode}
                 </div>
 
@@ -462,12 +457,12 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                     <Building2 className="w-3.5 h-3.5" />
                     {activeSlide.brandName}
                   </p>
-                  <h3 className="font-display text-lg sm:text-xl font-extrabold leading-tight text-white">
+                  <h3 className="font-display text-lg sm:text-xl font-bold leading-tight text-white">
                     {activeSlide.headline}
                   </h3>
                 </div>
 
-                <div className="inline-flex flex-col items-center rounded-2xl bg-black/35 border border-white/15 px-4 py-2">
+                <div className="inline-flex flex-col items-center rounded-xl bg-black/35 border border-white/15 px-4 py-2">
                   <span className="text-[11px] font-mono text-emerald-300">
                     {activeSlide.savingsLabel}
                   </span>
@@ -486,9 +481,9 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                         onClose();
                         onPitchAgent(activeSlide.targetAgent!);
                       }}
-                      className="col-span-2 min-h-[44px] rounded-xl bg-amber-400 text-slate-950 font-bold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-amber-300"
+                      className="col-span-2 min-h-[40px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100"
                     >
-                      <Zap className="w-4 h-4" />
+                      <Zap className="w-3.5 h-3.5" />
                       Claim Offer
                     </button>
                     <button
@@ -497,7 +492,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                         onClose();
                         onDialAgent(activeSlide.targetAgent!);
                       }}
-                      className="min-h-[44px] rounded-xl bg-white/15 text-white flex items-center justify-center hover:bg-white/25"
+                      className="min-h-[40px] rounded-xl bg-black/35 border border-white/15 text-white flex items-center justify-center hover:bg-black/50"
                       aria-label="Dial Sponsor"
                     >
                       <Phone className="w-4 h-4" />
@@ -509,24 +504,22 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
           )}
 
           {/* Desktop Vertical Reels Controls */}
-          <div className="hidden sm:flex flex-col gap-2.5 absolute -right-14 top-1/2 -translate-y-1/2 z-30">
+          <div className="hidden sm:flex flex-col gap-2 absolute -right-14 top-1/2 -translate-y-1/2 z-30">
             <button
               type="button"
               onClick={goPrev}
-              className="w-10 h-10 rounded-full glass-panel border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400"
+              className="w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-xs"
               aria-label="Previous card up"
-              title="Prev"
             >
-              <ChevronUp className="w-5 h-5" />
+              <ChevronUp className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={goNext}
-              className="w-10 h-10 rounded-full glass-panel border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400"
+              className="w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-xs"
               aria-label="Next card down"
-              title="Next"
             >
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -535,32 +528,32 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
           type="button"
           onClick={goNext}
           aria-label="Next reel"
-          className="hidden sm:flex absolute right-0 z-30 w-11 h-11 rounded-full glass-panel border border-slate-700 items-center justify-center text-slate-200 hover:border-cyan-400 shadow-xl"
+          className="hidden sm:flex absolute right-0 z-30 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 items-center justify-center text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-lg"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Bottom Reels Controls Bar (44px ergonomic buttons) */}
+      {/* Bottom Controls Bar */}
       <div className="w-full max-w-md flex items-center justify-between gap-2 shrink-0 z-30">
         <button
           type="button"
           onClick={goPrev}
-          className="w-11 h-11 rounded-full glass-panel border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400 shrink-0"
+          className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shrink-0 shadow-xs"
           aria-label="Previous reel"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
 
         {activeSlide.kind === 'agent' ? (
-          <div className="flex-1 glass-panel rounded-full p-1 flex items-center justify-center gap-1.5">
+          <div className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 rounded-full p-1 flex items-center justify-center gap-1.5 shadow-sm">
             <button
               type="button"
               onClick={() => {
                 onClose();
                 onPitchAgent(activeSlide.agent);
               }}
-              className="flex-1 min-h-[40px] rounded-full bg-cyan-400 text-slate-950 font-semibold text-xs inline-flex items-center justify-center gap-1 hover:bg-cyan-300"
+              className="flex-1 min-h-[38px] rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1 dark:hover:bg-white"
             >
               <Zap className="w-3.5 h-3.5" />
               Pitch
@@ -571,10 +564,10 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                 onClose();
                 onDialAgent(activeSlide.agent);
               }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              className={`w-9 h-9 rounded-full flex items-center justify-center ${
                 isEmergency
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-slate-900 border border-slate-700 text-emerald-300'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200'
               }`}
               aria-label="Dial"
             >
@@ -587,7 +580,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                 onClose();
                 onEmailAgent(activeSlide.agent);
               }}
-              className="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 text-slate-200 flex items-center justify-center disabled:opacity-35"
+              className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center disabled:opacity-35"
               aria-label="Email"
             >
               <Mail className="w-4 h-4" />
@@ -600,14 +593,14 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                   [activeSlide.agent.id]: !p[activeSlide.agent.id],
                 }))
               }
-              className="w-10 h-10 rounded-full bg-slate-900 border border-slate-700 text-cyan-300 flex items-center justify-center"
+              className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center"
               aria-label="Flip"
             >
               <RotateCw className="w-4 h-4" />
             </button>
           </div>
         ) : (
-          <div className="flex-1 glass-panel rounded-full p-1 flex items-center justify-center gap-1.5">
+          <div className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 rounded-full p-1 flex items-center justify-center gap-1.5 shadow-sm">
             {activeSlide.targetAgent && (
               <button
                 type="button"
@@ -615,7 +608,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                   onClose();
                   onPitchAgent(activeSlide.targetAgent!);
                 }}
-                className="flex-1 min-h-[40px] rounded-full bg-amber-400 text-slate-950 font-bold text-xs inline-flex items-center justify-center gap-1.5"
+                className="flex-1 min-h-[38px] rounded-full bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" />
                 Claim Deal
@@ -624,7 +617,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             <button
               type="button"
               onClick={goNext}
-              className="px-4 min-h-[40px] rounded-full bg-slate-900 border border-slate-700 text-white text-xs font-medium inline-flex items-center gap-1"
+              className="px-4 min-h-[38px] rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-900 dark:text-white text-xs font-medium inline-flex items-center gap-1"
             >
               Next <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -634,7 +627,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
         <button
           type="button"
           onClick={goNext}
-          className="w-11 h-11 rounded-full glass-panel border border-slate-700 text-slate-200 flex items-center justify-center hover:border-cyan-400 shrink-0"
+          className="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shrink-0 shadow-xs"
           aria-label="Next reel"
         >
           <ChevronRight className="w-5 h-5" />
