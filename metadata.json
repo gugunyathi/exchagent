@@ -1,0 +1,6 @@
+{
+  "name": "Switchboard (AgentPages)",
+  "description": "2027 Agentic Yellow Pages, Verified .agent Identity Registry, Ambient Reverse-RFP Commerce Network, and Omnichannel A2A Hub.",
+  "requestFramePermissions": ["microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

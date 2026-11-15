@@ -1,0 +1,223 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidAgent(data) {
+      return data.keys().hasAll([
+          'handle', 'ownerUid', 'displayName', 'type', 'verified',
+          'popiaConsentActive', 'voiceNumber', 'agentEmail', 'mcpEndpoint',
+          'skills', 'guardrails', 'walletAddresses', 'createdAt'
+        ])
+        && data.handle is string && data.handle.size() >= 3 && data.handle.size() <= 64
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.type in ['persona', 'business']
+        && data.verified is bool
+        && data.popiaConsentActive is bool
+        && data.voiceNumber is string && data.voiceNumber.size() <= 40
+        && data.agentEmail is string && data.agentEmail.size() <= 120
+        && data.mcpEndpoint is string && data.mcpEndpoint.size() <= 240
+        && data.skills is list && data.skills.size() <= 20
+        && data.guardrails is map
+        && data.walletAddresses is map;
+    }
+
+    function isValidRfp(data) {
+      return data.keys().hasAll([
+          'publisherAgentId', 'publisherOwnerUid', 'publisherHandle',
+          'title', 'description', 'budgetZAR', 'budgetUSD',
+          'category', 'broadcastChannels', 'status', 'expiresAt'
+        ])
+        && data.publisherAgentId is string && data.publisherAgentId.size() <= 128
+        && data.publisherOwnerUid is string && data.publisherOwnerUid == request.auth.uid
+        && data.publisherHandle is string && data.publisherHandle.size() <= 64
+        && data.title is string && data.title.size() >= 3 && data.title.size() <= 160
+        && data.description is string && data.description.size() >= 5 && data.description.size() <= 2000
+        && data.budgetZAR is number && data.budgetZAR > 0
+        && data.budgetUSD is number && data.budgetUSD > 0
+        && data.category is string && data.category.size() <= 64
+        && data.broadcastChannels is list && data.broadcastChannels.size() <= 4
+        && data.status in ['OPEN', 'NEGOTIATING', 'AWARDED', 'EXPIRED'];
+    }
+
+    function isValidNegotiation(data) {
+      return data.keys().hasAll([
+          'initiatorAgentId', 'initiatorOwnerUid', 'targetAgentId',
+          'targetOwnerUid', 'surface', 'status', 'stickerPriceZAR',
+          'currentOfferZAR', 'messages', 'popiaAuditHash', 'updatedAt'
+        ])
+        && data.initiatorAgentId is string && data.initiatorAgentId.size() <= 128
+        && data.initiatorOwnerUid is string && data.initiatorOwnerUid.size() <= 128
+        && data.targetAgentId is string && data.targetAgentId.size() <= 128
+        && data.targetOwnerUid is string && data.targetOwnerUid.size() <= 128
+        && data.surface is string && data.surface.size() <= 32
+        && data.status in ['BARGAINING', 'OFFER_ACCEPTED', 'REJECTED', 'SETTLED']
+        && data.stickerPriceZAR is number && data.stickerPriceZAR >= 0
+        && data.currentOfferZAR is number && data.currentOfferZAR >= 0
+        && data.messages is list && data.messages.size() <= 50
+        && data.popiaAuditHash is string && data.popiaAuditHash.size() <= 128;
+    }
+
+    function isValidSettlement(data) {
+      return data.keys().hasAll([
+          'sessionId', 'buyerHandle', 'sellerHandle', 'ownerUid',
+          'amountZAR', 'amountUSD', 'savedZAR', 'rail', 'txHash', 'status', 'settledAt'
+        ])
+        && data.ownerUid == request.auth.uid
+        && data.sessionId is string && data.sessionId.size() <= 128
+        && data.buyerHandle is string && data.buyerHandle.size() <= 64
+        && data.sellerHandle is string && data.sellerHandle.size() <= 64
+        && data.amountZAR is number && data.amountZAR >= 0
+        && data.amountUSD is number && data.amountUSD >= 0
+        && data.savedZAR is number
+        && data.rail in ['paypal_vault', 'x402_base', 'x402_arc', 'x402_solana']
+        && data.txHash is string && data.txHash.size() <= 128
+        && data.status == 'SETTLED';
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll([
+          'organizerAgentId', 'attendeeAgentId', 'ownerUid',
+          'title', 'startTime', 'endTime', 'meetLink', 'status'
+        ])
+        && data.ownerUid == request.auth.uid
+        && data.title is string && data.title.size() <= 180
+        && data.meetLink is string && data.meetLink.size() <= 240
+        && data.status in ['CONFIRMED', 'RESCHEDULED', 'CANCELLED'];
+    }
+
+    function isValidAgentEmail(data) {
+      return data.keys().hasAll([
+          'fromAddress', 'toAddress', 'subject', 'body',
+          'threadId', 'ownerUid', 'aiClassification', 'autoReplied', 'timestamp'
+        ])
+        && data.ownerUid == request.auth.uid
+        && data.fromAddress is string && data.fromAddress.size() <= 128
+        && data.toAddress is string && data.toAddress.size() <= 128
+        && data.subject is string && data.subject.size() <= 200
+        && data.body is string && data.body.size() <= 4000
+        && data.threadId is string && data.threadId.size() <= 128
+        && data.aiClassification in ['QUALIFIED_PITCH', 'RFP_RESPONSE', 'SPAM_BLOCKED', 'MEETING_CONFIRMED']
+        && data.autoReplied is bool;
+    }
+
+    function isValidVoiceSession(data) {
+      return data.keys().hasAll([
+          'callerUid', 'targetHandle', 'dialedNumber',
+          'channel', 'isEmergency', 'transcript', 'createdAt'
+        ])
+        && data.callerUid == request.auth.uid
+        && data.targetHandle is string && data.targetHandle.size() <= 64
+        && data.dialedNumber is string && data.dialedNumber.size() <= 40
+        && data.channel in ['voice', 'chat']
+        && data.isEmergency is bool
+        && data.transcript is list && data.transcript.size() <= 200;
+    }
+
+    match /agents/{agentId} {
+      allow get: if isSignedIn() && isValidId(agentId);
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isValidId(agentId) && isValidAgent(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(agentId)
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && isValidAgent(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'roleTitle', 'organization', 'popiaConsentActive',
+          'skills', 'guardrails', 'walletAddresses', 'geoLocation',
+          'discoverableByPassersby', 'passerbyIncentive', 'calendarSyncEnabled', 'gmailBridgeEnabled'
+        ]);
+      allow delete: if isVerifiedUser() && isValidId(agentId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /rfps/{rfpId} {
+      allow get: if isSignedIn() && isValidId(rfpId) && (existing().status == 'OPEN' || existing().publisherOwnerUid == request.auth.uid);
+      allow list: if isSignedIn() && (resource.data.status == 'OPEN' || resource.data.publisherOwnerUid == request.auth.uid);
+      allow create: if isVerifiedUser() && isValidId(rfpId) && isValidRfp(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(rfpId)
+        && existing().publisherOwnerUid == request.auth.uid
+        && existing().status != 'AWARDED'
+        && existing().status != 'EXPIRED'
+        && incoming().publisherOwnerUid == existing().publisherOwnerUid
+        && isValidRfp(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'matchedProposalsCount', 'description']);
+    }
+
+    match /negotiations/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId)
+        && (existing().initiatorOwnerUid == request.auth.uid || existing().targetOwnerUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (resource.data.initiatorOwnerUid == request.auth.uid || resource.data.targetOwnerUid == request.auth.uid);
+      allow create: if isVerifiedUser() && isValidId(sessionId)
+        && incoming().initiatorOwnerUid == request.auth.uid
+        && isValidNegotiation(incoming());
+      allow update: if isVerifiedUser() && isValidId(sessionId)
+        && (existing().initiatorOwnerUid == request.auth.uid || existing().targetOwnerUid == request.auth.uid)
+        && existing().status != 'SETTLED'
+        && existing().status != 'REJECTED'
+        && incoming().initiatorOwnerUid == existing().initiatorOwnerUid
+        && incoming().targetOwnerUid == existing().targetOwnerUid
+        && isValidNegotiation(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'currentOfferZAR', 'agreedPriceZAR', 'messages', 'updatedAt']);
+    }
+
+    match /settlements/{txId} {
+      allow get: if isSignedIn() && isValidId(txId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(txId) && isValidSettlement(incoming());
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && isValidId(bookingId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(bookingId) && isValidBooking(incoming());
+      allow update: if isVerifiedUser() && isValidId(bookingId)
+        && existing().ownerUid == request.auth.uid
+        && isValidBooking(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['startTime', 'endTime', 'status', 'googleSynced']);
+    }
+
+    match /agent_emails/{emailId} {
+      allow get: if isSignedIn() && isValidId(emailId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(emailId) && isValidAgentEmail(incoming());
+    }
+
+    match /voice_chat_sessions/{callId} {
+      allow get: if isSignedIn() && isValidId(callId) && existing().callerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.callerUid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(callId) && isValidVoiceSession(incoming());
+      allow update: if isVerifiedUser() && isValidId(callId)
+        && existing().callerUid == request.auth.uid
+        && isValidVoiceSession(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['transcript', 'dispatchedUnits']);
+    }
+  }
+}

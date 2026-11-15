@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "Agent": {
+      "title": "Agent",
+      "description": "Verified persona or business .agent directory profile with guardrails and wallet rails.",
+      "type": "object",
+      "properties": {
+        "handle": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-z0-9.-]+\\.agent$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "type": { "type": "string", "enum": ["persona", "business"] },
+        "verified": { "type": "boolean" },
+        "popiaConsentActive": { "type": "boolean" },
+        "voiceNumber": { "type": "string", "maxLength": 40 },
+        "agentEmail": { "type": "string", "maxLength": 120 },
+        "mcpEndpoint": { "type": "string", "maxLength": 240 },
+        "skills": { "type": "array" },
+        "guardrails": { "type": "object" },
+        "walletAddresses": { "type": "object" },
+        "geoLocation": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["handle", "ownerUid", "displayName", "type", "verified", "popiaConsentActive", "voiceNumber", "agentEmail", "mcpEndpoint", "skills", "guardrails", "walletAddresses", "createdAt"]
+    },
+    "Rfp": {
+      "title": "Rfp",
+      "description": "Reverse-RFP broadcast across directory, DOOH billboards, BLE beacons, and CarPlay.",
+      "type": "object",
+      "properties": {
+        "publisherAgentId": { "type": "string", "maxLength": 128 },
+        "publisherOwnerUid": { "type": "string", "maxLength": 128 },
+        "publisherHandle": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 5, "maxLength": 2000 },
+        "budgetZAR": { "type": "number" },
+        "budgetUSD": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "broadcastChannels": { "type": "array" },
+        "status": { "type": "string", "enum": ["OPEN", "NEGOTIATING", "AWARDED", "EXPIRED"] },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["publisherAgentId", "publisherOwnerUid", "publisherHandle", "title", "description", "budgetZAR", "budgetUSD", "category", "broadcastChannels", "status", "expiresAt"]
+    },
+    "Negotiation": {
+      "title": "Negotiation",
+      "description": "Bilateral A2A negotiation session between initiator and target agents.",
+      "type": "object",
+      "properties": {
+        "initiatorAgentId": { "type": "string", "maxLength": 128 },
+        "initiatorOwnerUid": { "type": "string", "maxLength": 128 },
+        "targetAgentId": { "type": "string", "maxLength": 128 },
+        "targetOwnerUid": { "type": "string", "maxLength": 128 },
+        "surface": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["BARGAINING", "OFFER_ACCEPTED", "REJECTED", "SETTLED"] },
+        "stickerPriceZAR": { "type": "number" },
+        "currentOfferZAR": { "type": "number" },
+        "agreedPriceZAR": { "type": "number" },
+        "messages": { "type": "array" },
+        "popiaAuditHash": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["initiatorAgentId", "initiatorOwnerUid", "targetAgentId", "targetOwnerUid", "surface", "status", "stickerPriceZAR", "currentOfferZAR", "messages", "popiaAuditHash", "updatedAt"]
+    },
+    "Settlement": {
+      "title": "Settlement",
+      "description": "Settled payment ledger entry across PayPal Vault or x402 rails.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "buyerHandle": { "type": "string", "maxLength": 64 },
+        "sellerHandle": { "type": "string", "maxLength": 64 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "amountZAR": { "type": "number" },
+        "amountUSD": { "type": "number" },
+        "savedZAR": { "type": "number" },
+        "rail": { "type": "string", "enum": ["paypal_vault", "x402_base", "x402_arc", "x402_solana"] },
+        "txHash": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["SETTLED"] },
+        "settledAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sessionId", "buyerHandle", "sellerHandle", "ownerUid", "amountZAR", "amountUSD", "savedZAR", "rail", "txHash", "status", "settledAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Autonomous Google Calendar meeting booking scheduled by agents.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "organizerAgentId": { "type": "string", "maxLength": 128 },
+        "attendeeAgentId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 180 },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "meetLink": { "type": "string", "maxLength": 240 },
+        "status": { "type": "string", "enum": ["CONFIRMED", "RESCHEDULED", "CANCELLED"] }
+      },
+      "required": ["organizerAgentId", "attendeeAgentId", "ownerUid", "title", "startTime", "endTime", "meetLink", "status"]
+    },
+    "AgentEmail": {
+      "title": "AgentEmail",
+      "description": "Agentic email pitch or RFP response processed by Gemini triage.",
+      "type": "object",
+      "properties": {
+        "fromAddress": { "type": "string", "maxLength": 128 },
+        "toAddress": { "type": "string", "maxLength": 128 },
+        "subject": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 4000 },
+        "threadId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "aiClassification": { "type": "string", "enum": ["QUALIFIED_PITCH", "RFP_RESPONSE", "SPAM_BLOCKED", "MEETING_CONFIRMED"] },
+        "autoReplied": { "type": "boolean" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromAddress", "toAddress", "subject", "body", "threadId", "ownerUid", "aiClassification", "autoReplied", "timestamp"]
+    },
+    "VoiceChatSession": {
+      "title": "VoiceChatSession",
+      "description": "Voice or chat dialer session including 911 civic emergency triage.",
+      "type": "object",
+      "properties": {
+        "callerUid": { "type": "string", "maxLength": 128 },
+        "targetHandle": { "type": "string", "maxLength": 64 },
+        "dialedNumber": { "type": "string", "maxLength": 40 },
+        "channel": { "type": "string", "enum": ["voice", "chat"] },
+        "isEmergency": { "type": "boolean" },
+        "transcript": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["callerUid", "targetHandle", "dialedNumber", "channel", "isEmergency", "transcript", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/agents/{agentId}": {
+      "schema": { "$ref": "#/entities/Agent" },
+      "description": "Publicly readable verified .agent profiles; owner-only guardrail and vault updates."
+    },
+    "/rfps/{rfpId}": {
+      "schema": { "$ref": "#/entities/Rfp" },
+      "description": "Reverse-RFP listings; OPEN RFPs readable by authenticated users."
+    },
+    "/negotiations/{sessionId}": {
+      "schema": { "$ref": "#/entities/Negotiation" },
+      "description": "Bilateral A2A negotiations restricted to initiator or target owner."
+    },
+    "/settlements/{txId}": {
+      "schema": { "$ref": "#/entities/Settlement" },
+      "description": "Immutable enterprise audit ledger settlements."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Autonomous Calendar meeting bookings."
+    },
+    "/agent_emails/{emailId}": {
+      "schema": { "$ref": "#/entities/AgentEmail" },
+      "description": "Agentic email inbox/outbox threads."
+    },
+    "/voice_chat_sessions/{callId}": {
+      "schema": { "$ref": "#/entities/VoiceChatSession" },
+      "description": "Live voice and chat dialer transcripts."
+    }
+  }
+}
