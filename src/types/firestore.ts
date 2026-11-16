@@ -176,6 +176,7 @@ export interface AgentDoc {
   brandColor?: string;
   brandLogoCode?: string;
   avatarVariant?: 'chris' | 'alex' | 'thandi' | 'persona';
+  imageUrl?: string;
   cardStyle?: AgentCardCustomization;
   did?: string;
   protocol?: string;

@@ -30,14 +30,14 @@ export type DrawerRouteTarget =
   | { tab: 'arena' }
   | { tab: 'hiring' }
   | { tab: 'registry' }
-  | { tab: 'spatial'; sub: 'maps' | 'comms' }
+  | { tab: 'spatial'; sub: 'maps' | 'comms' | 'agentmail' }
   | { tab: 'toolkit'; sub: 'skills' | 'extension' | 'ledger' };
 
 interface BurgerMenuDrawerProps {
   open: boolean;
   onClose: () => void;
   activeTab: string;
-  spatialSubView: 'maps' | 'comms';
+  spatialSubView: 'maps' | 'comms' | 'agentmail';
   toolkitSubView: 'skills' | 'extension' | 'ledger';
   surface: SurfaceMode;
   currency: CurrencyMode;

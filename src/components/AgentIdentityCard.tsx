@@ -20,8 +20,11 @@ import {
   BookingDoc,
   CurrencyMode,
   formatMoney,
+  CardBannerStyle,
+  CardBackgroundPattern,
 } from '../types/firestore';
 import { emitToast } from '../lib/toast';
+import { resolveAgentImage } from '../lib/agentImages';
 
 interface AgentIdentityCardProps {
   agent: AgentDoc;
@@ -75,7 +78,7 @@ const DeterministicQrSvg: React.FC<{ seed: string }> = ({ seed }) => {
   return (
     <svg
       viewBox={`0 0 ${size} ${size}`}
-      className="w-11 h-11 sm:w-12 sm:h-12 rounded-md bg-white p-0.5 border border-zinc-300"
+      className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-white p-0.5 border border-zinc-300"
       aria-label={`Agent Handshake QR for ${seed}`}
     >
       <rect width={size} height={size} fill="#ffffff" />
@@ -179,7 +182,7 @@ const BusinessLogoEmblem: React.FC<{ agent: AgentDoc; size?: 'sm' | 'lg' }> = ({
 };
 
 /** Dynamic Banner Texture Motifs */
-const BannerTextureOverlay: React.FC<{ style?: AgentDoc['cardStyle']['bannerStyle'] }> = ({ style }) => {
+const BannerTextureOverlay: React.FC<{ style?: CardBannerStyle }> = ({ style }) => {
   if (!style || style === 'minimal') {
     return <div className="absolute bottom-0 inset-x-0 h-[1px] bg-white/20 pointer-events-none" />;
   }
@@ -254,7 +257,7 @@ const BannerTextureOverlay: React.FC<{ style?: AgentDoc['cardStyle']['bannerStyl
 
 /** Dynamic Background Pattern Watermarks */
 const CardBackgroundPatternOverlay: React.FC<{
-  pattern?: AgentDoc['cardStyle']['backgroundPattern'];
+  pattern?: CardBackgroundPattern;
   agentId: string;
 }> = ({ pattern, agentId }) => {
   if (!pattern || pattern === 'none') return null;
@@ -335,9 +338,15 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
   onCustomize,
 }) => {
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
+  const [imgError, setImgError] = React.useState(false);
   const isPersona = agent.type === 'persona';
   const isEmergency = agent.handle === '911.emergency.agent';
   const cardStyle = agent.cardStyle;
+  const picSrc = resolveAgentImage(agent);
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [agent.id, agent.imageUrl]);
 
   const handleBase = agent.handle.replace('.agent', '');
   const didValue =
@@ -517,12 +526,23 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
           </div>
 
-          {/* Card Core Content */}
-          <div className="relative px-4 pt-7 sm:pt-8 pb-3 flex-1 min-h-0 flex flex-col justify-between">
-            {/* Avatar / Brand Emblem */}
-            <div className="absolute -top-7 sm:-top-8 left-1/2 -translate-x-1/2 w-[56px] h-[56px] sm:w-[64px] sm:h-[64px] rounded-full p-0.5 bg-white dark:bg-zinc-900 shadow-md border border-zinc-300 dark:border-white/15">
-              <div className="w-full h-full rounded-full overflow-hidden">
-                {isPersona ? (
+          {/* Card Core Content — Left PIC + Right Identity Details */}
+          <div className="relative z-10 px-3.5 py-2.5 flex-1 min-h-0 flex flex-col justify-between gap-2">
+            {/* Horizontal Split: Left Visual Frame + Right Text Stack */}
+            <div className="grid grid-cols-[106px_1fr] sm:grid-cols-[114px_1fr] gap-3 flex-1 min-h-0 items-stretch">
+              {/* Left Side: Portrait / Brand Product Photography */}
+              <div className="relative h-full min-h-[146px] sm:min-h-[168px] rounded-xl overflow-hidden border border-zinc-200 dark:border-white/15 bg-zinc-100 dark:bg-zinc-900 shadow-xs">
+                {picSrc && !imgError ? (
+                  <img
+                    src={picSrc}
+                    alt={agent.displayName}
+                    referrerPolicy="no-referrer"
+                    onError={() => setImgError(true)}
+                    className={`w-full h-full object-cover ${
+                      isPersona ? 'object-top' : 'object-center'
+                    }`}
+                  />
+                ) : isPersona ? (
                   <PersonaPortraitSvg
                     variant={agent.avatarVariant}
                     initials={agent.displayName.slice(0, 2).toUpperCase()}
@@ -531,32 +551,36 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   <BusinessLogoEmblem agent={agent} size="lg" />
                 )}
               </div>
-            </div>
 
-            {/* Identity: Name, Handle, Role, Brief Summary */}
-            <div className="text-center space-y-0.5">
-              <h3 className="font-display text-[17px] sm:text-[19px] font-bold text-zinc-950 dark:text-zinc-50 leading-tight tracking-tight truncate">
-                {agent.displayName}
-              </h3>
-              <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">{agent.handle}</p>
-              <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate pt-0.5">
-                {agent.roleTitle}
-              </p>
-              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug line-clamp-2 pt-0.5">
-                {summaryText}
-              </p>
-            </div>
+              {/* Right Side: Name, Handle, Role, Brief Bio & Skills */}
+              <div className="min-w-0 flex flex-col justify-between text-left py-0.5">
+                <div className="min-w-0 space-y-0.5">
+                  <h3 className="font-display text-[16px] sm:text-[17.5px] font-bold text-zinc-950 dark:text-zinc-50 leading-tight tracking-tight truncate">
+                    {agent.displayName}
+                  </h3>
+                  <p className="text-[10.5px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
+                    {agent.handle}
+                  </p>
+                  <p className="text-[11.5px] font-semibold text-zinc-800 dark:text-zinc-200 leading-snug truncate pt-0.5">
+                    {agent.roleTitle}
+                  </p>
+                  <p className="text-[10.5px] sm:text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug line-clamp-3 pt-0.5">
+                    {summaryText}
+                  </p>
+                </div>
 
-            {/* 3 Concise Skill Pills */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 my-1">
-              {agent.skills.slice(0, 3).map((skill) => (
-                <span
-                  key={skill}
-                  className="max-w-[115px] truncate rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 py-0.5 text-[10px] font-medium text-zinc-800 dark:text-zinc-200"
-                >
-                  {skill}
-                </span>
-              ))}
+                {/* Concise Skills */}
+                <div className="flex flex-wrap items-center gap-1 pt-1.5">
+                  {agent.skills.slice(0, 3).map((skill) => (
+                    <span
+                      key={skill}
+                      className="max-w-full truncate rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-300/80 dark:border-white/15 px-1.5 py-0.5 text-[9.5px] font-medium text-zinc-800 dark:text-zinc-200"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Contact Links + Handshake QR */}

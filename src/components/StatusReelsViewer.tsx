@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AgentDoc, BookingDoc, CurrencyMode, formatMoney } from '../types/firestore';
 import { AgentIdentityCard } from './AgentIdentityCard';
+import { resolveAgentImage } from '../lib/agentImages';
 
 type ReelSlide =
   | { kind: 'agent'; id: string; agent: AgentDoc }
@@ -151,6 +152,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
   const [holdPaused, setHoldPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
+  const [adImgErrors, setAdImgErrors] = useState<Record<string, boolean>>({});
   const [dragDeltaY, setDragDeltaY] = useState(0);
   const [dragDeltaX, setDragDeltaX] = useState(0);
 
@@ -428,79 +430,102 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
               />
             </div>
           ) : (
-            <div
-              className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-amber-400/35 text-white flex flex-col justify-between h-[358px] sm:h-[404px] p-5 relative"
-              style={{
-                backgroundColor: activeSlide.accentColor,
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 text-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                  <Megaphone className="w-3 h-3" /> Sponsored
-                </span>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="min-h-[30px] text-xs font-mono text-white/80 hover:text-white inline-flex items-center gap-1 bg-black/30 px-2.5 py-1 rounded-lg"
+            (() => {
+              const adImage = activeSlide.targetAgent
+                ? resolveAgentImage(activeSlide.targetAgent)
+                : undefined;
+              const showAdPhoto = Boolean(adImage) && !adImgErrors[activeSlide.id];
+              return (
+                <div
+                  className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-amber-400/40 text-white flex flex-col justify-between h-[358px] sm:h-[404px] p-5 relative"
+                  style={{
+                    backgroundColor: activeSlide.accentColor,
+                  }}
                 >
-                  Skip <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
+                  {showAdPhoto && (
+                    <>
+                      <img
+                        src={adImage}
+                        alt={activeSlide.brandName}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setAdImgErrors((prev) => ({ ...prev, [activeSlide.id]: true }))
+                        }
+                        className="absolute inset-0 w-full h-full object-cover object-center"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/45 pointer-events-none" />
+                    </>
+                  )}
 
-              <div className="my-auto py-2 text-center space-y-3">
-                <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center font-display font-bold text-lg border border-white/25 bg-black/30">
-                  {activeSlide.brandCode}
-                </div>
-
-                <div className="space-y-1">
-                  <p className="text-xs font-mono text-amber-300 flex items-center justify-center gap-1">
-                    <Building2 className="w-3.5 h-3.5" />
-                    {activeSlide.brandName}
-                  </p>
-                  <h3 className="font-display text-lg sm:text-xl font-bold leading-tight text-white">
-                    {activeSlide.headline}
-                  </h3>
-                </div>
-
-                <div className="inline-flex flex-col items-center rounded-xl bg-black/35 border border-white/15 px-4 py-2">
-                  <span className="text-[11px] font-mono text-emerald-300">
-                    {activeSlide.savingsLabel}
-                  </span>
-                  <span className="font-mono text-base font-bold text-white tabular-nums">
-                    {formatMoney(activeSlide.offerValueZAR, currency)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/15">
-                {activeSlide.targetAgent && (
-                  <>
+                  <div className="relative z-10 flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 text-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs">
+                      <Megaphone className="w-3 h-3" /> Sponsored
+                    </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        onClose();
-                        onPitchAgent(activeSlide.targetAgent!);
-                      }}
-                      className="col-span-2 min-h-[40px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100"
+                      onClick={goNext}
+                      className="min-h-[30px] text-xs font-mono text-white/90 hover:text-white inline-flex items-center gap-1 bg-black/45 backdrop-blur-xs border border-white/15 px-2.5 py-1 rounded-lg"
                     >
-                      <Zap className="w-3.5 h-3.5" />
-                      Claim Offer
+                      Skip <ArrowRight className="w-3 h-3" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onDialAgent(activeSlide.targetAgent!);
-                      }}
-                      className="min-h-[40px] rounded-xl bg-black/35 border border-white/15 text-white flex items-center justify-center hover:bg-black/50"
-                      aria-label="Dial Sponsor"
-                    >
-                      <Phone className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+                  </div>
+
+                  <div className="relative z-10 my-auto py-2 text-center space-y-2.5">
+                    <div className="w-12 h-12 rounded-xl mx-auto flex items-center justify-center font-display font-bold text-base border border-white/30 bg-black/45 backdrop-blur-sm shadow-md">
+                      {activeSlide.brandCode}
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-mono text-amber-300 flex items-center justify-center gap-1 drop-shadow-xs">
+                        <Building2 className="w-3.5 h-3.5" />
+                        {activeSlide.brandName}
+                      </p>
+                      <h3 className="font-display text-lg sm:text-xl font-bold leading-tight text-white drop-shadow-sm">
+                        {activeSlide.headline}
+                      </h3>
+                    </div>
+
+                    <div className="inline-flex flex-col items-center rounded-xl bg-black/55 backdrop-blur-sm border border-white/20 px-4 py-2">
+                      <span className="text-[11px] font-mono text-emerald-300">
+                        {activeSlide.savingsLabel}
+                      </span>
+                      <span className="font-mono text-base font-bold text-white tabular-nums">
+                        {formatMoney(activeSlide.offerValueZAR, currency)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 grid grid-cols-3 gap-2 pt-3 border-t border-white/20">
+                    {activeSlide.targetAgent && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onPitchAgent(activeSlide.targetAgent!);
+                          }}
+                          className="col-span-2 min-h-[40px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 shadow-sm"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          Claim Offer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onDialAgent(activeSlide.targetAgent!);
+                          }}
+                          className="min-h-[40px] rounded-xl bg-black/50 backdrop-blur-xs border border-white/20 text-white flex items-center justify-center hover:bg-black/65"
+                          aria-label="Dial Sponsor"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
           )}
 
           {/* Desktop Vertical Reels Controls */}

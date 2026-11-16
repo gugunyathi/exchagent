@@ -12,6 +12,7 @@ import {
   Minimize2,
   RefreshCw,
   Eye,
+  Camera,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -27,6 +28,7 @@ import {
 import { CARD_STYLE_PRESETS, CardStylePreset } from '../data/seedData';
 import { AgentIdentityCard } from './AgentIdentityCard';
 import { emitToast } from '../lib/toast';
+import { AGENT_IMAGE_PRESETS, resolveAgentImage } from '../lib/agentImages';
 
 interface CardCustomizationModalProps {
   isOpen: boolean;
@@ -128,14 +130,16 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
     borderAccentColor: agent.brandColor || '#0284c7',
   };
 
-  const [activeTab, setActiveTab] = useState<'presets' | 'banner' | 'background' | 'edges'>('presets');
+  const [activeTab, setActiveTab] = useState<'presets' | 'photo' | 'banner' | 'background' | 'edges'>('presets');
   const [draftStyle, setDraftStyle] = useState<AgentCardCustomization>(agent.cardStyle || defaultStyle);
+  const [draftImageUrl, setDraftImageUrl] = useState<string>(agent.imageUrl || '');
   const [previewFlipped, setPreviewFlipped] = useState(false);
 
   // Sync draft when agent changes
   useEffect(() => {
     if (agent) {
       setDraftStyle(agent.cardStyle || defaultStyle);
+      setDraftImageUrl(agent.imageUrl || '');
       setPreviewFlipped(false);
     }
   }, [agent.id]);
@@ -151,12 +155,14 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
 
   const handleReset = () => {
     setDraftStyle(agent.cardStyle || defaultStyle);
+    setDraftImageUrl(agent.imageUrl || '');
     emitToast('Reset to original style');
   };
 
   const handleSave = () => {
     const updated: AgentDoc = {
       ...agent,
+      imageUrl: draftImageUrl.trim() || undefined,
       cardStyle: draftStyle,
       brandColor: draftStyle.bannerBgColor || agent.brandColor,
     };
@@ -168,6 +174,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
   // Create preview agent with draft styling applied
   const previewAgent: AgentDoc = {
     ...agent,
+    imageUrl: draftImageUrl.trim() || agent.imageUrl,
     cardStyle: draftStyle,
     brandColor: draftStyle.bannerBgColor || agent.brandColor,
   };
@@ -265,6 +272,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
             <div className="shrink-0 flex items-center border-b border-zinc-200 dark:border-white/10 px-3 pt-2 bg-zinc-50 dark:bg-zinc-900/30 gap-1 overflow-x-auto no-scrollbar">
               {[
                 { id: 'presets', label: 'Presets', icon: Sparkles },
+                { id: 'photo', label: 'Photo', icon: Camera },
                 { id: 'banner', label: 'Banner', icon: Layers },
                 { id: 'background', label: 'Background', icon: Palette },
                 { id: 'edges', label: 'Edges & Frame', icon: Square },
@@ -347,6 +355,88 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 1B: PHOTO / BRAND VISUAL */}
+              {activeTab === 'photo' && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-zinc-950 dark:text-white">
+                      Portrait &amp; Brand Photography
+                    </h3>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                      Choose a curated studio photo or paste your own headshot / product image URL.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-display font-bold text-xs text-zinc-950 dark:text-white mb-1.5">
+                      Custom Image URL (Optional)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={draftImageUrl}
+                        onChange={(e) => setDraftImageUrl(e.target.value)}
+                        placeholder={resolveAgentImage(agent)}
+                        className="flex-1 min-h-[38px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white placeholder:text-zinc-400"
+                      />
+                      {draftImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setDraftImageUrl('')}
+                          className="min-h-[38px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        >
+                          Default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-display font-bold text-xs text-zinc-950 dark:text-white mb-2">
+                      Curated Visual Library
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {AGENT_IMAGE_PRESETS.map((preset) => {
+                        const selected = (draftImageUrl || resolveAgentImage(agent)) === preset.src;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setDraftImageUrl(preset.src)}
+                            className={`group rounded-xl border overflow-hidden text-left transition-all ${
+                              selected
+                                ? 'border-zinc-950 dark:border-white ring-2 ring-zinc-950/20 dark:ring-white/25'
+                                : 'border-zinc-200 dark:border-white/10 hover:border-zinc-400 dark:hover:border-white/25'
+                            }`}
+                          >
+                            <div className="aspect-[3/4] w-full overflow-hidden bg-zinc-100 dark:bg-zinc-900 relative">
+                              <img
+                                src={preset.src}
+                                alt={preset.label}
+                                referrerPolicy="no-referrer"
+                                className={`w-full h-full object-cover group-hover:scale-105 transition-transform ${
+                                  preset.type === 'persona' ? 'object-top' : 'object-center'
+                                }`}
+                              />
+                              {selected && (
+                                <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm">
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                </span>
+                              )}
+                            </div>
+                            <div className="px-2 py-1.5 bg-white dark:bg-zinc-900">
+                              <span className="block text-[10.5px] font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                {preset.label}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}

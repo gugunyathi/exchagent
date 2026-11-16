@@ -33,6 +33,7 @@ import { PoppyRecruitmentModule } from './components/PoppyRecruitmentModule';
 import { RegistryMarketplaceModule } from './components/RegistryMarketplaceModule';
 import { SpatialMapsDiscovery } from './components/SpatialMapsDiscovery';
 import { OmnichannelCommsModule } from './components/OmnichannelCommsModule';
+import { AgentMailInboxModule } from './components/AgentMailInboxModule';
 import { ChromeExtensionHub } from './components/ChromeExtensionHub';
 import { DeveloperLedgerModule } from './components/DeveloperLedgerModule';
 import { AgentSkillsPage } from './components/AgentSkillsPage';
@@ -63,7 +64,7 @@ const PRIMARY_NAV_TABS: Array<{
 export default function App() {
   const store = useSwitchboardStore();
   const [activeTab, setActiveTab] = useState<MainNavTab>('directory');
-  const [spatialSubView, setSpatialSubView] = useState<'maps' | 'comms'>('maps');
+  const [spatialSubView, setSpatialSubView] = useState<'maps' | 'comms' | 'agentmail'>('maps');
   const [toolkitSubView, setToolkitSubView] = useState<'skills' | 'extension' | 'ledger'>('skills');
 
   // Floating Directory Quick Actions
@@ -460,18 +461,15 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSpatialSubView('comms')}
+                    onClick={() => setSpatialSubView('agentmail')}
                     className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      spatialSubView === 'comms'
+                      spatialSubView === 'agentmail'
                         ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                         : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                     }`}
                   >
-                    <Mail className="w-3.5 h-3.5" />
-                    Inbox &amp; Calendar
-                    <span className="font-mono text-[11px] opacity-80 tabular-nums">
-                      ({store.bookings.length})
-                    </span>
+                    <Bot className="w-3.5 h-3.5 text-sky-400" />
+                    AgentMail (exchagent@)
                   </button>
                 </div>
 
@@ -487,6 +485,11 @@ export default function App() {
                     googleMapsApiKey={store.googleMapsApiKey}
                     currency={store.currency}
                     onPitchAgent={handleOpenPitch}
+                  />
+                ) : spatialSubView === 'agentmail' ? (
+                  <AgentMailInboxModule
+                    currency={store.currency}
+                    ownerUid={store.currentUser.uid}
                   />
                 ) : (
                   <OmnichannelCommsModule

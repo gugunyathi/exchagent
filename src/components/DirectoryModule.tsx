@@ -19,6 +19,7 @@ import { PromotedStatusCircles } from './PromotedStatusCircles';
 import { StatusReelsViewer } from './StatusReelsViewer';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
+import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 
 export type DirectoryFilterType = 'all' | 'persona' | 'business' | 'discoverable';
 export type DirectoryViewMode = 'carousel' | 'grid';
@@ -104,6 +105,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   const [newEdgeRadius, setNewEdgeRadius] = useState<CardEdgeRadius>('rounded-2xl');
   const [newBorderStyle, setNewBorderStyle] = useState<CardBorderStyle>('hairline');
   const [newAccentColor, setNewAccentColor] = useState('#0284c7');
+  const [newImageUrl, setNewImageUrl] = useState<string>('');
 
   React.useEffect(() => {
     setShowDeploy(openDeployModalInitially);
@@ -176,6 +178,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
           ? (newBrandCode.trim() || newDisplayName.trim().slice(0, 3)).toUpperCase()
           : undefined,
       avatarVariant: 'persona',
+      imageUrl: newImageUrl.trim() || undefined,
       cardStyle: {
         bannerStyle: newBannerStyle,
         bannerBgColor: newAccentColor,
@@ -240,6 +243,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
     setNewDisplayName('');
     setNewProfileUrl('');
     setNewSummary('');
+    setNewImageUrl('');
     closeDeploy();
   };
 
@@ -750,6 +754,47 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                         className="flex-1 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2 font-mono text-[11px] text-zinc-900 dark:text-zinc-200"
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* Card Photo / Brand Image Picker */}
+                <div>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1.5">
+                    Card Portrait / Brand Photo
+                  </label>
+                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                    {AGENT_IMAGE_PRESETS.filter((p) => p.type === newType).map((preset) => {
+                      const active = newImageUrl === preset.src;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setNewImageUrl(preset.src)}
+                          className={`shrink-0 w-12 h-14 rounded-lg overflow-hidden border transition-all ${
+                            active
+                              ? 'border-zinc-950 dark:border-white ring-2 ring-zinc-950/20 dark:ring-white/30'
+                              : 'border-zinc-300 dark:border-white/15 opacity-80 hover:opacity-100'
+                          }`}
+                          title={preset.label}
+                        >
+                          <img
+                            src={preset.src}
+                            alt={preset.label}
+                            referrerPolicy="no-referrer"
+                            className={`w-full h-full object-cover ${
+                              preset.type === 'persona' ? 'object-top' : 'object-center'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                    <input
+                      type="url"
+                      value={newImageUrl}
+                      onChange={(e) => setNewImageUrl(e.target.value)}
+                      placeholder="Or paste custom image URL..."
+                      className="flex-1 min-w-[160px] min-h-[38px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-mono text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-500"
+                    />
                   </div>
                 </div>
               </div>

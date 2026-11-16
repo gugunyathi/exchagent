@@ -8,6 +8,7 @@ import { SEED_AGENTS, SEED_RFPS, SEED_AUCTIONS, SEED_CLAIMED_HANDLES, SEED_SECON
 import { quoteHandlePricing } from './src/services/paymentRails';
 import { ZAR_PER_USD } from './src/types/firestore';
 import { createPoppyRouter } from './server/poppyRouter';
+import { createAgentMailRouter } from './server/agentmailRouter';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,6 +122,9 @@ async function startServer() {
 
   // Mount Poppy v1.0 Protocol + Extensions + Autonomous Recruitment Router
   app.use(createPoppyRouter());
+
+  // Mount AgentMail Inbox & Messaging Router (exchagent@agentmail.to)
+  app.use(createAgentMailRouter());
 
   app.get('/llms.txt', (_req, res) => {
     res.type('text/plain').send(

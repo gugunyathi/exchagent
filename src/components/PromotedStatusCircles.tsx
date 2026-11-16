@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, ShieldAlert, Play } from 'lucide-react';
 import { AgentDoc } from '../types/firestore';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { resolveAgentImage } from '../lib/agentImages';
 
 interface PromotedStatusCirclesProps {
   agents: AgentDoc[];
@@ -14,6 +15,8 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
   selectedAgentId,
   onOpenReelForAgent,
 }) => {
+  const [imgErrors, setImgErrors] = React.useState<Record<string, boolean>>({});
+
   const promoted = React.useMemo(() => {
     const withPromo = agents.filter((a) => a.discoverableByPassersby || a.passerbyIncentive);
     const rest = agents.filter((a) => !a.discoverableByPassersby && !a.passerbyIncentive);
@@ -34,6 +37,8 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
           const isSelected = selectedAgentId === agent.id;
           const isEmergency = agent.handle === '911.emergency.agent';
           const isPersona = agent.type === 'persona';
+          const picSrc = resolveAgentImage(agent);
+          const hasImg = Boolean(picSrc) && !imgErrors[agent.id];
           const shortName = isEmergency
             ? '911'
             : agent.displayName.split(' ')[0].slice(0, 8);
@@ -69,17 +74,29 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
                 }`}
               >
                 <div
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-zinc-100 dark:border-[#09090b] flex items-center justify-center overflow-hidden text-white font-display font-bold text-[10.5px] relative"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border-2 border-zinc-100 dark:border-[#09090b] flex items-center justify-center overflow-hidden text-white font-display font-bold text-[10.5px] relative"
                   style={{
                     backgroundColor: isPersona ? '#18181b' : agent.brandColor || '#18181b',
                   }}
                 >
-                  {isEmergency ? (
+                  {hasImg ? (
+                    <img
+                      src={picSrc}
+                      alt={agent.displayName}
+                      referrerPolicy="no-referrer"
+                      onError={() =>
+                        setImgErrors((prev) => ({ ...prev, [agent.id]: true }))
+                      }
+                      className={`w-full h-full object-cover ${
+                        isPersona ? 'object-top' : 'object-center'
+                      }`}
+                    />
+                  ) : isEmergency ? (
                     <ShieldAlert className="w-4 h-4 text-rose-400" />
                   ) : (
                     <span>{initials}</span>
                   )}
-                  <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <Play className="w-3 h-3 text-white fill-white" />
                   </span>
                 </div>
