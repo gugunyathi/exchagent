@@ -28,9 +28,13 @@ import {
   ArrowLeft,
   CalendarPlus,
   Linkedin,
+  FileText,
+  History,
+  Trophy,
 } from 'lucide-react';
 import {
   AgentDoc,
+  AgentApplicationPackage,
   JobPostingDoc,
   RecruitmentMatchDoc,
   PoppyOperation,
@@ -87,6 +91,14 @@ interface PoppyRecruitmentModuleProps {
   onLogAudit: (entry: Omit<PoppyAuditLogEntry, 'id' | 'timestamp'>) => void;
   onOpenQuickJobAgent?: () => void;
   onOpenQuickEmployerAgent?: () => void;
+  applicationPackages?: AgentApplicationPackage[];
+  onTailorAndApply?: (
+    seeker: AgentDoc,
+    job: JobPostingDoc,
+    match?: RecruitmentMatchDoc
+  ) => Promise<AgentApplicationPackage | null>;
+  onOpenProfileHistory?: (agent: AgentDoc, packageId?: string) => void;
+  onOpenCompanyHr?: (companyAgent: AgentDoc) => void;
 }
 
 type PrimaryHiringTab = 'matches' | 'studio' | 'consent';
@@ -165,6 +177,10 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
   onLogAudit,
   onOpenQuickJobAgent,
   onOpenQuickEmployerAgent,
+  applicationPackages = [],
+  onTailorAndApply,
+  onOpenProfileHistory,
+  onOpenCompanyHr,
 }) => {
   const [activeTab, setActiveTab] = useState<PrimaryHiringTab>(
     initialRoleTab === 'video_live' ? 'studio' : 'matches'
@@ -172,6 +188,11 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(
     initialRoleTab === 'hiring' || initialRoleTab === 'recruiter' ? initialRoleTab : 'seeker'
   );
+  const [regionFilter, setRegionFilter] = useState<
+    'all' | 'openai' | 'remote' | 'americas' | 'emea' | 'apac'
+  >('all');
+  const [tailoringBusyJobId, setTailoringBusyJobId] = useState<string | null>(null);
+  const [selectedHrCompanyHandle, setSelectedHrCompanyHandle] = useState<string>('careers.openai.agent');
 
   // Slide-over Protocol & poppy.json Inspector Drawer
   const [protocolDrawerOpen, setProtocolDrawerOpen] = useState(false);
@@ -1009,6 +1030,20 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                   </button>
                 </div>
 
+                {onOpenProfileHistory && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenProfileHistory(selectedSeeker)}
+                    className="w-full min-h-[38px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white px-3 text-xs font-semibold flex items-center justify-center gap-1.5"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>
+                      Agent History &amp; PDF/DOCX Docs (
+                      {applicationPackages.filter((p) => p.seekerHandle === selectedSeeker.handle).length})
+                    </span>
+                  </button>
+                )}
+
                 {/* Collapsible CV & LinkedIn Editor */}
                 <button
                   type="button"
@@ -1125,7 +1160,42 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                   </div>
                 </div>
 
+                {/* Region / Zone & OpenAI Shortcut Filter Strip */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all' as const, label: `All Roles (${jobs.length})` },
+                    { id: 'openai' as const, label: 'OpenAI (10 Regions)' },
+                    { id: 'remote' as const, label: 'Remote' },
+                    { id: 'americas' as const, label: 'Americas' },
+                    { id: 'emea' as const, label: 'EMEA / EU / ZA' },
+                    { id: 'apac' as const, label: 'APAC / SEA' },
+                  ].map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setRegionFilter(chip.id)}
+                      className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
+                        regionFilter === chip.id
+                          ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
+                          : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:border-zinc-500'
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+
                 {[...jobs]
+                  .filter((job) => {
+                    if (regionFilter === 'all') return true;
+                    if (regionFilter === 'openai') return job.companyAgentHandle === 'careers.openai.agent';
+                    if (regionFilter === 'remote') return job.remoteMode === 'Remote' || (job.regionZone || '').toLowerCase().includes('remote');
+                    const rz = `${job.regionZone || ''} ${job.country || ''} ${job.location}`.toLowerCase();
+                    if (regionFilter === 'americas') return /(us |united states|new york|san francisco|canada|toronto|americas)/.test(rz);
+                    if (regionFilter === 'emea') return /(emea|eu |london|uk|ireland|dublin|france|paris|johannesburg|cape town|sandton)/.test(rz);
+                    if (regionFilter === 'apac') return /(apac|sea|tokyo|japan|singapore|seoul|korea)/.test(rz);
+                    return true;
+                  })
                   .sort((a, b) => {
                     const ma = matches.find(
                       (m) => m.jobId === a.id && m.seekerHandle === selectedSeeker.handle
@@ -1138,6 +1208,9 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                   .map((job) => {
                   const match = matches.find(
                     (m) => m.jobId === job.id && m.seekerHandle === selectedSeeker.handle
+                  );
+                  const submittedPkg = applicationPackages.find(
+                    (p) => p.jobId === job.id && p.seekerHandle === selectedSeeker.handle
                   );
                   const isInterviewBooked = match?.status === 'interview';
                   return (
@@ -1152,20 +1225,22 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                             </div>
                           )}
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                               <span className="font-mono truncate">
                                 {job.companyAgentHandle}
                               </span>
                               <span aria-hidden="true">·</span>
                               <span className="font-medium text-zinc-800 dark:text-zinc-300 shrink-0">
-                                {job.remoteMode}
+                                {job.regionZone || job.remoteMode}
                               </span>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-[11px] font-mono">{job.remoteMode}</span>
                             </div>
                             <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-zinc-50 mt-0.5 truncate">
                               {job.title}
                             </h3>
                             <p className="text-xs text-zinc-600 dark:text-zinc-400 tabular-nums">
-                              {job.companyName} · {formatMoney(job.salaryRangeZAR[0], currency)}–{formatMoney(job.salaryRangeZAR[1], currency)}/mo
+                              {job.companyName} · {formatMoney(job.salaryRangeZAR[0], currency)}–{formatMoney(job.salaryRangeZAR[1], currency)}/mo · {job.location}
                             </p>
                           </div>
                         </div>
@@ -1192,28 +1267,56 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                             <CalendarPlus className="w-3.5 h-3.5" />
                             {isInterviewBooked ? 'Interview Booked' : 'Get Interview'}
                           </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              triggerOperationsV3Gate({
-                                actionType: 'apply_job',
-                                summary: `Apply as ${selectedSeeker.handle} -> ${job.title}`,
-                                targetHandle: job.companyAgentHandle,
-                                actorHandle: selectedSeeker.handle,
-                                matchId: match?.id,
-                                nextStatus: 'applied',
-                                terms: {
-                                  jobId: job.id,
-                                  candidateHandle: selectedSeeker.handle,
-                                  blindScreening: Boolean(selectedSeeker.cvSummary?.blindScreening),
-                                  salaryBandZAR: `${job.salaryRangeZAR[0]}-${job.salaryRangeZAR[1]}`,
-                                },
-                              })
-                            }
-                            className="min-h-[36px] rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 px-3.5 text-xs font-semibold dark:text-zinc-950 dark:hover:bg-white whitespace-nowrap"
-                          >
-                            Apply
-                          </button>
+                          {submittedPkg && onOpenProfileHistory ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenProfileHistory(selectedSeeker, submittedPkg.id)}
+                              className="min-h-[36px] rounded-lg bg-sky-600 hover:bg-sky-500 text-white px-3 text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              View Docs &amp; PDF
+                            </button>
+                          ) : onTailorAndApply ? (
+                            <button
+                              type="button"
+                              disabled={tailoringBusyJobId === job.id}
+                              onClick={async () => {
+                                setTailoringBusyJobId(job.id);
+                                try {
+                                  await onTailorAndApply(selectedSeeker, job, match);
+                                } finally {
+                                  setTailoringBusyJobId(null);
+                                }
+                              }}
+                              className="min-h-[36px] rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 px-3.5 text-xs font-semibold dark:text-zinc-950 dark:hover:bg-white inline-flex items-center gap-1.5 whitespace-nowrap disabled:opacity-60"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              {tailoringBusyJobId === job.id ? 'Tailoring CV...' : 'Tailor CV & Apply'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                triggerOperationsV3Gate({
+                                  actionType: 'apply_job',
+                                  summary: `Apply as ${selectedSeeker.handle} -> ${job.title}`,
+                                  targetHandle: job.companyAgentHandle,
+                                  actorHandle: selectedSeeker.handle,
+                                  matchId: match?.id,
+                                  nextStatus: 'applied',
+                                  terms: {
+                                    jobId: job.id,
+                                    candidateHandle: selectedSeeker.handle,
+                                    blindScreening: Boolean(selectedSeeker.cvSummary?.blindScreening),
+                                    salaryBandZAR: `${job.salaryRangeZAR[0]}-${job.salaryRangeZAR[1]}`,
+                                  },
+                                })
+                              }
+                              className="min-h-[36px] rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 px-3.5 text-xs font-semibold dark:text-zinc-950 dark:hover:bg-white whitespace-nowrap"
+                            >
+                              Apply
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -1261,6 +1364,45 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
           {/* COMPANY PIPELINE VIEW */}
           {roleFilter === 'hiring' && (
             <div className="space-y-4">
+              {onOpenCompanyHr && (
+                <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <Trophy className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>HR Staff Portal: Top Appliers, Submitted Docs &amp; Company History</span>
+                    </p>
+                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
+                      Inspect candidate tailored CVs &amp; Cover Letters, download PDF/DOCX, manage HR team access, and view full company action history.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <select
+                      value={selectedHrCompanyHandle}
+                      onChange={(e) => setSelectedHrCompanyHandle(e.target.value)}
+                      className="min-h-[36px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100"
+                    >
+                      {businesses.map((b) => (
+                        <option key={b.id} value={b.handle}>
+                          {b.displayName} ({b.handle})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target =
+                          businesses.find((b) => b.handle === selectedHrCompanyHandle) || businesses[0];
+                        if (target) onOpenCompanyHr(target);
+                      }}
+                      className="min-h-[36px] px-3.5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      Open HR Portal
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {onOpenQuickEmployerAgent && (
                 <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -1422,6 +1564,25 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                           {m.status}
                         </span>
                         <div className="flex flex-wrap items-center gap-1.5">
+                          {(() => {
+                            const companyAgent = businesses.find((b) => b.handle === m.companyAgentHandle);
+                            const pkg = applicationPackages.find(
+                              (p) => p.jobId === m.jobId && p.seekerHandle === m.seekerHandle
+                            );
+                            if (pkg && companyAgent && onOpenCompanyHr) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenCompanyHr(companyAgent)}
+                                  className="min-h-[32px] rounded-lg bg-sky-600 hover:bg-sky-500 text-white px-2.5 text-xs font-semibold inline-flex items-center gap-1"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  Docs / PDF
+                                </button>
+                              );
+                            }
+                            return null;
+                          })()}
                           {candidateAgent && (
                             <button
                               type="button"

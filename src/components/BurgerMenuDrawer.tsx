@@ -23,8 +23,13 @@ import {
   Users,
   Linkedin,
   Building2,
+  Home,
+  Scale,
+  ShieldCheck,
+  FileText,
 } from 'lucide-react';
 import { CurrencyMode, SurfaceMode, formatMoney } from '../types/firestore';
+import { LegalDocTab, COMPANY_LEGAL_DETAILS } from '../data/legalDocuments';
 import { CURRENCY_LIST, LocalCurrencyCode, formatLocalRateBanner } from '../lib/fx';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -32,6 +37,8 @@ import { emitToast } from '../lib/toast';
 import { ThemeToggle } from '../lib/theme';
 
 export type DrawerRouteTarget =
+  | { tab: 'home' }
+  | { tab: 'legal'; doc: LegalDocTab }
   | { tab: 'directory' }
   | { tab: 'arena' }
   | { tab: 'hiring' }
@@ -109,6 +116,13 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
     target: DrawerRouteTarget;
     active: boolean;
   }> = [
+    {
+      id: 'home',
+      label: 'Overview',
+      icon: Home,
+      target: { tab: 'home' },
+      active: surface === 'desktop' && activeTab === 'home',
+    },
     {
       id: 'dir',
       label: 'Directory',
@@ -214,11 +228,11 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
             </button>
             <img
               src="/icon.svg"
-              alt="Switchboard"
+              alt="SWITCHZ"
               className="w-6 h-6 rounded-md border border-zinc-300 dark:border-white/15"
             />
-            <span className="font-display font-semibold text-sm text-zinc-950 dark:text-white">
-              Switchboard
+            <span className="font-display font-semibold text-sm text-zinc-950 dark:text-white tracking-tight">
+              SWITCHZ
             </span>
           </div>
           <button
@@ -474,6 +488,60 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
               Reset Seed Data
             </button>
+          </div>
+
+          {/* Legal & Compliance Links */}
+          <div className="space-y-2 pt-3 border-t border-zinc-200 dark:border-white/[0.08]">
+            <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wide">
+              Legal &amp; Compliance
+            </p>
+            <div className="grid grid-cols-1 gap-1.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigate({ tab: 'legal', doc: 'terms' });
+                  onClose();
+                }}
+                className="min-h-[34px] px-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-between"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Scale className="w-3.5 h-3.5" />
+                  Terms of Use
+                </span>
+                <span className="font-mono text-[10px] text-zinc-500">/term</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigate({ tab: 'legal', doc: 'privacy' });
+                  onClose();
+                }}
+                className="min-h-[34px] px-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-between"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Privacy &amp; Candidate AI
+                </span>
+                <span className="font-mono text-[10px] text-zinc-500">/terms</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigate({ tab: 'legal', doc: 'employer' });
+                  onClose();
+                }}
+                className="min-h-[34px] px-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-between"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5" />
+                  Employer Fee Agreement
+                </span>
+                <span className="font-mono text-[10px] text-zinc-500">/employeragreement</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 px-1 leading-relaxed">
+              {COMPANY_LEGAL_DETAILS.operator} · {COMPANY_LEGAL_DETAILS.jurisdiction} · Essential local storage only.
+            </p>
           </div>
         </SwipeScrollArea>
       </aside>

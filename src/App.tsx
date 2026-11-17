@@ -22,9 +22,19 @@ import {
   Briefcase,
   ArrowLeft,
   Sparkles,
+  History,
+  Trophy,
+  Linkedin,
+  Scale,
+  ShieldCheck,
+  FileText,
+  Home,
 } from 'lucide-react';
 import { AgentDoc, JobPostingDoc } from './types/firestore';
+import { LegalDocTab } from './data/legalDocuments';
 import { useSwitchboardStore } from './store/useSwitchboardStore';
+import { MinimalLandingPage } from './components/MinimalLandingPage';
+import { LegalDocumentView } from './components/LegalDocumentView';
 import {
   DirectoryModule,
   DirectoryFilterType,
@@ -45,16 +55,50 @@ import { AgentDialerModal } from './components/AgentDialerModal';
 import { CardCustomizationModal } from './components/CardCustomizationModal';
 import { QuickJobAgentModal } from './components/QuickJobAgentModal';
 import { QuickEmployerAgentModal } from './components/QuickEmployerAgentModal';
+import { AgentProfileHistoryModal } from './components/AgentProfileHistoryModal';
+import { CompanyHrPortalModal } from './components/CompanyHrPortalModal';
+import { PostStatusModal } from './components/PostStatusModal';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { BurgerMenuDrawer, DrawerRouteTarget } from './components/BurgerMenuDrawer';
 import { SwipeScrollArea } from './components/SwipeScrollArea';
 import { ToastViewport, emitToast } from './lib/toast';
 import { ThemeToggle } from './lib/theme';
 
-export type MainNavTab = 'directory' | 'arena' | 'hiring' | 'registry' | 'spatial' | 'toolkit';
+export type MainNavTab =
+  | 'home'
+  | 'legal'
+  | 'directory'
+  | 'arena'
+  | 'hiring'
+  | 'registry'
+  | 'spatial'
+  | 'toolkit';
+
+function resolvePathRoute(pathname: string): { tab: MainNavTab; legalDoc: LegalDocTab } {
+  const clean = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  if (clean === '/term' || clean === '/terms-of-use') {
+    return { tab: 'legal', legalDoc: 'terms' };
+  }
+  if (clean === '/terms' || clean === '/privacy' || clean === '/candidate-terms') {
+    return { tab: 'legal', legalDoc: 'privacy' };
+  }
+  if (clean === '/employeragreement' || clean === '/employer-agreement') {
+    return { tab: 'legal', legalDoc: 'employer' };
+  }
+  if (clean === '/directory' || clean === '/app') {
+    return { tab: 'directory', legalDoc: 'terms' };
+  }
+  return { tab: 'home', legalDoc: 'terms' };
+}
+
+function getPathnameForLegalDoc(doc: LegalDocTab): string {
+  if (doc === 'terms') return '/term';
+  if (doc === 'privacy') return '/terms';
+  return '/employeragreement';
+}
 
 const PRIMARY_NAV_TABS: Array<{
-  id: Exclude<MainNavTab, 'toolkit'>;
+  id: Exclude<MainNavTab, 'home' | 'legal' | 'toolkit'>;
   label: string;
   mobileLabel: string;
   icon: React.FC<{ className?: string }>;
@@ -68,12 +112,18 @@ const PRIMARY_NAV_TABS: Array<{
 
 export default function App() {
   const store = useSwitchboardStore();
-  const [activeTab, setActiveTab] = useState<MainNavTab>('directory');
+  const initialRoute = React.useMemo(
+    () => (typeof window !== 'undefined' ? resolvePathRoute(window.location.pathname) : { tab: 'home' as MainNavTab, legalDoc: 'terms' as LegalDocTab }),
+    []
+  );
+  const [activeTab, setActiveTab] = useState<MainNavTab>(initialRoute.tab);
+  const [legalDoc, setLegalDoc] = useState<LegalDocTab>(initialRoute.legalDoc);
   const [spatialSubView, setSpatialSubView] = useState<'maps' | 'contacts' | 'comms' | 'agentmail'>('maps');
   const [toolkitSubView, setToolkitSubView] = useState<'skills' | 'extension' | 'ledger'>('skills');
   const [navHistory, setNavHistory] = useState<
     Array<{
       tab: MainNavTab;
+      legalDoc: LegalDocTab;
       spatialSub: 'maps' | 'contacts' | 'comms' | 'agentmail';
       toolkitSub: 'skills' | 'extension' | 'ledger';
       surface: ReturnType<typeof useSwitchboardStore>['surface'];
@@ -103,6 +153,13 @@ export default function App() {
   const [customizingAgent, setCustomizingAgent] = useState<AgentDoc | null>(null);
   const [quickJobModalOpen, setQuickJobModalOpen] = useState(false);
   const [quickEmployerModalOpen, setQuickEmployerModalOpen] = useState(false);
+  const [postStatusModalOpen, setPostStatusModalOpen] = useState(false);
+  const [profileHistoryState, setProfileHistoryState] = useState<{
+    open: boolean;
+    agent: AgentDoc | null;
+    packageId?: string | null;
+  }>({ open: false, agent: null, packageId: null });
+  const [hrPortalAgent, setHrPortalAgent] = useState<AgentDoc | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
@@ -128,6 +185,32 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const resolved = resolvePathRoute(window.location.pathname);
+      setActiveTab(resolved.tab);
+      setLegalDoc(resolved.legalDoc);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'legal') {
+      if (legalDoc === 'terms') {
+        document.title = 'Terms of Use (/term) — SWITCHZ';
+      } else if (legalDoc === 'privacy') {
+        document.title = 'Privacy Policy & Candidate AI Notice (/terms) — SWITCHZ';
+      } else {
+        document.title = 'Global Employer Recruitment Agreement (/employeragreement) — SWITCHZ';
+      }
+    } else if (activeTab === 'home') {
+      document.title = 'SWITCHZ — Verified .agent Identity, Autonomous Hiring & A2A Commerce';
+    } else {
+      document.title = 'SWITCHZ — Agent Directory & A2A Hub';
+    }
+  }, [activeTab, legalDoc]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -180,19 +263,38 @@ export default function App() {
     [store.agents, store.currentUser.uid]
   );
 
+  const openAiCompanyAgent = React.useMemo(
+    () =>
+      store.agents.find((a) => a.handle === 'careers.openai.agent') ||
+      store.agents.find((a) => a.type === 'business' && a.handle !== '911.emergency.agent') ||
+      null,
+    [store.agents]
+  );
+
+  const handleOpenProfileHistory = React.useCallback((agent: AgentDoc, packageId?: string) => {
+    setProfileHistoryState({ open: true, agent, packageId: packageId || null });
+  }, []);
+
+  const handleOpenCompanyHr = React.useCallback((companyAgent: AgentDoc) => {
+    setHrPortalAgent(companyAgent);
+  }, []);
+
   const pushCurrentRouteToHistory = React.useCallback(
     (next: {
       tab?: MainNavTab;
+      legalDoc?: LegalDocTab;
       spatialSub?: 'maps' | 'contacts' | 'comms' | 'agentmail';
       toolkitSub?: 'skills' | 'extension' | 'ledger';
       surface?: typeof store.surface;
     }) => {
       const targetTab = next.tab ?? activeTab;
+      const targetLegalDoc = next.legalDoc ?? legalDoc;
       const targetSpatial = next.spatialSub ?? spatialSubView;
       const targetToolkit = next.toolkitSub ?? toolkitSubView;
       const targetSurface = next.surface ?? store.surface;
       if (
         targetTab === activeTab &&
+        targetLegalDoc === legalDoc &&
         targetSpatial === spatialSubView &&
         targetToolkit === toolkitSubView &&
         targetSurface === store.surface
@@ -203,29 +305,57 @@ export default function App() {
         ...prev.slice(-14),
         {
           tab: activeTab,
+          legalDoc,
           spatialSub: spatialSubView,
           toolkitSub: toolkitSubView,
           surface: store.surface,
         },
       ]);
     },
-    [activeTab, spatialSubView, toolkitSubView, store.surface]
+    [activeTab, legalDoc, spatialSubView, toolkitSubView, store.surface]
   );
+
+  const syncBrowserPath = React.useCallback((tab: MainNavTab, doc: LegalDocTab) => {
+    if (typeof window === 'undefined') return;
+    let nextPath = '/';
+    if (tab === 'legal') {
+      nextPath = getPathnameForLegalDoc(doc);
+    } else if (tab === 'home') {
+      nextPath = '/';
+    } else if (window.location.pathname !== '/') {
+      nextPath = '/';
+    }
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
+  }, []);
 
   const navigateRoute = React.useCallback(
     (next: {
       tab?: MainNavTab;
+      legalDoc?: LegalDocTab;
       spatialSub?: 'maps' | 'contacts' | 'comms' | 'agentmail';
       toolkitSub?: 'skills' | 'extension' | 'ledger';
       surface?: typeof store.surface;
     }) => {
       pushCurrentRouteToHistory(next);
+      const nextTab = next.tab ?? activeTab;
+      const nextDoc = next.legalDoc ?? legalDoc;
       if (next.surface !== undefined) store.setSurface(next.surface);
       if (next.tab !== undefined) setActiveTab(next.tab);
+      if (next.legalDoc !== undefined) setLegalDoc(next.legalDoc);
       if (next.spatialSub !== undefined) setSpatialSubView(next.spatialSub);
       if (next.toolkitSub !== undefined) setToolkitSubView(next.toolkitSub);
+      syncBrowserPath(nextTab, nextDoc);
     },
-    [pushCurrentRouteToHistory, store]
+    [pushCurrentRouteToHistory, store, activeTab, legalDoc, syncBrowserPath]
+  );
+
+  const handleOpenLegalDoc = React.useCallback(
+    (doc: LegalDocTab) => {
+      navigateRoute({ surface: 'desktop', tab: 'legal', legalDoc: doc });
+    },
+    [navigateRoute]
   );
 
   const handleGoBack = React.useCallback(() => {
@@ -234,15 +364,22 @@ export default function App() {
       setNavHistory((prev) => prev.slice(0, -1));
       store.setSurface(last.surface);
       setActiveTab(last.tab);
+      setLegalDoc(last.legalDoc);
       setSpatialSubView(last.spatialSub);
       setToolkitSubView(last.toolkitSub);
-    } else if (store.surface !== 'desktop' || activeTab !== 'directory') {
+      syncBrowserPath(last.tab, last.legalDoc);
+    } else if (store.surface !== 'desktop' || (activeTab !== 'directory' && activeTab !== 'home')) {
       store.setSurface('desktop');
       setActiveTab('directory');
+      syncBrowserPath('directory', legalDoc);
+    } else if (activeTab === 'directory') {
+      setActiveTab('home');
+      syncBrowserPath('home', legalDoc);
     }
-  }, [navHistory, store, activeTab]);
+  }, [navHistory, store, activeTab, legalDoc, syncBrowserPath]);
 
-  const canGoBack = navHistory.length > 0 || activeTab !== 'directory' || store.surface !== 'desktop';
+  const canGoBack =
+    navHistory.length > 0 || activeTab !== 'home' || store.surface !== 'desktop';
 
   const resolveAgentByHandle = React.useCallback(
     (handle: string): AgentDoc => {
@@ -423,6 +560,8 @@ export default function App() {
       navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: target.sub });
     } else if (target.tab === 'toolkit') {
       navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: target.sub });
+    } else if (target.tab === 'legal') {
+      navigateRoute({ surface: 'desktop', tab: 'legal', legalDoc: target.doc });
     } else {
       navigateRoute({ surface: 'desktop', tab: target.tab });
     }
@@ -504,16 +643,17 @@ export default function App() {
             )}
             <button
               type="button"
-              onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
+              onClick={() => navigateRoute({ surface: 'desktop', tab: 'home' })}
               className="flex items-center gap-2 text-left shrink-0"
+              title="SWITCHZ Overview"
             >
               <img
                 src="/icon.svg"
-                alt="Switchboard"
+                alt="SWITCHZ"
                 className="w-6 h-6 rounded-md border border-zinc-300 dark:border-white/15 shrink-0"
               />
-              <span className="font-display font-semibold text-sm sm:text-[15px] tracking-tight text-zinc-950 dark:text-zinc-50 whitespace-nowrap">
-                Switchboard
+              <span className="font-display font-bold text-sm sm:text-[15px] tracking-tight text-zinc-950 dark:text-zinc-50 whitespace-nowrap">
+                SWITCHZ
               </span>
             </button>
           </div>
@@ -598,6 +738,31 @@ export default function App() {
               onGoBack={handleGoBack}
             />
           </SwipeScrollArea>
+        ) : activeTab === 'home' ? (
+          <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-16">
+            <MinimalLandingPage
+              agentsCount={store.agents.length}
+              openRolesCount={store.jobs.filter((j) => j.status === 'OPEN').length}
+              onEnterDirectory={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
+              onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
+              onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
+              onOpenLegalDoc={handleOpenLegalDoc}
+              onNavigateTab={(tab) => navigateRoute({ surface: 'desktop', tab })}
+            />
+          </SwipeScrollArea>
+        ) : activeTab === 'legal' ? (
+          <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-16">
+            <LegalDocumentView
+              activeDoc={legalDoc}
+              onSelectDoc={handleOpenLegalDoc}
+              onBack={handleGoBack}
+              onCloseToDirectory={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
+              onOpenPrivacyDesk={() => {
+                setPoppyInitialRoleTab('seeker');
+                navigateRoute({ surface: 'desktop', tab: 'hiring' });
+              }}
+            />
+          </SwipeScrollArea>
         ) : activeTab === 'directory' ? (
           <DirectoryModule
             agents={store.agents}
@@ -638,6 +803,10 @@ export default function App() {
             onCloseDeployModal={() => setOpenDeployWizard(false)}
             onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
             onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
+            onOpenProfileHistory={(agent) => handleOpenProfileHistory(agent)}
+            onOpenCompanyHr={handleOpenCompanyHr}
+            statusPosts={store.statusPosts}
+            onOpenPostStatus={() => setPostStatusModalOpen(true)}
           />
         ) : (
           <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-24 space-y-4">
@@ -688,6 +857,10 @@ export default function App() {
                 onLogAudit={store.logPoppyAudit}
                 onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
                 onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
+                applicationPackages={store.applicationPackages}
+                onTailorAndApply={store.tailorAndSubmitApplication}
+                onOpenProfileHistory={handleOpenProfileHistory}
+                onOpenCompanyHr={handleOpenCompanyHr}
               />
             )}
 
@@ -934,8 +1107,9 @@ export default function App() {
         />
       )}
 
-      {/* Consolidated Single Floating Action Cluster (Unobtrusive Bottom-Right) */}
-      <div className="fixed bottom-[68px] md:bottom-5 right-3 sm:right-5 z-40 flex flex-col items-end gap-2">
+      {/* Consolidated Bottom Action Row (hidden on minimal landing & legal views) */}
+      {activeTab !== 'home' && activeTab !== 'legal' && (
+      <div className="fixed bottom-[68px] md:bottom-5 right-3 sm:right-5 left-3 sm:left-auto z-40 flex flex-col items-end gap-2 pointer-events-none">
         <AnimatePresence>
           {floatingMenuExpanded && (
             <motion.div
@@ -943,7 +1117,7 @@ export default function App() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.96 }}
               transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xl p-1.5 w-48 space-y-0.5"
+              className="pointer-events-auto rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xl p-1.5 w-48 space-y-0.5"
             >
               {[
                 {
@@ -1002,42 +1176,75 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Single Consolidated Pill: Quick Menu + Predictive Dialer */}
-        <div className="flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1">
-          <button
-            type="button"
-            onClick={() => setFloatingMenuExpanded((v) => !v)}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-              floatingMenuExpanded
-                ? 'bg-zinc-900 text-white dark:bg-zinc-800 dark:text-white'
-                : 'text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
-            }`}
-            aria-label="Toggle Quick Menu"
-            title="Quick Actions"
-          >
-            {floatingMenuExpanded ? (
-              <X className="w-4 h-4" />
-            ) : (
-              <SlidersHorizontal className="w-4 h-4" />
-            )}
-          </button>
+        <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+          {store.surface === 'desktop' && activeTab === 'directory' && (
+            <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setFloatingMenuExpanded(false);
+                  setQuickJobModalOpen(true);
+                }}
+                className="h-9 px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                title="Paste LinkedIn URL for a free Job Agent + 10 matches"
+              >
+                <Linkedin className="w-3.5 h-3.5 shrink-0" />
+                <span>Job Agent</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFloatingMenuExpanded(false);
+                  setQuickEmployerModalOpen(true);
+                }}
+                className="h-9 px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                title="Paste Job URL for a 1-click Employer Agent + auto-match candidates"
+              >
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Hire with Agent</span>
+                <span className="sm:hidden">Hire</span>
+              </button>
+            </div>
+          )}
 
-          <button
-            type="button"
-            onClick={() => {
-              setFloatingMenuExpanded(false);
-              setDialerInitialAgent(null);
-              setDialerOpen(true);
-            }}
-            className="h-9 px-3.5 rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white flex items-center gap-1.5 text-xs font-semibold transition-transform active:scale-95"
-            aria-label="Open Predictive Dialer"
-            title="Predictive Dialer"
-          >
-            <Phone className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Dial</span>
-          </button>
+          {/* Single Consolidated Pill: Quick Menu + Predictive Dialer */}
+          <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setFloatingMenuExpanded((v) => !v)}
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                floatingMenuExpanded
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-800 dark:text-white'
+                  : 'text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
+              }`}
+              aria-label="Toggle Quick Menu"
+              title="Quick Actions"
+            >
+              {floatingMenuExpanded ? (
+                <X className="w-4 h-4" />
+              ) : (
+                <SlidersHorizontal className="w-4 h-4" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setFloatingMenuExpanded(false);
+                setDialerInitialAgent(null);
+                setDialerOpen(true);
+              }}
+              className="h-9 px-3.5 rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white flex items-center gap-1.5 text-xs font-semibold transition-transform active:scale-95"
+              aria-label="Open Predictive Dialer"
+              title="Predictive Dialer"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Dial</span>
+            </button>
+          </div>
         </div>
       </div>
+      )}
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
@@ -1184,6 +1391,56 @@ export default function App() {
                 <span className="font-mono text-emerald-600 dark:text-emerald-400">Auto-Match</span>
               </button>
 
+              {openAiCompanyAgent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommandOpen(false);
+                    handleOpenCompanyHr(openAiCompanyAgent);
+                  }}
+                  className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                >
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-amber-500" /> OpenAI HR Portal (10 Global Roles &amp; Top Appliers)
+                  </span>
+                  <span className="font-mono text-amber-600 dark:text-amber-400">HR Portal</span>
+                </button>
+              )}
+
+              {activeUserAgent && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommandOpen(false);
+                    handleOpenProfileHistory(activeUserAgent);
+                  }}
+                  className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                >
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                    <History className="w-4 h-4 text-sky-500" /> Personal Agent History &amp; PDF/DOCX Docs
+                  </span>
+                  <span className="font-mono text-sky-600 dark:text-sky-400">
+                    {store.applicationPackages.length} Docs
+                  </span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCommandOpen(false);
+                  setPostStatusModalOpen(true);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-500" /> Post Status Card (Hired, Deal Approved, Ad, LinkedIn/AI)
+                </span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                  {store.statusPosts.length}
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -1224,6 +1481,62 @@ export default function App() {
                   <Terminal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Audit Ledger &amp; OpenAPI
                 </span>
                 <span className="font-mono text-zinc-500">x402</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateRoute({ surface: 'desktop', tab: 'home' });
+                  setCommandOpen(false);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                  <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> SWITCHZ Overview (Landing Page)
+                </span>
+                <span className="font-mono text-zinc-500">/</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenLegalDoc('terms');
+                  setCommandOpen(false);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                  <Scale className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> Global Platform Terms of Use
+                </span>
+                <span className="font-mono text-zinc-500">/term</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenLegalDoc('privacy');
+                  setCommandOpen(false);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Privacy Policy &amp; Candidate AI Notice
+                </span>
+                <span className="font-mono text-zinc-500">/terms</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenLegalDoc('employer');
+                  setCommandOpen(false);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Employer Recruitment Fee Agreement
+                </span>
+                <span className="font-mono text-zinc-500">/employeragreement</span>
               </button>
 
               {commandAgents.map((agent) => (
@@ -1288,6 +1601,12 @@ export default function App() {
           setPoppyInitialRoleTab('seeker');
           navigateRoute({ surface: 'desktop', tab: 'hiring' });
         }}
+        onTailorAndApply={store.tailorAndSubmitApplication}
+        onOpenProfileHistory={(agent, pkgId) => {
+          setQuickJobModalOpen(false);
+          handleOpenProfileHistory(agent, pkgId);
+        }}
+        onOpenLegal={handleOpenLegalDoc}
       />
 
       <QuickEmployerAgentModal
@@ -1307,6 +1626,55 @@ export default function App() {
           setPoppyInitialRoleTab('hiring');
           navigateRoute({ surface: 'desktop', tab: 'hiring' });
         }}
+        onOpenLegal={handleOpenLegalDoc}
+      />
+
+      <AgentProfileHistoryModal
+        open={profileHistoryState.open}
+        onClose={() => setProfileHistoryState({ open: false, agent: null, packageId: null })}
+        agent={profileHistoryState.agent || activeUserAgent}
+        allPersonas={store.agents.filter((a) => a.type === 'persona')}
+        onSelectAgent={(next) =>
+          setProfileHistoryState((prev) => ({ ...prev, agent: next, packageId: null }))
+        }
+        jobs={store.jobs}
+        matches={store.matches}
+        applicationPackages={store.applicationPackages}
+        history={store.agentActionHistory}
+        currency={store.currency}
+        initialPackageId={profileHistoryState.packageId}
+        onTailorAndApply={store.tailorAndSubmitApplication}
+        onLogHistory={store.logAgentHistory}
+      />
+
+      <CompanyHrPortalModal
+        open={Boolean(hrPortalAgent)}
+        onClose={() => setHrPortalAgent(null)}
+        companyAgent={hrPortalAgent}
+        allBusinessAgents={store.agents.filter(
+          (a) => a.type === 'business' && a.handle !== '911.emergency.agent'
+        )}
+        onSelectCompany={(next) => setHrPortalAgent(next)}
+        allAgents={store.agents}
+        jobs={store.jobs}
+        matches={store.matches}
+        applicationPackages={store.applicationPackages}
+        history={store.agentActionHistory}
+        currency={store.currency}
+        onRecordHrDocView={store.recordHrDocView}
+        onAddHrNote={store.addHrReviewNote}
+        onUpdateApplicationStatus={store.updateApplicationStatus}
+        onAddHrTeamMember={store.addHrTeamMember}
+        onLogHistory={store.logAgentHistory}
+      />
+
+      <PostStatusModal
+        open={postStatusModalOpen}
+        onClose={() => setPostStatusModalOpen(false)}
+        agents={store.agents}
+        defaultAgent={activeUserAgent}
+        currency={store.currency}
+        onPublishStatus={store.createStatusPost}
       />
 
       <ToastViewport />

@@ -2,10 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
-  Mail,
-  RotateCw,
-  Zap,
-  Palette,
 } from 'lucide-react';
 import { AgentDoc, BookingDoc, CurrencyMode } from '../types/firestore';
 import { AgentIdentityCard } from './AgentIdentityCard';
@@ -24,6 +20,9 @@ interface AgentCardCarouselProps {
   onCustomizeCard?: (agent: AgentDoc) => void;
   onSaveContact?: (agent: AgentDoc) => void;
   savedContactHandles?: Set<string>;
+  onOpenProfileHistory?: (agent: AgentDoc) => void;
+  onOpenCompanyHr?: (agent: AgentDoc) => void;
+  onUpdateAgentMedia?: (updated: AgentDoc) => void;
 }
 
 export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
@@ -40,6 +39,9 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
   onCustomizeCard,
   onSaveContact,
   savedContactHandles,
+  onOpenProfileHistory,
+  onOpenCompanyHr,
+  onUpdateAgentMedia,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [flippedMap, setFlippedMap] = useState<Record<string, boolean>>({});
@@ -189,23 +191,11 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
   const nextIndex = (safeIndex + 1) % agents.length;
   const prevAgent = agents.length > 1 ? agents[prevIndex] : null;
   const nextAgent = agents.length > 2 ? agents[nextIndex] : null;
-  const isEmergency = activeAgent.handle === '911.emergency.agent';
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2.5 w-full">
-      <div className="relative w-full flex items-center justify-center overflow-hidden py-0.5">
-        {agents.length > 1 && (
-          <button
-            type="button"
-            onClick={goPrev}
-            aria-label="Previous card"
-            className="hidden md:flex absolute left-4 lg:left-8 z-30 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shadow-lg"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-        )}
-
-        <div className="w-full flex items-center justify-center gap-4 lg:gap-8 touch-pan-y px-1 sm:px-0">
+    <div className="flex flex-col items-center justify-center gap-2 w-full">
+      <div className="relative w-full flex items-center justify-center overflow-x-clip py-1">
+        <div className="w-full flex items-center justify-center gap-4 lg:gap-8 touch-pan-y px-3 sm:px-0">
           {prevAgent && (
             <div
               onClick={goPrev}
@@ -228,9 +218,9 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
             </div>
           )}
 
-          {/* Active Center Swipable Card */}
+          {/* Active Center Swipable Card with Floating Left/Right Edge Scroll Buttons */}
           <div
-            className="w-full max-w-[376px] sm:max-w-[360px] shrink-0 z-20 cursor-grab active:cursor-grabbing touch-pan-y"
+            className="relative w-full max-w-[376px] sm:max-w-[360px] shrink-0 z-20 cursor-grab active:cursor-grabbing touch-pan-y"
             style={{
               transform: `translateX(${dragOffsetX}px) rotate(${dragOffsetX * 0.025}deg)`,
               transition: isDragging ? 'none' : 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)',
@@ -244,6 +234,37 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
             onPointerCancel={() => endDrag()}
             onClick={handleCenterCardTap}
           >
+            {agents.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goPrev();
+                  }}
+                  aria-label="Previous card"
+                  title="Previous card"
+                  className="absolute -left-2.5 sm:-left-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goNext();
+                  }}
+                  aria-label="Next card"
+                  title="Next card"
+                  className="absolute -right-2.5 sm:-right-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
+
             <AgentIdentityCard
               agent={activeAgent}
               bookings={bookings}
@@ -259,6 +280,9 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
               onCustomize={onCustomizeCard}
               onSaveContact={onSaveContact}
               isSavedContact={Boolean(savedContactHandles?.has(activeAgent.handle.toLowerCase()))}
+              onOpenProfileHistory={onOpenProfileHistory}
+              onOpenCompanyHr={onOpenCompanyHr}
+              onUpdateAgentMedia={onUpdateAgentMedia}
             />
           </div>
 
@@ -285,93 +309,11 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
             </div>
           )}
         </div>
-
-        {agents.length > 1 && (
-          <button
-            type="button"
-            onClick={goNext}
-            aria-label="Next card"
-            className="hidden md:flex absolute right-4 lg:right-8 z-30 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shadow-lg"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        )}
       </div>
 
-      {/* Bottom Dock with Right Clearance for Consolidated Dialer Cluster */}
-      <div className="w-full max-w-[376px] sm:max-w-[360px] flex flex-col items-center gap-1 pl-1 pr-24 md:px-1">
-        <div className="w-full flex items-center justify-center gap-1.5">
-          {agents.length > 1 && (
-            <button
-              type="button"
-              onClick={goPrev}
-              aria-label="Previous card"
-              className="md:hidden w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-800 dark:text-zinc-200 active:scale-95 transition-transform shrink-0 shadow-xs"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          )}
-
-          <div className="bg-white/95 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 rounded-full p-1 flex items-center gap-1 flex-1 min-w-0 shadow-sm">
-            <button
-              type="button"
-              onClick={() => onSelectForEngage(activeAgent)}
-              className="flex-1 min-h-[34px] rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white font-semibold text-xs inline-flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Engage</span>
-            </button>
-
-            {onCustomizeCard && (
-              <button
-                type="button"
-                onClick={() => onCustomizeCard(activeAgent)}
-                className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"
-                aria-label="Customize Style"
-                title="Customize Style"
-              >
-                <Palette className="w-3.5 h-3.5" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              disabled={isEmergency}
-              onClick={() => onEmailAgent(activeAgent)}
-              className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-200 dark:hover:bg-zinc-800 disabled:opacity-35 shrink-0"
-              aria-label="Email"
-              title="Email"
-            >
-              <Mail className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => toggleFlipFor(activeAgent.id)}
-              className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-200 dark:hover:bg-zinc-800 shrink-0"
-              aria-label="Flip Card"
-              title="Flip Card"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {agents.length > 1 && (
-            <button
-              type="button"
-              onClick={goNext}
-              aria-label="Next card"
-              className="md:hidden w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-800 dark:text-zinc-200 active:scale-95 transition-transform shrink-0 shadow-xs"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        <p className="text-[10.5px] text-zinc-600 dark:text-zinc-500 font-medium hidden sm:block">
-          Click card to flip · Double-click to engage · Arrow keys to navigate
-        </p>
-      </div>
+      <p className="text-[10.5px] text-zinc-600 dark:text-zinc-500 font-medium hidden sm:block">
+        Click card to flip · Double-click to engage · Arrow keys to navigate
+      </p>
     </div>
   );
 };

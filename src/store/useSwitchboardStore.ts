@@ -37,6 +37,11 @@ import {
   ContactSource,
   ProximityPeerDoc,
   AiOpportunitySuggestion,
+  AgentApplicationPackage,
+  AgentActionHistoryEntry,
+  HrTeamMember,
+  HrReviewNote,
+  AgentStatusPostDoc,
   zarToUsd,
 } from '../types/firestore';
 import {
@@ -49,6 +54,7 @@ import {
 } from '../lib/fx';
 import { matchCandidateToAllJobs, matchJobToAllCandidates } from '../services/recruitmentMatcher';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
+import { AI_OUTREACH_DISCLAIMER_TEXT } from '../data/legalDocuments';
 import { emitToast } from '../lib/toast';
 import {
   SEED_AGENTS,
@@ -67,6 +73,9 @@ import {
   SEED_POPPY_CONSENTS,
   SEED_POPPY_AUDIT_LOGS,
   SEED_CONTACTS,
+  SEED_APPLICATION_PACKAGES,
+  SEED_AGENT_HISTORY,
+  SEED_STATUS_POSTS,
   JOHANNESBURG_CENTER,
 } from '../data/seedData';
 import {
@@ -100,6 +109,20 @@ interface PersistedSlice {
   poppyAuditLogs?: PoppyAuditLogEntry[];
   contacts?: PersonalContactDoc[];
   seededContactOwners?: string[];
+  applicationPackages?: AgentApplicationPackage[];
+  agentActionHistory?: AgentActionHistoryEntry[];
+  matchedUserOwners?: string[];
+  statusPosts?: AgentStatusPostDoc[];
+}
+
+function mergeById<T extends { id: string }>(loaded: T[] | undefined, seeded: T[]): T[] {
+  if (!loaded || loaded.length === 0) return seeded;
+  const map = new Map<string, T>();
+  loaded.forEach((item) => map.set(item.id, item));
+  seeded.forEach((item) => {
+    if (!map.has(item.id)) map.set(item.id, item);
+  });
+  return Array.from(map.values());
 }
 
 function loadInitialSlice(): Required<PersistedSlice> {
@@ -107,19 +130,21 @@ function loadInitialSlice(): Required<PersistedSlice> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedSlice>;
-      const loadedAgents = parsed.agents?.length ? parsed.agents : SEED_AGENTS;
-      const mergedAgents = loadedAgents.map((a) => {
+      const mergedAgents = mergeById(parsed.agents, SEED_AGENTS).map((a) => {
+        const cleanEmail = a.agentEmail?.startsWith('pitch@')
+          ? a.agentEmail.replace(/^pitch@/, 'engage@')
+          : a.agentEmail;
         const seed = SEED_AGENTS.find((s) => s.id === a.id);
-        if (seed?.cardStyle && !a.cardStyle) {
-          return { ...a, cardStyle: seed.cardStyle };
+        if (!seed) {
+          return cleanEmail !== a.agentEmail ? { ...a, agentEmail: cleanEmail } : a;
         }
-        return a;
-      });
-      const loadedJobs = parsed.jobs?.length ? parsed.jobs : SEED_JOBS;
-      const mergedJobsMap = new Map<string, JobPostingDoc>();
-      loadedJobs.forEach((j) => mergedJobsMap.set(j.id, j));
-      SEED_JOBS.forEach((j) => {
-        if (!mergedJobsMap.has(j.id)) mergedJobsMap.set(j.id, j);
+        return {
+          ...a,
+          agentEmail: cleanEmail,
+          cardStyle: a.cardStyle || seed.cardStyle,
+          hrTeam: a.hrTeam?.length ? a.hrTeam : seed.hrTeam,
+          careersUrl: a.careersUrl || seed.careersUrl,
+        };
       });
       return {
         agents: mergedAgents,
@@ -132,8 +157,8 @@ function loadInitialSlice(): Required<PersistedSlice> {
         bookings: parsed.bookings?.length ? parsed.bookings : SEED_BOOKINGS,
         emails: parsed.emails?.length ? parsed.emails : SEED_EMAILS,
         voiceSessions: parsed.voiceSessions?.length ? parsed.voiceSessions : SEED_VOICE_SESSIONS,
-        jobs: Array.from(mergedJobsMap.values()),
-        matches: parsed.matches?.length ? parsed.matches : SEED_MATCHES,
+        jobs: mergeById(parsed.jobs, SEED_JOBS),
+        matches: mergeById(parsed.matches, SEED_MATCHES),
         poppyOperations: parsed.poppyOperations?.length ? parsed.poppyOperations : SEED_POPPY_OPERATIONS,
         poppyConsents: parsed.poppyConsents?.length ? parsed.poppyConsents : SEED_POPPY_CONSENTS,
         poppyAuditLogs: parsed.poppyAuditLogs?.length ? parsed.poppyAuditLogs : SEED_POPPY_AUDIT_LOGS,
@@ -141,6 +166,12 @@ function loadInitialSlice(): Required<PersistedSlice> {
         seededContactOwners: parsed.seededContactOwners?.length
           ? parsed.seededContactOwners
           : ['seed-persona-alex'],
+        applicationPackages: mergeById(parsed.applicationPackages, SEED_APPLICATION_PACKAGES),
+        agentActionHistory: mergeById(parsed.agentActionHistory, SEED_AGENT_HISTORY),
+        matchedUserOwners: parsed.matchedUserOwners?.length
+          ? parsed.matchedUserOwners
+          : ['seed-persona-alex'],
+        statusPosts: mergeById(parsed.statusPosts, SEED_STATUS_POSTS),
       };
     }
   } catch {
@@ -164,6 +195,10 @@ function loadInitialSlice(): Required<PersistedSlice> {
     poppyAuditLogs: SEED_POPPY_AUDIT_LOGS,
     contacts: SEED_CONTACTS,
     seededContactOwners: ['seed-persona-alex'],
+    applicationPackages: SEED_APPLICATION_PACKAGES,
+    agentActionHistory: SEED_AGENT_HISTORY,
+    matchedUserOwners: ['seed-persona-alex'],
+    statusPosts: SEED_STATUS_POSTS,
   };
 }
 
@@ -193,6 +228,14 @@ export function useSwitchboardStore() {
   const [poppyAuditLogs, setPoppyAuditLogs] = useState<PoppyAuditLogEntry[]>(initial.poppyAuditLogs);
   const [contacts, setContacts] = useState<PersonalContactDoc[]>(initial.contacts);
   const [seededContactOwners, setSeededContactOwners] = useState<string[]>(initial.seededContactOwners);
+  const [applicationPackages, setApplicationPackages] = useState<AgentApplicationPackage[]>(
+    initial.applicationPackages
+  );
+  const [agentActionHistory, setAgentActionHistory] = useState<AgentActionHistoryEntry[]>(
+    initial.agentActionHistory
+  );
+  const [matchedUserOwners, setMatchedUserOwners] = useState<string[]>(initial.matchedUserOwners);
+  const [statusPosts, setStatusPosts] = useState<AgentStatusPostDoc[]>(initial.statusPosts);
 
   const [aiOpportunities, setAiOpportunities] = useState<AiOpportunitySuggestion[]>([]);
   const [aiOpportunitiesMeta, setAiOpportunitiesMeta] = useState<{
@@ -319,6 +362,10 @@ export function useSwitchboardStore() {
         poppyAuditLogs,
         contacts,
         seededContactOwners,
+        applicationPackages,
+        agentActionHistory,
+        matchedUserOwners,
+        statusPosts,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -342,6 +389,10 @@ export function useSwitchboardStore() {
     poppyAuditLogs,
     contacts,
     seededContactOwners,
+    applicationPackages,
+    agentActionHistory,
+    matchedUserOwners,
+    statusPosts,
   ]);
 
   // Boot connection check, public config & live FX rates
@@ -461,7 +512,7 @@ export function useSwitchboardStore() {
   const currentUser: AuthSessionUser = firebaseUser
     ? {
         uid: firebaseUser.uid,
-        displayName: firebaseUser.displayName || 'Switchboard Operator',
+        displayName: firebaseUser.displayName || 'SWITCHZ Operator',
         email: firebaseUser.email || '',
         mode: 'google',
       }
@@ -487,6 +538,117 @@ export function useSwitchboardStore() {
       return [...cloned, ...prev];
     });
   }, [currentUser.uid, seededContactOwners]);
+
+  // Auto-provision personal agent & auto-match to OpenAI + open employer vacancies on user signup/login
+  useEffect(() => {
+    const uid = currentUser.uid;
+    if (!uid || uid === 'seed-persona-alex' || matchedUserOwners.includes(uid)) return;
+    setMatchedUserOwners((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+
+    const now = new Date().toISOString();
+    let userAgent = agents.find(
+      (a) => a.ownerUid === uid && a.type === 'persona' && a.handle !== '911.emergency.agent'
+    );
+
+    if (!userAgent) {
+      const slug =
+        currentUser.displayName
+          .toLowerCase()
+          .replace(/\(.*?\)/g, '')
+          .replace(/[^a-z0-9]+/g, '.')
+          .replace(/^\.+|\.+$/g, '')
+          .slice(0, 22) || `member.${uid.slice(0, 6)}`;
+      const handle = `${slug}.agent`;
+      userAgent = {
+        id: `agent_user_${uid.slice(0, 12)}`,
+        handle,
+        ownerUid: uid,
+        displayName: currentUser.displayName.replace(/\s*\(.*?\)\s*/g, '').trim() || 'SWITCHZ Member',
+        roleTitle: 'AI Product, Cloud & Growth Specialist',
+        organization: 'Verified Human Member',
+        type: 'persona',
+        agentRoleCategory: 'job_seeker',
+        poppySubdomain: `${slug.replace(/\./g, '')}.poppy.switchboard.agent`,
+        poppyScopes: ['profile:read', 'cv:read', 'apply', 'calendar'],
+        cvSummary: {
+          headline: 'AI Product, Engineering & Growth Specialist',
+          yearsExp: 6,
+          parsedSkills: ['TypeScript', 'React', 'Product Strategy', 'SQL', 'AI Agents'],
+          preferredRoles: ['Staff Product & AI Agent Reliability Engineer (Remote)', 'Solutions Architect'],
+          salaryMinZAR: 95000,
+          remoteOnly: true,
+          blindScreening: false,
+        },
+        verified: true,
+        popiaConsentActive: true,
+        voiceNumber: `+27 87 243 ${Math.floor(500 + Math.random() * 499)}`,
+        shortcode: String(Math.floor(500 + Math.random() * 499)),
+        agentEmail: `engage@${handle}`,
+        mcpEndpoint: `https://switchboard.agent/mcp/${handle}`,
+        linkedinUrl: `linkedin.com/in/${slug.replace(/\./g, '')}`,
+        brandColor: '#0284c7',
+        avatarVariant: 'persona',
+        imageUrl: AGENT_IMAGE_PRESETS[0]?.src,
+        did: `did:switchboard:${uid.slice(0, 12)}`,
+        protocol: 'Poppy v1.0 / A2A / MCP',
+        interactEndpoint: `https://switchboard.agent/u/${slug}`,
+        authMethods: 'OAuth2 / Passkey / Poppy',
+        tagline: 'Free Standard Human Agent · Auto-matching open vacancies.',
+        summary: `Auto-provisioned personal career agent for ${currentUser.displayName}, synced on signup to match open employer roles.`,
+        skills: ['TypeScript', 'Product Strategy', 'SQL', 'AI Agents'],
+        guardrails: {
+          maxAutoSpendZAR: 0,
+          minDiscountPct: 0,
+          blockedCategories: ['unverified-spam'],
+          workingHoursSAST: '08:00-18:00',
+          meetingBufferMins: 15,
+        },
+        walletAddresses: {},
+        geoLocation: {
+          lat: userLocation.lat,
+          lng: userLocation.lng,
+          radiusMeters: 250,
+          label: locationLabel || 'Global Remote Candidate Mesh',
+        },
+        discoverableByPassersby: true,
+        passerbyIncentive: 'Open to Interviews · Auto-Matched on Signup',
+        calendarSyncEnabled: true,
+        gmailBridgeEnabled: true,
+        createdAt: now,
+      };
+      setAgents((prev) => [userAgent!, ...prev]);
+    }
+
+    const computed = matchCandidateToAllJobs(userAgent, jobs, matches).slice(0, 12);
+    if (computed.length > 0) {
+      setMatches((prev) => {
+        const map = new Map<string, RecruitmentMatchDoc>();
+        prev.forEach((m) => map.set(m.id, m));
+        computed.forEach((m) => map.set(m.id, m));
+        return Array.from(map.values());
+      });
+      const topHit = computed[0];
+      setAgentActionHistory((prev) => [
+        {
+          id: `hist_signup_${Date.now()}`,
+          agentId: userAgent!.id,
+          agentHandle: userAgent!.handle,
+          actorType: 'personal_agent',
+          actorName: `${userAgent!.displayName} Personal Agent`,
+          actionType: 'AUTO_MATCH',
+          title: `Signup Auto-Match Completed (${computed.length} Roles Scored)`,
+          details: `On account sign-in, your personal agent automatically matched against OpenAI & verified employer agents. Top match: ${topHit.jobTitle} (${topHit.score}% fit).`,
+          relatedJobId: topHit.jobId,
+          relatedJobTitle: topHit.jobTitle,
+          targetHandle: topHit.companyAgentHandle,
+          channel: 'Signup Auto-Matcher',
+          timestamp: now,
+        },
+        ...prev,
+      ]);
+      emitToast(`Welcome! Auto-matched ${userAgent.handle} to ${computed.length} open vacancies`, 'success');
+    }
+  }, [currentUser.uid, currentUser.displayName, matchedUserOwners, agents, jobs, matches, userLocation.lat, userLocation.lng, locationLabel]);
 
   const loginGoogle = useCallback(async () => {
     const res = await signInWithGoogleWorkspace();
@@ -572,8 +734,24 @@ export function useSwitchboardStore() {
     [firebaseUser, firestoreOnline]
   );
 
+  const createStatusPost = useCallback(
+    (input: Omit<AgentStatusPostDoc, 'id' | 'createdAt'>) => {
+      const record: AgentStatusPostDoc = {
+        ...input,
+        id: `status_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        createdAt: new Date().toISOString(),
+      };
+      setStatusPosts((prev) => [record, ...prev].slice(0, 60));
+      return record;
+    },
+    []
+  );
+
   const saveNegotiation = useCallback(
     async (neg: NegotiationDoc) => {
+      const alreadyAccepted = negotiations.some(
+        (n) => n.id === neg.id && (n.status === 'OFFER_ACCEPTED' || n.status === 'SETTLED')
+      );
       setNegotiations((prev) => {
         const idx = prev.findIndex((n) => n.id === neg.id);
         if (idx >= 0) {
@@ -583,6 +761,44 @@ export function useSwitchboardStore() {
         }
         return [neg, ...prev];
       });
+
+      if (!alreadyAccepted && neg.status === 'OFFER_ACCEPTED' && neg.agreedPriceZAR) {
+        const initiatorAgent = agents.find((a) => a.handle === neg.initiatorHandle);
+        const targetAgent = agents.find((a) => a.handle === neg.targetHandle);
+        const savedPct =
+          neg.stickerPriceZAR > 0
+            ? Number(
+                (
+                  (Math.max(0, neg.stickerPriceZAR - neg.agreedPriceZAR) / neg.stickerPriceZAR) *
+                  100
+                ).toFixed(1)
+              )
+            : 0;
+        const poster = targetAgent || initiatorAgent;
+        const counterparty = targetAgent ? initiatorAgent : targetAgent;
+        if (poster) {
+          createStatusPost({
+            agentId: poster.id,
+            agentHandle: poster.handle,
+            authorName: poster.displayName,
+            authorOrg: poster.organization,
+            authorType: poster.type,
+            category: 'deal_approved',
+            headline: `Deal Approved with ${counterparty?.displayName || neg.initiatorHandle}`,
+            body: `Signed off commercial A2A proposal on ${poster.handle} at ${
+              savedPct > 0 ? `${savedPct}% below initial quote` : 'agreed terms'
+            }.`,
+            accentColor: '#007BFF',
+            partnerName: counterparty?.displayName || neg.initiatorHandle,
+            partnerHandle: counterparty?.handle || neg.initiatorHandle,
+            dealValueZAR: neg.agreedPriceZAR,
+            savingsLabel: savedPct > 0 ? `Saved ${savedPct}% · Deal Signed Off` : 'Deal Approved',
+            ctaLabel: 'View Deal & Engage',
+            autoGenerated: true,
+          });
+        }
+      }
+
       if (db && firebaseUser && firestoreOnline) {
         try {
           await setDoc(doc(db, 'negotiations', neg.id), neg);
@@ -591,7 +807,7 @@ export function useSwitchboardStore() {
         }
       }
     },
-    [firebaseUser, firestoreOnline]
+    [agents, createStatusPost, firebaseUser, firestoreOnline, negotiations]
   );
 
   const settleDeal = useCallback(
@@ -634,6 +850,32 @@ export function useSwitchboardStore() {
         prev.map((n) => (n.id === params.sessionId ? { ...n, status: 'SETTLED' } : n))
       );
 
+      const buyerAgent = agents.find((a) => a.handle === params.buyerHandle);
+      const sellerAgent = agents.find((a) => a.handle === params.sellerHandle);
+      const poster = buyerAgent || sellerAgent;
+      if (poster) {
+        createStatusPost({
+          agentId: poster.id,
+          agentHandle: poster.handle,
+          authorName: poster.displayName,
+          authorOrg: poster.organization,
+          authorType: poster.type,
+          category: 'deal_approved',
+          headline: `Deal Signed Off with ${sellerAgent?.displayName || params.sellerHandle}`,
+          body: `Approved and settled deal pitched by ${sellerAgent?.displayName || params.sellerHandle} via ${params.rail.toUpperCase()} settlement.`,
+          accentColor: '#007BFF',
+          partnerName: sellerAgent?.displayName || params.sellerHandle,
+          partnerHandle: sellerAgent?.handle || params.sellerHandle,
+          dealValueZAR: params.agreedPriceZAR,
+          savingsLabel:
+            savedPct > 0
+              ? `Saved ${savedPct}% · ${params.rail.toUpperCase()} Settled`
+              : `${params.rail.toUpperCase()} Settled`,
+          ctaLabel: 'View Deal & Engage',
+          autoGenerated: true,
+        });
+      }
+
       if (db && firebaseUser && firestoreOnline) {
         try {
           await setDoc(doc(db, 'settlements', tx.id), tx);
@@ -643,7 +885,7 @@ export function useSwitchboardStore() {
       }
       return tx;
     },
-    [currentUser.uid, firebaseUser, firestoreOnline]
+    [agents, createStatusPost, currentUser.uid, firebaseUser, firestoreOnline]
   );
 
   const claimHandleRecord = useCallback((record: AgentHandleDoc) => {
@@ -844,17 +1086,48 @@ export function useSwitchboardStore() {
     );
   }, []);
 
-  const upsertRecruitmentMatch = useCallback((match: RecruitmentMatchDoc) => {
-    setMatches((prev) => {
-      const idx = prev.findIndex((m) => m.id === match.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = match;
-        return copy;
+  const upsertRecruitmentMatch = useCallback(
+    (match: RecruitmentMatchDoc) => {
+      const wasHired = matches.some((m) => m.id === match.id && m.status === 'hired');
+      setMatches((prev) => {
+        const idx = prev.findIndex((m) => m.id === match.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = match;
+          return copy;
+        }
+        return [match, ...prev];
+      });
+      if (!wasHired && match.status === 'hired') {
+        const seeker = agents.find((a) => a.handle === match.seekerHandle);
+        const matchedJob = jobs.find((j) => j.id === match.jobId);
+        const companyAgent = agents.find((a) => a.handle === match.companyAgentHandle);
+        const resolvedCompanyName =
+          matchedJob?.companyName || companyAgent?.displayName || match.companyAgentHandle;
+        if (seeker) {
+          createStatusPost({
+            agentId: seeker.id,
+            agentHandle: seeker.handle,
+            authorName: seeker.displayName,
+            authorOrg: seeker.organization,
+            authorType: seeker.type,
+            category: 'hired',
+            headline: `Hired as ${match.jobTitle} at ${resolvedCompanyName}!`,
+            body: `${resolvedCompanyName} and ${seeker.displayName} confirmed onboarding via Poppy v1.0 protocol.`,
+            accentColor: '#0B4F9C',
+            partnerName: resolvedCompanyName,
+            partnerHandle: match.companyAgentHandle,
+            roleTitle: match.jobTitle,
+            regionZone: matchedJob?.regionZone || matchedJob?.location,
+            savingsLabel: 'Auto-Posted · Hired via Poppy',
+            ctaLabel: 'Congratulate & Engage',
+            autoGenerated: true,
+          });
+        }
       }
-      return [match, ...prev];
-    });
-  }, []);
+    },
+    [agents, createStatusPost, jobs, matches]
+  );
 
   const upsertRecruitmentMatchesBulk = useCallback((incoming: RecruitmentMatchDoc[]) => {
     if (!incoming.length) return;
@@ -893,6 +1166,34 @@ export function useSwitchboardStore() {
               : m
           )
         );
+        if (matchUpdate.nextStatus === 'hired') {
+          const hit = matches.find((m) => m.id === matchUpdate.matchId);
+          const seeker = hit ? agents.find((a) => a.handle === hit.seekerHandle) : undefined;
+          const job = hit ? jobs.find((j) => j.id === hit.jobId) : undefined;
+          const compAgent = hit ? agents.find((a) => a.handle === hit.companyAgentHandle) : undefined;
+          const resolvedCompanyName =
+            job?.companyName || compAgent?.displayName || hit?.companyAgentHandle || 'Hiring Company';
+          if (hit && seeker) {
+            createStatusPost({
+              agentId: seeker.id,
+              agentHandle: seeker.handle,
+              authorName: seeker.displayName,
+              authorOrg: seeker.organization,
+              authorType: seeker.type,
+              category: 'hired',
+              headline: `Hired as ${hit.jobTitle} at ${resolvedCompanyName}!`,
+              body: `Offer accepted and countersigned via Poppy Operations v3 (${reference}).`,
+              accentColor: '#0B4F9C',
+              partnerName: resolvedCompanyName,
+              partnerHandle: job?.companyAgentHandle || hit.companyAgentHandle,
+              roleTitle: hit.jobTitle,
+              regionZone: job?.regionZone || job?.location,
+              savingsLabel: 'Auto-Posted · Offer Signed Off',
+              ctaLabel: 'Congratulate & Engage',
+              autoGenerated: true,
+            });
+          }
+        }
       }
       const targetOp = poppyOperations.find((o) => o.operation_id === opId);
       logPoppyAudit({
@@ -906,7 +1207,7 @@ export function useSwitchboardStore() {
         popiaMinimized: true,
       });
     },
-    [logPoppyAudit, poppyOperations]
+    [agents, createStatusPost, jobs, logPoppyAudit, matches, poppyOperations]
   );
 
   const declinePoppyOperation = useCallback(
@@ -1016,6 +1317,473 @@ export function useSwitchboardStore() {
       });
     },
     [agents, logPoppyAudit]
+  );
+
+  const logAgentHistory = useCallback(
+    (entry: Omit<AgentActionHistoryEntry, 'id' | 'timestamp'>) => {
+      const record: AgentActionHistoryEntry = {
+        ...entry,
+        id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+      };
+      setAgentActionHistory((prev) => [record, ...prev].slice(0, 120));
+      return record;
+    },
+    []
+  );
+
+  const tailorAndSubmitApplication = useCallback(
+    async (
+      seeker: AgentDoc,
+      job: JobPostingDoc,
+      existingMatch?: RecruitmentMatchDoc
+    ): Promise<AgentApplicationPackage | null> => {
+      try {
+        const res = await fetch('/api/recruitment/tailor-application', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seeker, job, existingMatch }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.cvDoc || !data?.coverLetterDoc) {
+          emitToast(data?.error || 'Failed to tailor CV and cover letter', 'warning');
+          return null;
+        }
+
+        const now = new Date().toISOString();
+        const pkgId = `pkg_${job.id}_${seeker.id}_${Date.now().toString(36)}`;
+        const score = existingMatch?.score || 89;
+
+        const pkg: AgentApplicationPackage = {
+          id: pkgId,
+          jobId: job.id,
+          jobTitle: job.title,
+          companyAgentHandle: job.companyAgentHandle,
+          companyName: job.companyName,
+          regionZone: job.regionZone || job.location,
+          seekerAgentId: seeker.id,
+          seekerHandle: seeker.handle,
+          seekerName: seeker.displayName,
+          seekerEmail: seeker.agentEmail,
+          linkedinUrl: seeker.linkedinUrl,
+          matchScore: score,
+          status: 'applied',
+          cvDoc: data.cvDoc,
+          coverLetterDoc: data.coverLetterDoc,
+          interviewPrepQuestions: Array.isArray(data.interviewPrepQuestions)
+            ? data.interviewPrepQuestions
+            : [],
+          hrNotes: [],
+          reviewedByHr: [],
+          submittedVia: ['Poppy v1.0 Operations', 'AgentMail Dispatch'],
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        // 1. Save Application Package
+        setApplicationPackages((prev) => [
+          pkg,
+          ...prev.filter((p) => !(p.jobId === job.id && p.seekerHandle === seeker.handle)),
+        ]);
+
+        // 2. Update candidate CV profile formatted to the job specs
+        if (data.updatedCvSummary) {
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id === seeker.id
+                ? {
+                    ...a,
+                    agentRoleCategory: a.agentRoleCategory || 'job_seeker',
+                    cvSummary: data.updatedCvSummary,
+                    skills: Array.isArray(data.updatedCvSummary.parsedSkills)
+                      ? data.updatedCvSummary.parsedSkills.slice(0, 4)
+                      : a.skills,
+                  }
+                : a
+            )
+          );
+        }
+
+        // 3. Upsert Match record with applied status
+        const opId = `op_tailor_${Date.now()}`;
+        const matchId = existingMatch?.id || `match_${job.id}_${seeker.id}`;
+        const nextMatch: RecruitmentMatchDoc = {
+          id: matchId,
+          jobId: job.id,
+          jobTitle: job.title,
+          companyAgentHandle: job.companyAgentHandle,
+          seekerHandle: seeker.handle,
+          seekerName: seeker.displayName,
+          score,
+          factors: existingMatch?.factors || {
+            skillsOverlap: 91,
+            experienceFit: 89,
+            compensationFit: 90,
+            locationCultureFit: job.remoteMode === 'Remote' ? 96 : 89,
+          },
+          explanation: `Personal agent tailored CV to ${job.companyName} specs, drafted cover letter & submitted dossier.`,
+          strengths:
+            data.cvDoc.matchedKeywords?.length > 0
+              ? data.cvDoc.matchedKeywords
+              : existingMatch?.strengths || job.requiredSkills.slice(0, 2),
+          gaps: data.cvDoc.missingKeywords || [],
+          blindMode: Boolean(seeker.cvSummary?.blindScreening),
+          status: 'applied',
+          operationId: opId,
+          interviewPitch: data.coverLetterDoc.openingParagraph,
+          updatedAt: now,
+        };
+        setMatches((prev) => {
+          const idx = prev.findIndex((m) => m.id === nextMatch.id);
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = nextMatch;
+            return copy;
+          }
+          return [nextMatch, ...prev];
+        });
+
+        // 4. Record Poppy Operations receipt & Audit Log
+        setPoppyOperations((prev) => [
+          {
+            operation_id: opId,
+            revision: `rev_${Math.random().toString(36).slice(2, 10)}`,
+            actionType: 'apply_job',
+            summary: `Tailor CV & Submit Application: ${seeker.displayName} -> ${job.title} (${job.companyName})`,
+            terms: {
+              jobId: job.id,
+              regionZone: job.regionZone || job.location,
+              tailoredEngine: data.engine || 'gemini-4-hydrogen',
+              packageId: pkgId,
+            },
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            status: 'performed',
+            approver: 'agent',
+            reference: `poppy_app_${Date.now().toString().slice(-6)}`,
+            createdAt: now,
+            executedAt: now,
+            targetHandle: job.companyAgentHandle,
+            actorHandle: seeker.handle,
+          },
+          ...prev,
+        ]);
+
+        logPoppyAudit({
+          actorHandle: seeker.handle,
+          targetHandle: job.companyAgentHandle,
+          action: 'CV_TAILORED_AND_APPLIED',
+          protocol: `Poppy v1.0 (${data.engine || 'gemini-4-hydrogen'})`,
+          operationId: opId,
+          details: `Updated & formatted CV + custom Cover Letter for ${job.title} (${job.regionZone || job.location}).`,
+          popiaMinimized: true,
+        });
+
+        // 5. Save full transparent action trail on both personal & company agent histories
+        const companyAgent = agents.find((a) => a.handle === job.companyAgentHandle);
+        setAgentActionHistory((prev) => [
+          {
+            id: `hist_app_${Date.now()}_3`,
+            agentId: seeker.id,
+            agentHandle: seeker.handle,
+            actorType: 'personal_agent',
+            actorName: `${seeker.displayName} Personal Agent`,
+            actionType: 'APPLICATION_SUBMITTED',
+            title: `Submitted Tailored CV & Cover Letter to ${job.companyName}`,
+            details: `Dispatched spec-formatted CV + bespoke Cover Letter for "${job.title}" (${job.regionZone || job.location}) via Poppy Operations & AgentMail.`,
+            relatedJobId: job.id,
+            relatedJobTitle: job.title,
+            relatedPackageId: pkgId,
+            targetHandle: job.companyAgentHandle,
+            channel: 'Poppy v1.0 + AgentMail',
+            timestamp: now,
+          },
+          {
+            id: `hist_app_${Date.now()}_2`,
+            agentId: seeker.id,
+            agentHandle: seeker.handle,
+            actorType: 'personal_agent',
+            actorName: `${seeker.displayName} Personal Agent`,
+            actionType: 'COVER_LETTER_GENERATED',
+            title: `Drafted Cover Letter for ${job.title}`,
+            details: `Personalized cover letter highlighting ${data.cvDoc.matchedKeywords?.slice(0, 3).join(', ') || 'role competencies'} addressed to ${job.companyName} hiring committee.`,
+            relatedJobId: job.id,
+            relatedJobTitle: job.title,
+            relatedPackageId: pkgId,
+            targetHandle: job.companyAgentHandle,
+            channel: data.engine || 'gemini-4-hydrogen',
+            timestamp: now,
+          },
+          {
+            id: `hist_app_${Date.now()}_1`,
+            agentId: seeker.id,
+            agentHandle: seeker.handle,
+            actorType: 'personal_agent',
+            actorName: `${seeker.displayName} Personal Agent`,
+            actionType: 'CV_FORMATTED',
+            title: `Updated & Formatted CV to ${job.companyName} Job Specs`,
+            details: `Aligned summary & experience highlights to ${job.requiredSkills.join(', ')}; saved downloadable PDF & DOCX versions.`,
+            relatedJobId: job.id,
+            relatedJobTitle: job.title,
+            relatedPackageId: pkgId,
+            targetHandle: job.companyAgentHandle,
+            channel: data.engine || 'gemini-4-hydrogen',
+            timestamp: now,
+          },
+          ...(companyAgent
+            ? [
+                {
+                  id: `hist_biz_${Date.now()}`,
+                  agentId: companyAgent.id,
+                  agentHandle: companyAgent.handle,
+                  actorType: 'company_agent' as const,
+                  actorName: `${job.companyName} Talent Agent`,
+                  actionType: 'APPLICATION_SUBMITTED' as const,
+                  title: `Received Tailored Dossier: ${seeker.displayName} (${score}% Fit)`,
+                  details: `Intake logged for "${job.title}" (${job.regionZone || job.location}). Tailored CV & Cover Letter ready for HR review.`,
+                  relatedJobId: job.id,
+                  relatedJobTitle: job.title,
+                  relatedPackageId: pkgId,
+                  targetHandle: seeker.handle,
+                  channel: 'HR Intake Pipeline',
+                  timestamp: now,
+                },
+              ]
+            : []),
+          ...prev,
+        ]);
+
+        // 6. Non-blocking AgentMail transmission
+        fetch('/api/agentmail/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inbox: seeker.agentEmail,
+            to: companyAgent?.agentEmail || 'exchagent@agentmail.to',
+            subject: data.coverLetterDoc.subject,
+            text: `${data.coverLetterDoc.openingParagraph}\n\n${data.coverLetterDoc.bodyParagraphs.join('\n\n')}\n\n${data.coverLetterDoc.closingParagraph}\n\n${data.coverLetterDoc.signatureContact}\n\n---\n${AI_OUTREACH_DISCLAIMER_TEXT}`,
+          }),
+        }).catch(() => {});
+
+        emitToast(`Agent tailored CV & Cover Letter and applied to ${job.companyName}!`, 'success');
+        return pkg;
+      } catch (err) {
+        console.warn('Tailor & apply failed:', err);
+        emitToast('Unable to reach tailoring service right now', 'warning');
+        return null;
+      }
+    },
+    [agents, logPoppyAudit]
+  );
+
+  const recordHrDocView = useCallback(
+    (packageId: string, reviewer: { name: string; role: string }) => {
+      const now = new Date().toISOString();
+      let targetPkg: AgentApplicationPackage | undefined;
+      setApplicationPackages((prev) =>
+        prev.map((pkg) => {
+          if (pkg.id !== packageId) return pkg;
+          targetPkg = pkg;
+          const alreadyRecent = pkg.reviewedByHr.some(
+            (r) => r.name === reviewer.name && Date.now() - new Date(r.viewedAt).getTime() < 60_000
+          );
+          if (alreadyRecent) return pkg;
+          return {
+            ...pkg,
+            reviewedByHr: [{ name: reviewer.name, role: reviewer.role, viewedAt: now }, ...pkg.reviewedByHr].slice(0, 15),
+          };
+        })
+      );
+      if (targetPkg) {
+        const companyAgent = agents.find((a) => a.handle === targetPkg!.companyAgentHandle);
+        if (companyAgent) {
+          logAgentHistory({
+            agentId: companyAgent.id,
+            agentHandle: companyAgent.handle,
+            actorType: 'hr_staff',
+            actorName: `${reviewer.name} (${reviewer.role})`,
+            actionType: 'HR_VIEWED_DOCS',
+            title: `HR Inspected Dossier: ${targetPkg.seekerName}`,
+            details: `Viewed tailored CV & Cover Letter for "${targetPkg.jobTitle}".`,
+            relatedJobId: targetPkg.jobId,
+            relatedJobTitle: targetPkg.jobTitle,
+            relatedPackageId: packageId,
+            targetHandle: targetPkg.seekerHandle,
+            channel: 'HR Staff Portal',
+          });
+        }
+      }
+    },
+    [agents, logAgentHistory]
+  );
+
+  const addHrReviewNote = useCallback(
+    (packageId: string, authorName: string, authorRole: string, note: string) => {
+      const cleanNote = note.trim();
+      if (!cleanNote) return;
+      const now = new Date().toISOString();
+      const newNote: HrReviewNote = {
+        id: `hrn_${Date.now()}`,
+        authorName,
+        authorRole,
+        note: cleanNote,
+        createdAt: now,
+      };
+      let targetPkg: AgentApplicationPackage | undefined;
+      setApplicationPackages((prev) =>
+        prev.map((pkg) => {
+          if (pkg.id !== packageId) return pkg;
+          targetPkg = pkg;
+          return {
+            ...pkg,
+            hrNotes: [newNote, ...pkg.hrNotes],
+            updatedAt: now,
+          };
+        })
+      );
+      if (targetPkg) {
+        const companyAgent = agents.find((a) => a.handle === targetPkg!.companyAgentHandle);
+        if (companyAgent) {
+          logAgentHistory({
+            agentId: companyAgent.id,
+            agentHandle: companyAgent.handle,
+            actorType: 'hr_staff',
+            actorName: `${authorName} (${authorRole})`,
+            actionType: 'HR_NOTE_ADDED',
+            title: `HR Note Added on ${targetPkg.seekerName}`,
+            details: cleanNote,
+            relatedJobId: targetPkg.jobId,
+            relatedJobTitle: targetPkg.jobTitle,
+            relatedPackageId: packageId,
+            targetHandle: targetPkg.seekerHandle,
+            channel: 'HR Staff Portal',
+          });
+        }
+      }
+      emitToast('HR review note saved', 'success');
+    },
+    [agents, logAgentHistory]
+  );
+
+  const updateApplicationStatus = useCallback(
+    (
+      packageId: string,
+      nextStatus: AgentApplicationPackage['status'],
+      reviewer?: { name: string; role: string }
+    ) => {
+      const now = new Date().toISOString();
+      let targetPkg: AgentApplicationPackage | undefined;
+      setApplicationPackages((prev) =>
+        prev.map((pkg) => {
+          if (pkg.id !== packageId) return pkg;
+          targetPkg = pkg;
+          return { ...pkg, status: nextStatus, updatedAt: now };
+        })
+      );
+      if (targetPkg) {
+        setMatches((prev) =>
+          prev.map((m) =>
+            m.jobId === targetPkg!.jobId && m.seekerHandle === targetPkg!.seekerHandle
+              ? { ...m, status: nextStatus, updatedAt: now }
+              : m
+          )
+        );
+        const companyAgent = agents.find((a) => a.handle === targetPkg!.companyAgentHandle);
+        const actor = reviewer ? `${reviewer.name} (${reviewer.role})` : 'HR Recruiting Team';
+        if (companyAgent) {
+          logAgentHistory({
+            agentId: companyAgent.id,
+            agentHandle: companyAgent.handle,
+            actorType: 'hr_staff',
+            actorName: actor,
+            actionType: 'HR_SHORTLISTED',
+            title: `Updated ${targetPkg.seekerName} -> ${nextStatus.toUpperCase()}`,
+            details: `Changed candidate stage for "${targetPkg.jobTitle}" (${targetPkg.regionZone}) to ${nextStatus}.`,
+            relatedJobId: targetPkg.jobId,
+            relatedJobTitle: targetPkg.jobTitle,
+            relatedPackageId: packageId,
+            targetHandle: targetPkg.seekerHandle,
+            channel: 'HR Staff Portal',
+          });
+        }
+          logAgentHistory({
+            agentId: targetPkg.seekerAgentId,
+            agentHandle: targetPkg.seekerHandle,
+            actorType: 'company_agent',
+            actorName: `${targetPkg.companyName} HR Desk`,
+            actionType: 'HR_SHORTLISTED',
+            title: `Application Update from ${targetPkg.companyName}: ${nextStatus.toUpperCase()}`,
+            details: `${actor} moved your application for "${targetPkg.jobTitle}" to "${nextStatus}".`,
+            relatedJobId: targetPkg.jobId,
+            relatedJobTitle: targetPkg.jobTitle,
+            relatedPackageId: packageId,
+            targetHandle: targetPkg.companyAgentHandle,
+            channel: 'Poppy HR Status Sync',
+          });
+
+          if (nextStatus === 'hired') {
+            createStatusPost({
+              agentId: targetPkg.seekerAgentId,
+              agentHandle: targetPkg.seekerHandle,
+              authorName: targetPkg.seekerName,
+              authorOrg: `${targetPkg.companyName} (New Hire)`,
+              authorType: 'persona',
+              category: 'hired',
+              headline: `Hired as ${targetPkg.jobTitle} at ${targetPkg.companyName}!`,
+              body: `${actor} signed off on ${targetPkg.seekerName}'s hire for ${targetPkg.jobTitle} (${targetPkg.regionZone}).`,
+              accentColor: '#0B4F9C',
+              partnerName: targetPkg.companyName,
+              partnerHandle: targetPkg.companyAgentHandle,
+              roleTitle: targetPkg.jobTitle,
+              regionZone: targetPkg.regionZone,
+              savingsLabel: 'Auto-Posted · Hired via Poppy',
+              ctaLabel: 'Congratulate & Engage',
+              autoGenerated: true,
+            });
+          }
+      }
+      emitToast(`Applicant status updated to ${nextStatus}`, 'success');
+    },
+    [agents, createStatusPost, logAgentHistory]
+  );
+
+  const addHrTeamMember = useCallback(
+    (
+      companyAgentId: string,
+      member: Omit<HrTeamMember, 'id' | 'addedAt'>
+    ) => {
+      const now = new Date().toISOString();
+      const created: HrTeamMember = {
+        ...member,
+        id: `hr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        addedAt: now,
+      };
+      let compHandle = '';
+      setAgents((prev) =>
+        prev.map((a) => {
+          if (a.id !== companyAgentId) return a;
+          compHandle = a.handle;
+          return {
+            ...a,
+            hrTeam: [...(a.hrTeam || []), created],
+          };
+        })
+      );
+      if (compHandle) {
+        logAgentHistory({
+          agentId: companyAgentId,
+          agentHandle: compHandle,
+          actorType: 'hr_staff',
+          actorName: created.name,
+          actionType: 'HR_TEAM_UPDATED',
+          title: `Authorized HR Access Granted: ${created.name}`,
+          details: `Added ${created.name} (${created.roleTitle}) with permissions: ${created.permissions.join(', ')}.`,
+          channel: 'HR Access Roster',
+        });
+      }
+      emitToast(`Granted HR portal access to ${created.name}`, 'success');
+      return created;
+    },
+    [logAgentHistory]
   );
 
   const userContacts = contacts.filter((c) => c.ownerUid === currentUser.uid);
@@ -1208,6 +1976,10 @@ export function useSwitchboardStore() {
     setPoppyAuditLogs(SEED_POPPY_AUDIT_LOGS);
     setContacts(SEED_CONTACTS);
     setSeededContactOwners(['seed-persona-alex']);
+    setApplicationPackages(SEED_APPLICATION_PACKAGES);
+    setAgentActionHistory(SEED_AGENT_HISTORY);
+    setMatchedUserOwners(['seed-persona-alex']);
+    setStatusPosts(SEED_STATUS_POSTS);
     setAiOpportunities([]);
     setAiOpportunitiesMeta(null);
     setAiOpportunitiesError(null);
@@ -1231,6 +2003,9 @@ export function useSwitchboardStore() {
     poppyOperations,
     poppyConsents,
     poppyAuditLogs,
+    applicationPackages,
+    agentActionHistory,
+    statusPosts,
     contacts: userContacts,
     aiOpportunities,
     aiOpportunitiesMeta,
@@ -1288,6 +2063,13 @@ export function useSwitchboardStore() {
     updateCandidateVideo,
     addPreScreenReview,
     logPoppyAudit,
+    logAgentHistory,
+    tailorAndSubmitApplication,
+    recordHrDocView,
+    addHrReviewNote,
+    updateApplicationStatus,
+    addHrTeamMember,
+    createStatusPost,
     saveContact,
     updateContact,
     toggleContactFavorite,

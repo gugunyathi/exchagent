@@ -157,6 +157,26 @@ export interface AgentCardCustomization {
   borderAccentColor?: string;
 }
 
+export interface HrTeamMember {
+  id: string;
+  name: string;
+  roleTitle: string;
+  email: string;
+  agentHandle: string;
+  permissions: Array<'view_docs' | 'shortlist' | 'interview' | 'offer' | 'manage_team'>;
+  addedAt: string;
+}
+
+export interface AgentMediaItem {
+  id: string;
+  kind: 'image' | 'video' | 'motion_image';
+  url: string;
+  thumbnailUrl?: string;
+  title?: string;
+  durationSeconds?: number;
+  caption?: string;
+}
+
 export interface AgentDoc {
   id: string;
   handle: string;
@@ -171,6 +191,7 @@ export interface AgentDoc {
   cvSummary?: SeekerCvProfile;
   interviewVideo?: InterviewVideoRecord;
   careersUrl?: string;
+  hrTeam?: HrTeamMember[];
   verified: boolean;
   popiaConsentActive: boolean;
   voiceNumber: string;
@@ -183,6 +204,8 @@ export interface AgentDoc {
   brandLogoCode?: string;
   avatarVariant?: 'chris' | 'alex' | 'thandi' | 'persona';
   imageUrl?: string;
+  introVideoUrl?: string;
+  mediaGallery?: AgentMediaItem[];
   cardStyle?: AgentCardCustomization;
   did?: string;
   protocol?: string;
@@ -371,11 +394,15 @@ export interface JobPostingDoc {
   companyAgentHandle: string;
   companyName: string;
   title: string;
+  department?: string;
   location: string;
+  regionZone?: string;
+  country?: string;
   remoteMode: 'Remote' | 'Hybrid' | 'On-Site';
   salaryRangeZAR: [number, number];
   requiredSkills: string[];
   minYearsExp: number;
+  description?: string;
   status: 'OPEN' | 'PAUSED' | 'FILLED';
   autonomyLevel: 'approve_each' | 'shortlist_auto_offer_approve' | 'blind_screening_first';
   careersUrl: string;
@@ -387,6 +414,111 @@ export interface JobPostingDoc {
     location: number;
   };
   createdAt: string;
+}
+
+export interface TailoredCvDocument {
+  candidateName: string;
+  candidateHandle: string;
+  email: string;
+  linkedinUrl?: string;
+  location: string;
+  targetRole: string;
+  targetCompany: string;
+  targetRegion: string;
+  professionalSummary: string;
+  coreCompetencies: string[];
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  experienceHighlights: Array<{
+    role: string;
+    org: string;
+    period: string;
+    bullets: string[];
+  }>;
+  education: string[];
+  certifications: string[];
+  formattedAt: string;
+}
+
+export interface TailoredCoverLetterDocument {
+  date: string;
+  recipientName: string;
+  recipientTitle: string;
+  companyName: string;
+  companyHandle: string;
+  subject: string;
+  greeting: string;
+  openingParagraph: string;
+  bodyParagraphs: string[];
+  closingParagraph: string;
+  signatureName: string;
+  signatureContact: string;
+}
+
+export interface HrReviewNote {
+  id: string;
+  authorName: string;
+  authorRole: string;
+  note: string;
+  createdAt: string;
+}
+
+export interface AgentApplicationPackage {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  companyAgentHandle: string;
+  companyName: string;
+  regionZone: string;
+  seekerAgentId: string;
+  seekerHandle: string;
+  seekerName: string;
+  seekerEmail: string;
+  linkedinUrl?: string;
+  matchScore: number;
+  status: 'applied' | 'screening' | 'shortlisted' | 'interview' | 'offer' | 'hired' | 'rejected';
+  cvDoc: TailoredCvDocument;
+  coverLetterDoc: TailoredCoverLetterDocument;
+  interviewPrepQuestions: string[];
+  hrNotes: HrReviewNote[];
+  reviewedByHr: Array<{
+    name: string;
+    role: string;
+    viewedAt: string;
+  }>;
+  submittedVia: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentActionHistoryEntry {
+  id: string;
+  agentId: string;
+  agentHandle: string;
+  actorType: 'personal_agent' | 'company_agent' | 'hr_staff' | 'user';
+  actorName: string;
+  actionType:
+    | 'AUTO_MATCH'
+    | 'CV_UPDATED'
+    | 'CV_FORMATTED'
+    | 'COVER_LETTER_GENERATED'
+    | 'APPLICATION_SUBMITTED'
+    | 'EMAIL_DISPATCHED'
+    | 'INTERVIEW_REQUESTED'
+    | 'DOC_EXPORTED'
+    | 'HR_VIEWED_DOCS'
+    | 'HR_SHORTLISTED'
+    | 'HR_NOTE_ADDED'
+    | 'EMPLOYER_AGENT_LAUNCHED'
+    | 'HR_TEAM_UPDATED';
+  title: string;
+  details: string;
+  relatedJobId?: string;
+  relatedJobTitle?: string;
+  relatedPackageId?: string;
+  targetHandle?: string;
+  channel?: string;
+  timestamp: string;
 }
 
 export interface RecruitmentMatchDoc {
@@ -700,6 +832,34 @@ export interface AiOpportunitySuggestion {
   confidencePct: number;
   negotiationAngle: string;
   jobId?: string;
+}
+
+export type AgentStatusCategory =
+  | 'hired'
+  | 'deal_approved'
+  | 'sponsored_ad'
+  | 'generic';
+
+export interface AgentStatusPostDoc {
+  id: string;
+  agentId: string;
+  agentHandle: string;
+  authorName: string;
+  authorOrg: string;
+  authorType: 'persona' | 'business';
+  category: AgentStatusCategory;
+  headline: string;
+  body: string;
+  accentColor?: string;
+  partnerName?: string;
+  partnerHandle?: string;
+  roleTitle?: string;
+  regionZone?: string;
+  dealValueZAR?: number;
+  savingsLabel?: string;
+  ctaLabel?: string;
+  autoGenerated?: boolean;
+  createdAt: string;
 }
 
 export function zarToUsd(zar: number): number {

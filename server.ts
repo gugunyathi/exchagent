@@ -208,7 +208,7 @@ async function startServer() {
   app.get('/.well-known/agent.json', (_req, res) => {
     res.json({
       schema: 'https://switchboard.agent/schemas/agent-v1.json',
-      name: 'Switchboard (AgentPages)',
+      name: 'SWITCHZ (Silvernest Pty Ltd)',
       handle: 'directory.switchboard.agent',
       capabilities: [
         'a2a-negotiation',
@@ -313,7 +313,8 @@ async function startServer() {
 
   app.get('/api/skills', (_req, res) => {
     res.json({
-      service: 'Switchboard (AgentPages)',
+      service: 'SWITCHZ',
+      operator: 'Silvernest Pty Ltd',
       version: '2027.1.0',
       discovery: {
         skillsMarkdown: '/skills.md',
@@ -1363,7 +1364,7 @@ export class ErrorOverlay extends HTMLElement {}
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Switchboard (AgentPages) running on http://0.0.0.0:${PORT}`);
+    console.log(`SWITCHZ running on http://0.0.0.0:${PORT}`);
   });
 }
 

@@ -11,9 +11,12 @@ import {
   Loader2,
   Linkedin,
   UserPlus,
+  FileText,
+  Sparkles,
 } from 'lucide-react';
 import {
   AgentDoc,
+  AgentApplicationPackage,
   BookingDoc,
   CurrencyMode,
   JobPostingDoc,
@@ -24,6 +27,7 @@ import {
   formatMoney,
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
+import { LegalDocTab, AI_OUTREACH_DISCLAIMER_TEXT } from '../data/legalDocuments';
 import { emitToast } from '../lib/toast';
 
 interface QuickJobAgentModalProps {
@@ -45,6 +49,13 @@ interface QuickJobAgentModalProps {
   onAddBooking: (booking: BookingDoc) => Promise<void>;
   onLogAudit: (entry: Omit<PoppyAuditLogEntry, 'id' | 'timestamp'>) => void;
   onOpenHiringDesk: (agentId: string) => void;
+  onTailorAndApply?: (
+    seeker: AgentDoc,
+    job: JobPostingDoc,
+    match?: RecruitmentMatchDoc
+  ) => Promise<AgentApplicationPackage | null>;
+  onOpenProfileHistory?: (agent: AgentDoc, packageId?: string) => void;
+  onOpenLegal?: (doc: LegalDocTab) => void;
 }
 
 const SAMPLE_PROFILES = [
@@ -79,15 +90,21 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
   onAddBooking,
   onLogAudit,
   onOpenHiringDesk,
+  onTailorAndApply,
+  onOpenProfileHistory,
+  onOpenLegal,
 }) => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [focusNote, setFocusNote] = useState('');
+  const [acceptedCandidatePrivacy, setAcceptedCandidatePrivacy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [createdAgent, setCreatedAgent] = useState<AgentDoc | null>(null);
   const [deliveredMatches, setDeliveredMatches] = useState<RecruitmentMatchDoc[]>([]);
   const [requestedJobIds, setRequestedJobIds] = useState<Record<string, boolean>>({});
+  const [tailoringJobId, setTailoringJobId] = useState<string | null>(null);
+  const [tailoredPkgByJobId, setTailoredPkgByJobId] = useState<Record<string, string>>({});
   const [bookingBusyId, setBookingBusyId] = useState<string | null>(null);
   const [batchBookingBusy, setBatchBookingBusy] = useState(false);
 
@@ -109,6 +126,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
     setCreatedAgent(null);
     setDeliveredMatches([]);
     setRequestedJobIds({});
+    setTailoredPkgByJobId({});
     setErrorMsg(null);
   };
 
@@ -117,6 +135,10 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
     const trimmedUrl = linkedinUrl.trim();
     if (!trimmedUrl) {
       setErrorMsg('Paste your LinkedIn profile URL to create your job search agent.');
+      return;
+    }
+    if (!acceptedCandidatePrivacy) {
+      setErrorMsg('Please accept the SWITCHZ Candidate Terms & AI Privacy Notice to continue.');
       return;
     }
 
@@ -388,6 +410,9 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
             `LinkedIn: https://${createdAgent.linkedinUrl || ''}`,
             `Proposed 30m Live Video Slot: ${start.toLocaleString()}`,
             `Core Skills: ${createdAgent.skills.join(', ')}`,
+            '',
+            '---',
+            AI_OUTREACH_DISCLAIMER_TEXT,
           ].join('\n'),
         }),
       }).catch(() => {});
@@ -541,6 +566,37 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               </div>
             </div>
 
+            {/* Candidate Terms & Global AI Privacy Clickwrap */}
+            <label className="flex items-start gap-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedCandidatePrivacy}
+                onChange={(e) => {
+                  setAcceptedCandidatePrivacy(e.target.checked);
+                  if (e.target.checked) setErrorMsg(null);
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-sky-600 focus:ring-sky-500 shrink-0"
+              />
+              <span className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                I accept the SWITCHZ{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onOpenLegal) {
+                      onClose();
+                      onOpenLegal('privacy');
+                    }
+                  }}
+                  className="font-semibold underline text-zinc-950 dark:text-white hover:text-sky-600"
+                >
+                  Candidate Terms &amp; AI Privacy Notice (/terms)
+                </button>{' '}
+                (Silvernest Pty Ltd, South Africa) and consent to AI-assisted CV matching, anti-deepfake liveness verification, and cross-border profile sharing upon my per-role confirmation.
+              </span>
+            </label>
+
             {errorMsg && (
               <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{errorMsg}</p>
             )}
@@ -555,7 +611,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={creating}
+                disabled={creating || !acceptedCandidatePrivacy}
                 className="min-h-[42px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-2 disabled:opacity-60"
               >
                 {creating ? (
@@ -593,6 +649,20 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {onOpenProfileHistory && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = createdAgent;
+                      onClose();
+                      onOpenProfileHistory(target);
+                    }}
+                    className="min-h-[38px] px-3 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 inline-flex items-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                    History &amp; Docs
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={batchBookingBusy}
@@ -648,7 +718,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                         </p>
                         {job && (
                           <p className="text-[11px] text-zinc-600 dark:text-zinc-400 tabular-nums">
-                            {formatMoney(job.salaryRangeZAR[0], currency)}–{formatMoney(job.salaryRangeZAR[1], currency)}/mo · {job.location}
+                            {formatMoney(job.salaryRangeZAR[0], currency)}–{formatMoney(job.salaryRangeZAR[1], currency)}/mo · {job.regionZone || job.location}
                           </p>
                         )}
                         <p className="text-[11px] text-zinc-700 dark:text-zinc-300 line-clamp-2">
@@ -656,7 +726,48 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {job && onTailorAndApply && (
+                          tailoredPkgByJobId[job.id] && onOpenProfileHistory ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const target = createdAgent;
+                                const pkgId = tailoredPkgByJobId[job.id];
+                                onClose();
+                                onOpenProfileHistory(target, pkgId);
+                              }}
+                              className="min-h-[34px] px-2.5 rounded-lg bg-sky-50 border border-sky-300 text-sky-800 dark:bg-sky-500/15 dark:border-sky-400/30 dark:text-sky-300 text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              View CV/PDF
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={tailoringJobId === job.id}
+                              onClick={async () => {
+                                setTailoringJobId(job.id);
+                                try {
+                                  const pkg = await onTailorAndApply(createdAgent, job, m);
+                                  if (pkg) {
+                                    setTailoredPkgByJobId((prev) => ({ ...prev, [job.id]: pkg.id }));
+                                  }
+                                } finally {
+                                  setTailoringJobId(null);
+                                }
+                              }}
+                              className="min-h-[34px] px-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 inline-flex items-center gap-1 whitespace-nowrap disabled:opacity-60"
+                            >
+                              {tailoringJobId === job.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                              )}
+                              {tailoringJobId === job.id ? 'Tailoring...' : 'Tailor CV & Apply'}
+                            </button>
+                          )
+                        )}
                         <button
                           type="button"
                           disabled={booked || bookingBusyId === m.id}

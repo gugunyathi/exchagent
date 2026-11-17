@@ -14,10 +14,16 @@ import {
   Eye,
   Camera,
   ArrowLeft,
+  Film,
+  Sparkles as MotionSparkles,
+  Upload,
+  Trash2,
+  Star,
 } from 'lucide-react';
 import {
   AgentDoc,
   AgentCardCustomization,
+  AgentMediaItem,
   CardBannerStyle,
   CardBackgroundPattern,
   CardBackgroundTheme,
@@ -117,29 +123,34 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
   onClose,
   onSave,
 }) => {
-  if (!isOpen || !agent) return null;
-
   const defaultStyle: AgentCardCustomization = {
     bannerStyle: 'gradient',
-    bannerBgColor: agent.brandColor || (agent.type === 'persona' ? '#0284c7' : '#09090b'),
+    bannerBgColor: agent?.brandColor || (agent?.type === 'persona' ? '#0284c7' : '#09090b'),
     bannerHeight: 'normal',
     bannerBadgeStyle: 'glass',
     backgroundPattern: 'subtle-grid',
     backgroundTheme: 'default',
     edgeRadius: 'rounded-2xl',
     borderStyle: 'hairline',
-    borderAccentColor: agent.brandColor || '#0284c7',
+    borderAccentColor: agent?.brandColor || '#0284c7',
   };
 
   const [activeTab, setActiveTab] = useState<'presets' | 'photo' | 'banner' | 'background' | 'edges'>('presets');
-  const [draftStyle, setDraftStyle] = useState<AgentCardCustomization>(agent.cardStyle || defaultStyle);
-  const [draftImageUrl, setDraftImageUrl] = useState<string>(agent.imageUrl || '');
+  const [draftStyle, setDraftStyle] = useState<AgentCardCustomization>(agent?.cardStyle || defaultStyle);
+  const [draftImageUrl, setDraftImageUrl] = useState<string>(agent?.imageUrl || '');
+  const [draftIntroVideoUrl, setDraftIntroVideoUrl] = useState<string>(agent?.introVideoUrl || '');
+  const [draftMediaGallery, setDraftMediaGallery] = useState<AgentMediaItem[]>(agent?.mediaGallery || []);
   const [previewFlipped, setPreviewFlipped] = useState(false);
+
+  const fileUploadRef = React.useRef<HTMLInputElement | null>(null);
+  const motionUploadRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (agent) {
       setDraftStyle(agent.cardStyle || defaultStyle);
       setDraftImageUrl(agent.imageUrl || '');
+      setDraftIntroVideoUrl(agent.introVideoUrl || '');
+      setDraftMediaGallery(Array.isArray(agent.mediaGallery) ? agent.mediaGallery : []);
       setPreviewFlipped(false);
     }
   }, [agent?.id]);
@@ -156,6 +167,8 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
+  if (!isOpen || !agent) return null;
+
   const updateDraft = (patch: Partial<AgentCardCustomization>) => {
     setDraftStyle((prev) => ({ ...prev, ...patch }));
   };
@@ -168,18 +181,106 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
   const handleReset = () => {
     setDraftStyle(agent.cardStyle || defaultStyle);
     setDraftImageUrl(agent.imageUrl || '');
+    setDraftIntroVideoUrl(agent.introVideoUrl || '');
+    setDraftMediaGallery(Array.isArray(agent.mediaGallery) ? agent.mediaGallery : []);
     emitToast('Reset to original style');
+  };
+
+  const handleUploadMediaFile = (file: File | undefined, forceMotion = false) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    const isGifOrMotion = forceMotion || file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+
+    if (file.size > 18 * 1024 * 1024) {
+      emitToast('Please choose a media file under 18MB for browser card playback.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!dataUrl) return;
+
+      if (isVideo) {
+        const probe = document.createElement('video');
+        probe.preload = 'metadata';
+        probe.onloadedmetadata = () => {
+          const rawDur = Number.isFinite(probe.duration) ? probe.duration : 8;
+          const capped = Math.min(8, Math.max(1, Math.round(rawDur)));
+          const newItem: AgentMediaItem = {
+            id: `vid_${Date.now()}`,
+            kind: 'video',
+            url: dataUrl,
+            thumbnailUrl: draftImageUrl || resolveAgentImage(agent),
+            title: `${agent.displayName} — Pitch Video (${capped}s)`,
+            durationSeconds: capped,
+            caption: rawDur > 8 ? `Trimmed preview to 8s max (source ${Math.round(rawDur)}s)` : '8s short pitch video',
+          };
+          setDraftIntroVideoUrl(dataUrl);
+          setDraftMediaGallery((prev) => [newItem, ...prev.filter((m) => m.kind !== 'video')]);
+          emitToast(
+            rawDur > 8
+              ? 'Video uploaded! Playback is automatically capped at 8 seconds max.'
+              : '8s pitch video attached to card!'
+          );
+        };
+        probe.onerror = () => {
+          const newItem: AgentMediaItem = {
+            id: `vid_${Date.now()}`,
+            kind: 'video',
+            url: dataUrl,
+            thumbnailUrl: draftImageUrl || resolveAgentImage(agent),
+            title: `${agent.displayName} — Pitch Video`,
+            durationSeconds: 8,
+            caption: 'Short pitch video (8s max)',
+          };
+          setDraftIntroVideoUrl(dataUrl);
+          setDraftMediaGallery((prev) => [newItem, ...prev.filter((m) => m.kind !== 'video')]);
+          emitToast('Pitch video attached to card (8s loop)');
+        };
+        probe.src = dataUrl;
+      } else if (isGifOrMotion) {
+        const newItem: AgentMediaItem = {
+          id: `motion_${Date.now()}`,
+          kind: 'motion_image',
+          url: dataUrl,
+          thumbnailUrl: dataUrl,
+          title: file.name.replace(/\.[^/.]+$/, '') || 'Motion Image',
+          durationSeconds: 8,
+          caption: 'Animated 8s motion image',
+        };
+        setDraftMediaGallery((prev) => [newItem, ...prev]);
+        emitToast('Motion image added to gallery!');
+      } else {
+        const newItem: AgentMediaItem = {
+          id: `img_${Date.now()}`,
+          kind: 'image',
+          url: dataUrl,
+          thumbnailUrl: dataUrl,
+          title: file.name.replace(/\.[^/.]+$/, '') || 'Gallery Photo',
+          caption: 'Uploaded card gallery photo',
+        };
+        if (!draftImageUrl) {
+          setDraftImageUrl(dataUrl);
+        }
+        setDraftMediaGallery((prev) => [newItem, ...prev]);
+        emitToast('Photo added to scrollable card gallery!');
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSave = () => {
     const updated: AgentDoc = {
       ...agent,
       imageUrl: draftImageUrl.trim() || undefined,
+      introVideoUrl: draftIntroVideoUrl.trim() || undefined,
+      mediaGallery: draftMediaGallery,
       cardStyle: draftStyle,
       brandColor: draftStyle.bannerBgColor || agent.brandColor,
     };
     onSave(updated);
-    emitToast(`Card style saved for ${agent.handle}`);
+    emitToast(`Card style & media saved for ${agent.handle}`);
     onClose();
   };
 
@@ -187,6 +288,8 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
   const previewAgent: AgentDoc = {
     ...agent,
     imageUrl: draftImageUrl.trim() || agent.imageUrl,
+    introVideoUrl: draftIntroVideoUrl.trim() || undefined,
+    mediaGallery: draftMediaGallery,
     cardStyle: draftStyle,
     brandColor: draftStyle.bannerBgColor || agent.brandColor,
   };
@@ -284,12 +387,17 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                 onDial={() => emitToast('Preview dialer')}
                 onEmail={() => emitToast('Preview email')}
                 onToggleDiscoverable={() => {}}
+                onUpdateAgentMedia={(updated) => {
+                  setDraftImageUrl(updated.imageUrl || '');
+                  setDraftIntroVideoUrl(updated.introVideoUrl || '');
+                  setDraftMediaGallery(updated.mediaGallery || []);
+                }}
               />
             </div>
 
             <div className="w-full text-center mt-2">
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
-                Click Flip or tap the card to verify both faces with your selected style.
+                Click the card photo to test Full-Screen Unmuted Gallery or click Play for 8s muted preview.
               </p>
             </div>
           </div>
@@ -300,7 +408,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
             <div className="shrink-0 flex items-center border-b border-zinc-200 dark:border-white/10 px-3 pt-2 bg-zinc-50 dark:bg-zinc-900/30 gap-1 overflow-x-auto no-scrollbar">
               {[
                 { id: 'presets', label: 'Presets', icon: Sparkles },
-                { id: 'photo', label: 'Photo', icon: Camera },
+                { id: 'photo', label: 'Photo & Video', icon: Camera },
                 { id: 'banner', label: 'Banner', icon: Layers },
                 { id: 'background', label: 'Background', icon: Palette },
                 { id: 'edges', label: 'Edges & Frame', icon: Square },
@@ -387,21 +495,179 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 1B: PHOTO / BRAND VISUAL */}
+              {/* TAB 1B: PHOTO, 8s PITCH VIDEO & MOTION IMAGES */}
               {activeTab === 'photo' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <div>
                     <h3 className="font-display font-bold text-sm text-zinc-950 dark:text-white">
-                      Portrait &amp; Brand Photography
+                      Portrait, 8s Pitch Video &amp; Gallery Media
                     </h3>
                     <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                      Choose a curated studio photo or paste your own headshot / product image URL.
+                      Upload a portrait, an 8-second max pitch video (muted on card, unmuted in fullscreen gallery), or a motion image.
                     </p>
+                  </div>
+
+                  {/* Direct Upload Buttons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <input
+                      ref={fileUploadRef}
+                      type="file"
+                      accept="video/*,image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleUploadMediaFile(e.target.files?.[0], false);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+                    <input
+                      ref={motionUploadRef}
+                      type="file"
+                      accept="image/gif,image/webp,image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleUploadMediaFile(e.target.files?.[0], true);
+                        e.currentTarget.value = '';
+                      }}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => fileUploadRef.current?.click()}
+                      className="p-3 rounded-xl border border-dashed border-zinc-300 dark:border-white/20 hover:border-zinc-950 dark:hover:border-white bg-zinc-50 dark:bg-zinc-900/50 text-left transition-colors flex items-center gap-3"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center shrink-0">
+                        <Upload className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block text-xs font-bold text-zinc-950 dark:text-white">
+                          Upload 8s Pitch Video or Photo
+                        </span>
+                        <span className="block text-[10.5px] text-zinc-600 dark:text-zinc-400 truncate">
+                          MP4, WebM (8s max) or JPG/PNG gallery photo
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => motionUploadRef.current?.click()}
+                      className="p-3 rounded-xl border border-dashed border-zinc-300 dark:border-white/20 hover:border-sky-600 dark:hover:border-sky-400 bg-zinc-50 dark:bg-zinc-900/50 text-left transition-colors flex items-center gap-3"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-sky-600 text-white flex items-center justify-center shrink-0">
+                        <MotionSparkles className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block text-xs font-bold text-zinc-950 dark:text-white">
+                          Upload Motion Image (GIF / 8s Reel)
+                        </span>
+                        <span className="block text-[10.5px] text-zinc-600 dark:text-zinc-400 truncate">
+                          Auto-animates on Play &amp; unmutes voice in gallery
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Active 8s Pitch Video URL & Gallery Strip */}
+                  <div className="space-y-2.5 p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/60 dark:bg-zinc-900/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-display font-bold text-zinc-950 dark:text-white inline-flex items-center gap-1.5">
+                        <Film className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>8s Short Pitch Video URL (Optional)</span>
+                      </span>
+                      {draftIntroVideoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraftIntroVideoUrl('');
+                            setDraftMediaGallery((prev) => prev.filter((m) => m.kind !== 'video'));
+                          }}
+                          className="text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:underline inline-flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Remove Video</span>
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="url"
+                      value={draftIntroVideoUrl.startsWith('data:') ? '[Uploaded Pitch Video File Ready]' : draftIntroVideoUrl}
+                      onChange={(e) => setDraftIntroVideoUrl(e.target.value)}
+                      readOnly={draftIntroVideoUrl.startsWith('data:')}
+                      placeholder="https://.../intro-pitch-8s.mp4"
+                      className="w-full min-h-[36px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white placeholder:text-zinc-400"
+                    />
+
+                    {draftMediaGallery.length > 0 && (
+                      <div className="pt-1.5">
+                        <span className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
+                          Custom Gallery Slides ({draftMediaGallery.length})
+                        </span>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                          {draftMediaGallery.map((item) => (
+                            <div
+                              key={item.id}
+                              className="relative shrink-0 w-24 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 overflow-hidden"
+                            >
+                              <div className="h-16 w-full bg-zinc-900 relative overflow-hidden">
+                                {item.kind === 'video' ? (
+                                  <video
+                                    src={item.url}
+                                    muted
+                                    playsInline
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <img
+                                    src={item.url}
+                                    alt={item.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )}
+                                <span className="absolute top-1 left-1 px-1 py-0.5 rounded bg-black/75 text-white text-[9px] font-mono">
+                                  {item.kind === 'video' ? '8s VID' : item.kind === 'motion_image' ? 'MOTION' : 'IMG'}
+                                </span>
+                              </div>
+                              <div className="p-1 flex items-center justify-between gap-1">
+                                {item.kind !== 'video' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDraftImageUrl(item.url);
+                                      emitToast('Set as primary card photo');
+                                    }}
+                                    className="text-[9.5px] font-medium text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-0.5 truncate"
+                                    title="Set as primary card photo"
+                                  >
+                                    <Star className="w-2.5 h-2.5 shrink-0" />
+                                    <span>Primary</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[9.5px] font-mono text-zinc-500">8s Max</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDraftMediaGallery((prev) => prev.filter((m) => m.id !== item.id));
+                                    if (item.url === draftIntroVideoUrl) {
+                                      setDraftIntroVideoUrl('');
+                                    }
+                                  }}
+                                  className="text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400"
+                                  title="Remove slide"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
                     <label className="block font-display font-bold text-xs text-zinc-950 dark:text-white mb-1.5">
-                      Custom Image URL (Optional)
+                      Custom Portrait / Brand Image URL (Optional)
                     </label>
                     <div className="flex items-center gap-2">
                       <input

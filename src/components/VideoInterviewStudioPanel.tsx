@@ -142,6 +142,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   const [challengeCode] = useState(() => `SWB-${Math.floor(100 + Math.random() * 899)}`);
   const [verifying, setVerifying] = useState(false);
   const [showForensicDetails, setShowForensicDetails] = useState(false);
+  const [biometricConsent, setBiometricConsent] = useState(true);
   const [videoTitle, setVideoTitle] = useState(`${candidate.displayName} — Intro`);
 
   // Pre-screen state
@@ -245,6 +246,11 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!biometricConsent) {
+      emitToast('Please confirm Biometric & Anti-Deepfake consent first.', 'warning');
+      e.target.value = '';
+      return;
+    }
     const objUrl = URL.createObjectURL(file);
     setSessionVideoUrls((prev) => ({ ...prev, [candidate.id]: objUrl }));
     await runVideoVerification({
@@ -258,6 +264,10 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
   };
 
   const handleStartRecording = async () => {
+    if (!biometricConsent) {
+      emitToast('Please confirm Biometric & Anti-Deepfake consent first.', 'warning');
+      return;
+    }
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         emitToast('Webcam unavailable — upload video or run deepfake check', 'warning');
@@ -472,6 +482,22 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
               Test Deepfake Check
             </button>
           </div>
+
+          <label className="flex items-start gap-2 rounded-lg bg-zinc-50 dark:bg-zinc-950/70 border border-zinc-200 dark:border-white/[0.08] px-2.5 py-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={biometricConsent}
+              onChange={(e) => setBiometricConsent(e.target.checked)}
+              className="mt-0.5 w-3.5 h-3.5 rounded border-zinc-300 text-sky-600 focus:ring-sky-500 shrink-0"
+            />
+            <span className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+              I consent to SWITCHZ processing video frames and audio strictly for SHA-256 anti-deepfake liveness forensics and recruiter screening under Part 3 (§2.2) of the{' '}
+              <a href="/terms" className="underline font-medium text-zinc-900 dark:text-zinc-200">
+                Candidate AI Privacy Notice
+              </a>
+              .
+            </span>
+          </label>
 
           {recording && (
             <video

@@ -1869,5 +1869,231 @@ Return structured JSON matching the schema.`;
     });
   });
 
+  // 13. Tailor Candidate CV to Job Spec & Generate Custom Cover Letter + Interview Prep
+  router.post('/api/recruitment/tailor-application', async (req, res) => {
+    const { seeker, job, existingMatch } = req.body || {};
+    if (!seeker || !job) {
+      return res.status(400).json({ error: 'seeker and job objects are required.' });
+    }
+
+    const candidateName = String(seeker.displayName || 'Verified Candidate');
+    const candidateHandle = String(seeker.handle || 'candidate.agent');
+    const candidateEmail = String(seeker.agentEmail || `engage@${candidateHandle}`);
+    const candidateRole = String(seeker.roleTitle || 'Systems & Product Leader');
+    const candidateOrg = String(seeker.organization || 'Independent Talent');
+    const candidateLinkedin = seeker.linkedinUrl ? String(seeker.linkedinUrl) : '';
+    const candidateYears = Number(seeker.cvSummary?.yearsExp || 5);
+    const candidateSkills: string[] = Array.from(
+      new Set([
+        ...(Array.isArray(seeker.skills) ? seeker.skills.map(String) : []),
+        ...(Array.isArray(seeker.cvSummary?.parsedSkills) ? seeker.cvSummary.parsedSkills.map(String) : []),
+      ])
+    ).filter(Boolean);
+
+    const jobTitle = String(job.title || 'Open Role');
+    const companyName = String(job.companyName || 'Hiring Organization');
+    const companyHandle = String(job.companyAgentHandle || 'hiring.agent');
+    const targetRegion = String(job.regionZone || job.location || 'Global Remote');
+    const requiredSkills: string[] = Array.isArray(job.requiredSkills) ? job.requiredSkills.map(String) : [];
+    const jobDescription = String(
+      job.description || `Core vacancy for ${jobTitle} at ${companyName} (${targetRegion}).`
+    );
+
+    const matchedKeywords = requiredSkills.filter((reqSk) =>
+      candidateSkills.some(
+        (cs) => cs.toLowerCase().includes(reqSk.toLowerCase()) || reqSk.toLowerCase().includes(cs.toLowerCase())
+      )
+    );
+    const missingKeywords = requiredSkills.filter((reqSk) => !matchedKeywords.includes(reqSk));
+    const mergedCompetencies = Array.from(new Set([...matchedKeywords, ...candidateSkills, ...requiredSkills])).slice(0, 8);
+
+    const now = new Date().toISOString();
+    const formattedDate = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    const buildDeterministicResult = (engineName: string) => {
+      const cvDoc = {
+        candidateName,
+        candidateHandle,
+        email: candidateEmail,
+        linkedinUrl: candidateLinkedin || undefined,
+        location: seeker.geoLocation?.label || 'Verified Remote / Hybrid Ready',
+        targetRole: jobTitle,
+        targetCompany: companyName,
+        targetRegion,
+        professionalSummary: `${candidateRole} with ${candidateYears}+ years of measurable delivery across ${mergedCompetencies
+          .slice(0, 4)
+          .join(', ')}. Specifically tailored for ${companyName}’s ${jobTitle} (${targetRegion}) specification, uniting production architecture with verified Poppy protocol reliability.`,
+        coreCompetencies: mergedCompetencies,
+        matchedKeywords: matchedKeywords.length > 0 ? matchedKeywords : candidateSkills.slice(0, 3),
+        missingKeywords,
+        experienceHighlights: [
+          {
+            role: candidateRole,
+            org: candidateOrg,
+            period: `${2026 - Math.min(8, candidateYears)} – Present`,
+            bullets: [
+              `Delivered production initiatives directly aligned with ${jobTitle} requirements, emphasizing ${
+                matchedKeywords.slice(0, 3).join(', ') || candidateSkills.slice(0, 3).join(', ')
+              }.`,
+              `Partnered across cross-functional engineering & GTM teams with measurable throughput gains and POPIA/enterprise guardrail compliance.`,
+            ],
+          },
+          {
+            role: `Senior Specialist · ${candidateSkills[0] || 'Core Systems'}`,
+            org: 'Prior Growth & Engineering Mandate',
+            period: `${2026 - Math.min(12, candidateYears + 3)} – ${2026 - Math.min(8, candidateYears)}`,
+            bullets: [
+              `Scaled reliable architectures and automated workflows supporting ${targetRegion} operations.`,
+              String(
+                seeker.cvSummary?.rawCvExcerpt ||
+                  seeker.summary ||
+                  `Recognized for rapid execution across ${candidateSkills.slice(0, 2).join(' & ')}.`
+              ),
+            ],
+          },
+        ],
+        education: ['B.Sc. / Engineering & Applied Systems (Verified Academic Record)'],
+        certifications: [
+          `Poppy v1.0 Protocol Verified Identity (${candidateHandle})`,
+          candidateLinkedin ? `LinkedIn Verified: https://${candidateLinkedin.replace(/^https?:\/\//, '')}` : 'Verified Autonomous Agent Profile',
+        ],
+        formattedAt: now,
+      };
+
+      const coverLetterDoc = {
+        date: formattedDate,
+        recipientName: `${companyName} Talent & Hiring Committee`,
+        recipientTitle: `${job.department || 'Engineering & Operations'} Recruiting Desk`,
+        companyName,
+        companyHandle,
+        subject: `Application for ${jobTitle} (${targetRegion}) — ${candidateName}`,
+        greeting: `Dear ${companyName} Hiring Team,`,
+        openingParagraph: `I am pleased to submit my tailored application for the ${jobTitle} (${targetRegion}) role at ${companyName}. Representing ${candidateYears}+ years of hands-on leadership as ${candidateRole} at ${candidateOrg}, my background directly supports your mandate: ${jobDescription}`,
+        bodyParagraphs: [
+          `Specifically, my hands-on track record in ${
+            matchedKeywords.length > 0 ? matchedKeywords.join(', ') : candidateSkills.slice(0, 3).join(', ')
+          } maps directly to the core technical and operational pillars specified in your vacancy.${
+            existingMatch?.score ? ` Automated Poppy rubric evaluation scored this alignment at ${existingMatch.score}% fit.` : ''
+          }`,
+          `Through my verified Switchboard agent (${candidateHandle}), I maintain real-time calendar availability, cryptographic work-history attestation, and strict data-minimization safeguards for seamless HR and hiring manager review in ${targetRegion}.`,
+        ],
+        closingParagraph: `Thank you for reviewing this tailored CV and cover letter. I welcome a live screening conversation with your ${targetRegion} hiring panel at your earliest convenience.`,
+        signatureName: candidateName,
+        signatureContact: [candidateHandle, candidateEmail, candidateLinkedin ? `https://${candidateLinkedin.replace(/^https?:\/\//, '')}` : '']
+          .filter(Boolean)
+          .join(' · '),
+      };
+
+      const interviewPrepQuestions = [
+        `How would you apply ${requiredSkills[0] || candidateSkills[0] || 'your core domain strength'} to accelerate ${companyName}’s ${jobTitle} roadmap in ${targetRegion}?`,
+        `Walk through a complex trade-off you led involving ${requiredSkills[1] || 'system reliability & cross-team scale'}.`,
+        missingKeywords.length > 0
+          ? `How will you ramp quickly on ${missingKeywords.join(' & ')} during your first 60 days?`
+          : `What measurable milestone would define a successful first 90 days in ${targetRegion}?`,
+      ];
+
+      return {
+        engine: engineName,
+        cvDoc,
+        coverLetterDoc,
+        interviewPrepQuestions,
+        updatedCvSummary: {
+          headline: `${candidateRole} · Tailored for ${companyName} (${jobTitle})`,
+          yearsExp: candidateYears,
+          parsedSkills: mergedCompetencies.slice(0, 7),
+          preferredRoles: Array.from(new Set([jobTitle, ...(seeker.cvSummary?.preferredRoles || [])])).slice(0, 4),
+          salaryMinZAR: seeker.cvSummary?.salaryMinZAR || job.salaryRangeZAR?.[0] || 85000,
+          remoteOnly: job.remoteMode === 'Remote' ? true : Boolean(seeker.cvSummary?.remoteOnly),
+          blindScreening: Boolean(seeker.cvSummary?.blindScreening),
+          rawCvExcerpt: cvDoc.professionalSummary,
+        },
+      };
+    };
+
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const prompt = `You are a candidate's personal AI Career Agent. Update and format the candidate's CV specifically to match the target job specification, and draft an executive cover letter + 3 targeted interview prep questions.
+Candidate: ${candidateName} (${candidateHandle}), Role: ${candidateRole} at ${candidateOrg}, ${candidateYears} yrs exp.
+Candidate Skills: ${candidateSkills.join(', ')}. Summary: ${seeker.summary || seeker.cvSummary?.rawCvExcerpt || 'Senior practitioner'}.
+Target Company: ${companyName} (${companyHandle}).
+Target Role: ${jobTitle} in ${targetRegion} (${job.remoteMode || 'Hybrid'}).
+Required Spec Skills: ${requiredSkills.join(', ')}.
+Job Description: ${jobDescription}.
+Return JSON strictly matching the schema.`;
+
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: prompt,
+            config: {
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  professionalSummary: { type: Type.STRING },
+                  coreCompetencies: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  experienceBulletsPrimary: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  experienceBulletsSecondary: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  coverLetterSubject: { type: Type.STRING },
+                  coverLetterOpening: { type: Type.STRING },
+                  coverLetterBody: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  coverLetterClosing: { type: Type.STRING },
+                  interviewPrepQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                },
+                required: [
+                  'professionalSummary',
+                  'coreCompetencies',
+                  'experienceBulletsPrimary',
+                  'coverLetterOpening',
+                  'coverLetterBody',
+                  'coverLetterClosing',
+                  'interviewPrepQuestions',
+                ],
+              },
+            },
+          }),
+          9000
+        );
+
+        const text = response.text?.trim();
+        if (text) {
+          const parsed = JSON.parse(text);
+          const base = buildDeterministicResult('gemini-4-hydrogen');
+          base.cvDoc.professionalSummary = String(parsed.professionalSummary || base.cvDoc.professionalSummary);
+          if (Array.isArray(parsed.coreCompetencies) && parsed.coreCompetencies.length > 0) {
+            base.cvDoc.coreCompetencies = parsed.coreCompetencies.slice(0, 8).map(String);
+          }
+          if (Array.isArray(parsed.experienceBulletsPrimary) && parsed.experienceBulletsPrimary.length > 0) {
+            base.cvDoc.experienceHighlights[0].bullets = parsed.experienceBulletsPrimary.slice(0, 4).map(String);
+          }
+          if (Array.isArray(parsed.experienceBulletsSecondary) && parsed.experienceBulletsSecondary.length > 0 && base.cvDoc.experienceHighlights[1]) {
+            base.cvDoc.experienceHighlights[1].bullets = parsed.experienceBulletsSecondary.slice(0, 3).map(String);
+          }
+          base.coverLetterDoc.subject = String(parsed.coverLetterSubject || base.coverLetterDoc.subject);
+          base.coverLetterDoc.openingParagraph = String(parsed.coverLetterOpening || base.coverLetterDoc.openingParagraph);
+          if (Array.isArray(parsed.coverLetterBody) && parsed.coverLetterBody.length > 0) {
+            base.coverLetterDoc.bodyParagraphs = parsed.coverLetterBody.slice(0, 3).map(String);
+          }
+          base.coverLetterDoc.closingParagraph = String(parsed.coverLetterClosing || base.coverLetterDoc.closingParagraph);
+          if (Array.isArray(parsed.interviewPrepQuestions) && parsed.interviewPrepQuestions.length > 0) {
+            base.interviewPrepQuestions = parsed.interviewPrepQuestions.slice(0, 4).map(String);
+          }
+          base.updatedCvSummary.rawCvExcerpt = base.cvDoc.professionalSummary;
+          return res.json(base);
+        }
+      } catch (err) {
+        console.warn('Tailor application Gemini fallback:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    return res.json(buildDeterministicResult('switchboard-cv-tailor-engine'));
+  });
+
   return router;
 }

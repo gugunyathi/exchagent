@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
   Phone,
   Globe,
@@ -15,6 +16,13 @@ import {
   ShieldAlert,
   Palette,
   BookmarkPlus,
+  History,
+  Users,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Images,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -25,7 +33,49 @@ import {
   CardBackgroundPattern,
 } from '../types/firestore';
 import { emitToast } from '../lib/toast';
-import { resolveAgentImage } from '../lib/agentImages';
+import { resolveAgentImage, resolveAgentMediaGallery } from '../lib/agentImages';
+import { AgentMediaGalleryModal } from './AgentMediaGalleryModal';
+
+/** Square full-screen expand & exit icons matching the reference square frame geometry */
+const SquareExpandIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.1"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
+    <path d="M14.5 6.5h3v3" />
+    <path d="M17.5 6.5l-4.2 4.2" />
+    <path d="M9.5 17.5h-3v-3" />
+    <path d="M6.5 17.5l4.2-4.2" />
+  </svg>
+);
+
+const SquareExitFullScreenIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.1"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <rect x="2.5" y="2.5" width="19" height="19" rx="3" />
+    <path d="M14 10h3.5" />
+    <path d="M14 10V6.5" />
+    <path d="M14 10l4-4" />
+    <path d="M10 14H6.5" />
+    <path d="M10 14v3.5" />
+    <path d="M10 14l-4 4" />
+  </svg>
+);
 
 interface AgentIdentityCardProps {
   agent: AgentDoc;
@@ -42,6 +92,9 @@ interface AgentIdentityCardProps {
   onCustomize?: (agent: AgentDoc) => void;
   onSaveContact?: (agent: AgentDoc) => void;
   isSavedContact?: boolean;
+  onOpenProfileHistory?: (agent: AgentDoc) => void;
+  onOpenCompanyHr?: (agent: AgentDoc) => void;
+  onUpdateAgentMedia?: (updated: AgentDoc) => void;
 }
 
 /** Deterministic crisp SVG QR matrix seeded from agent handle */
@@ -341,17 +394,62 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
   onCustomize,
   onSaveContact,
   isSavedContact = false,
+  onOpenProfileHistory,
+  onOpenCompanyHr,
+  onUpdateAgentMedia,
 }) => {
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
   const [imgError, setImgError] = React.useState(false);
+  const [isCardFullScreen, setIsCardFullScreen] = React.useState(false);
+  const [galleryOpen, setGalleryOpen] = React.useState(false);
+  const [galleryInitialIdx, setGalleryInitialIdx] = React.useState(0);
+  const [cardVideoPlaying, setCardVideoPlaying] = React.useState(false);
+  const [cardVideoMuted, setCardVideoMuted] = React.useState(true); // Default MUTE on card
+  const [cardClipSec, setCardClipSec] = React.useState(0);
+
   const isPersona = agent.type === 'persona';
   const isEmergency = agent.handle === '911.emergency.agent';
   const cardStyle = agent.cardStyle;
   const picSrc = resolveAgentImage(agent);
+  const mediaGallery = React.useMemo(() => resolveAgentMediaGallery(agent), [agent]);
+  const shortVideoItem = React.useMemo(
+    () =>
+      mediaGallery.find((m) => m.kind === 'video') ||
+      mediaGallery.find((m) => m.kind === 'motion_image') ||
+      null,
+    [mediaGallery]
+  );
 
   React.useEffect(() => {
     setImgError(false);
-  }, [agent.id, agent.imageUrl]);
+    setCardVideoPlaying(false);
+    setCardVideoMuted(true);
+    setCardClipSec(0);
+  }, [agent.id, agent.imageUrl, agent.introVideoUrl]);
+
+  // 8-second max inline loop timer when playing a motion_image preview on card
+  React.useEffect(() => {
+    if (!cardVideoPlaying || !shortVideoItem || shortVideoItem.kind === 'video') return;
+    const t = window.setInterval(() => {
+      setCardClipSec((prev) => {
+        const next = prev + 0.1;
+        return next >= 8 ? 0 : Number(next.toFixed(1));
+      });
+    }, 100);
+    return () => window.clearInterval(t);
+  }, [cardVideoPlaying, shortVideoItem]);
+
+  React.useEffect(() => {
+    if (!isCardFullScreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !galleryOpen) {
+        e.preventDefault();
+        setIsCardFullScreen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isCardFullScreen, galleryOpen]);
 
   const handleBase = agent.handle.replace('.agent', '');
   const didValue =
@@ -456,12 +554,18 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
       ? `${agent.roleTitle} at ${agent.organization}.`
       : `${agent.organization} autonomous commerce desk.`);
 
-  return (
-    <div className="w-full max-w-[376px] sm:max-w-[360px] mx-auto perspective-1200 select-none">
+  const renderCardBody = (expandedFull: boolean) => (
+    <div
+      className={`${
+        expandedFull
+          ? 'w-full max-w-[920px] h-[min(90dvh,640px)]'
+          : 'w-full max-w-[376px] sm:max-w-[360px]'
+      } mx-auto perspective-1200 select-none`}
+    >
       <div
-        className={`relative w-full h-[358px] sm:h-[404px] preserve-3d ${
-          flipped ? 'rotate-y-180' : ''
-        }`}
+        className={`relative w-full ${
+          expandedFull ? 'h-full' : 'h-[358px] sm:h-[404px]'
+        } preserve-3d ${flipped ? 'rotate-y-180' : ''}`}
       >
         {/* FRONT FACE — High-contrast Tactile Editorial Business Card */}
         <div
@@ -470,11 +574,11 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
           style={{ ...borderStyleObj, pointerEvents: flipped ? 'none' : 'auto' }}
         >
           {/* Subtle Background Watermark Pattern */}
-          <CardBackgroundPatternOverlay pattern={cardStyle?.backgroundPattern} agentId={agent.id} />
+          <CardBackgroundPatternOverlay pattern={cardStyle?.backgroundPattern} agentId={`${expandedFull ? 'fs-' : ''}${agent.id}`} />
 
           {/* Personalized Top Accent Strip */}
           <div
-            className={`relative ${bannerHeightClass} px-3.5 flex items-center justify-between shrink-0 overflow-hidden`}
+            className={`relative ${expandedFull ? 'h-14 sm:h-16 px-5' : `${bannerHeightClass} px-3.5`} flex items-center justify-between shrink-0 overflow-hidden`}
             style={{ backgroundColor: headerBg }}
           >
             {/* Texture Motif */}
@@ -516,6 +620,36 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 </button>
               )}
 
+              {isPersona && onOpenProfileHistory && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenProfileHistory(agent);
+                  }}
+                  className="w-6 h-6 rounded-md bg-white/15 hover:bg-white/30 backdrop-blur-xs flex items-center justify-center text-white transition-colors"
+                  title="Agent History, CV & Cover Letter Docs (PDF/DOCX)"
+                  aria-label="Open Agent History & Docs"
+                >
+                  <History className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {!isPersona && !isEmergency && onOpenCompanyHr && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenCompanyHr(agent);
+                  }}
+                  className="w-6 h-6 rounded-md bg-white/15 hover:bg-white/30 backdrop-blur-xs flex items-center justify-center text-white transition-colors"
+                  title="HR Staff Portal: Top Appliers, Docs & History"
+                  aria-label="Open HR Staff Portal"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {onCustomize && (
                 <button
                   type="button"
@@ -524,10 +658,29 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                     onCustomize(agent);
                   }}
                   className="w-6 h-6 rounded-md bg-white/15 hover:bg-white/30 backdrop-blur-xs flex items-center justify-center text-white transition-colors"
-                  title="Customize Card Style"
+                  title="Customize Card Style & Media"
                   aria-label="Customize Card Style"
                 >
                   <Palette className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {isActive && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsCardFullScreen((v) => !v);
+                  }}
+                  className="w-6 h-6 rounded-md bg-white/15 hover:bg-white/30 backdrop-blur-xs flex items-center justify-center text-white transition-colors"
+                  title={expandedFull ? 'Exit Full Screen View' : 'Full Screen Card View'}
+                  aria-label={expandedFull ? 'Exit Full Screen View' : 'Full Screen Card View'}
+                >
+                  {expandedFull ? (
+                    <SquareExitFullScreenIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    <SquareExpandIcon className="w-3.5 h-3.5" />
+                  )}
                 </button>
               )}
 
@@ -550,19 +703,62 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
           </div>
 
-          {/* Card Core Content — Left PIC + Right Identity Details */}
-          <div className="relative z-10 px-3.5 py-2.5 flex-1 min-h-0 flex flex-col justify-between gap-2">
+          {/* Card Core Content — Left Clickable Media/Video + Right Identity Details */}
+          <div className={`relative z-10 ${expandedFull ? 'px-5 sm:px-7 py-4 sm:py-5 gap-4' : 'px-3.5 py-2.5 gap-2'} flex-1 min-h-0 flex flex-col justify-between`}>
             {/* Horizontal Split: Left Visual Frame + Right Text Stack */}
-            <div className="grid grid-cols-[106px_1fr] sm:grid-cols-[114px_1fr] gap-3 flex-1 min-h-0 items-stretch">
-              {/* Left Side: Portrait / Brand Product Photography */}
-              <div className="relative h-full min-h-[146px] sm:min-h-[168px] rounded-xl overflow-hidden border border-zinc-200 dark:border-white/15 bg-zinc-100 dark:bg-zinc-900 shadow-xs">
-                {picSrc && !imgError ? (
+            <div className={`grid ${expandedFull ? 'grid-cols-[150px_1fr] sm:grid-cols-[240px_1fr] gap-5 sm:gap-6' : 'grid-cols-[106px_1fr] sm:grid-cols-[114px_1fr] gap-3'} flex-1 min-h-0 items-stretch`}>
+              {/* Left Side: Clickable Portrait / Brand Media / 8s Intro Video Preview */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGalleryInitialIdx(0);
+                  setGalleryOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.stopPropagation();
+                    setGalleryInitialIdx(0);
+                    setGalleryOpen(true);
+                  }
+                }}
+                title="Click to open Full-Screen Image & Video Gallery (Unmuted)"
+                className="group/media relative h-full min-h-[146px] sm:min-h-[168px] rounded-xl overflow-hidden border border-zinc-200 dark:border-white/15 bg-zinc-100 dark:bg-zinc-900 shadow-xs cursor-pointer"
+              >
+                {cardVideoPlaying && shortVideoItem ? (
+                  shortVideoItem.kind === 'video' ? (
+                    <video
+                      src={shortVideoItem.url}
+                      poster={picSrc}
+                      autoPlay
+                      loop
+                      playsInline
+                      muted={cardVideoMuted}
+                      onTimeUpdate={(e) => {
+                        if (e.currentTarget.currentTime >= 8) {
+                          e.currentTarget.currentTime = 0;
+                        }
+                        setCardClipSec(Number(Math.min(8, e.currentTarget.currentTime).toFixed(1)));
+                      }}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={shortVideoItem.url}
+                      alt={agent.displayName}
+                      className={`w-full h-full object-cover animate-pulse transition-transform duration-1000 scale-110 ${
+                        isPersona ? 'object-top' : 'object-center'
+                      }`}
+                    />
+                  )
+                ) : picSrc && !imgError ? (
                   <img
                     src={picSrc}
                     alt={agent.displayName}
                     referrerPolicy="no-referrer"
                     onError={() => setImgError(true)}
-                    className={`w-full h-full object-cover ${
+                    className={`w-full h-full object-cover group-hover/media:scale-[1.03] transition-transform duration-200 ${
                       isPersona ? 'object-top' : 'object-center'
                     }`}
                   />
@@ -573,6 +769,62 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   />
                 ) : (
                   <BusinessLogoEmblem agent={agent} size="lg" />
+                )}
+
+                {/* Subtle Bottom Scrim for Controls */}
+                <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/75 via-black/30 to-transparent pointer-events-none" />
+
+                {/* 8s Play Video & Mute Controls (Default Muted on Card) */}
+                {shortVideoItem && (
+                  <div className="absolute bottom-1.5 left-1.5 z-10 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCardVideoPlaying((v) => !v);
+                      }}
+                      className="h-6 px-1.5 rounded-md bg-black/75 hover:bg-black text-white border border-white/20 inline-flex items-center gap-1 text-[9.5px] font-mono font-semibold transition-colors"
+                      title={cardVideoPlaying ? 'Pause 8s preview' : 'Play 8s pitch / motion preview (muted)'}
+                      aria-label={cardVideoPlaying ? 'Pause 8s preview' : 'Play 8s preview'}
+                    >
+                      {cardVideoPlaying ? (
+                        <Pause className="w-2.5 h-2.5 fill-white" />
+                      ) : (
+                        <Play className="w-2.5 h-2.5 fill-white" />
+                      )}
+                      <span>{cardVideoPlaying ? `${cardClipSec.toFixed(0)}s` : '8s'}</span>
+                    </button>
+
+                    {cardVideoPlaying && shortVideoItem.kind === 'video' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCardVideoMuted((m) => !m);
+                        }}
+                        className="w-6 h-6 rounded-md bg-black/75 hover:bg-black text-white border border-white/20 inline-flex items-center justify-center"
+                        title={cardVideoMuted ? 'Unmute card preview' : 'Mute card preview'}
+                        aria-label={cardVideoMuted ? 'Unmute' : 'Mute'}
+                      >
+                        {cardVideoMuted ? (
+                          <VolumeX className="w-2.5 h-2.5" />
+                        ) : (
+                          <Volume2 className="w-2.5 h-2.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Scrollable Gallery Count Indicator */}
+                {mediaGallery.length > 1 && (
+                  <span
+                    className="absolute bottom-1.5 right-1.5 z-10 h-6 px-1.5 rounded-md bg-black/75 text-white border border-white/20 inline-flex items-center gap-1 text-[9.5px] font-mono tabular-nums pointer-events-none"
+                    title="Open scrollable gallery"
+                  >
+                    <Images className="w-2.5 h-2.5" />
+                    <span>{mediaGallery.length}</span>
+                  </span>
                 )}
               </div>
 
@@ -668,15 +920,17 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
           </div>
 
-          {/* Crisp Front Action Bar (Flip, Engage, Dial) */}
-          <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-950/80 border-t border-zinc-200 dark:border-white/10 grid grid-cols-4 gap-1.5 shrink-0">
+          {/* Crisp Front Action Bar (Flip, Engage, Email, Dial) */}
+          <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-950/80 border-t border-zinc-200 dark:border-white/10 flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onFlipToggle();
               }}
-              className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors"
+              className="min-h-[36px] px-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors shrink-0"
+              aria-label="Flip Card"
+              title="Flip Card"
             >
               <RotateCw className="w-3 h-3" />
               <span>Flip</span>
@@ -688,14 +942,28 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 e.stopPropagation();
                 onEngage(agent);
               }}
-              className={`col-span-2 min-h-[36px] rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors ${
+              className={`flex-1 min-w-0 min-h-[36px] px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors ${
                 isEmergency
                   ? 'bg-rose-600 text-white hover:bg-rose-500'
                   : 'bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white'
               }`}
             >
-              <Zap className="w-3.5 h-3.5" />
-              <span>Engage</span>
+              <Zap className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Engage</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isEmergency}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEmail(agent);
+              }}
+              className="w-9 min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-35 inline-flex items-center justify-center transition-colors shrink-0"
+              aria-label={`Email ${agent.displayName}`}
+              title={`Email ${agent.agentEmail}`}
+            >
+              <Mail className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -704,7 +972,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 e.stopPropagation();
                 onDial(agent);
               }}
-              className="min-h-[36px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors"
+              className="min-h-[36px] px-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors shrink-0"
             >
               <Phone className="w-3 h-3" />
               <span>Dial</span>
@@ -730,6 +998,24 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               </h3>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {isActive && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsCardFullScreen((v) => !v);
+                  }}
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
+                  title={expandedFull ? 'Exit Full Screen View' : 'Full Screen Card View'}
+                  aria-label={expandedFull ? 'Exit Full Screen View' : 'Full Screen Card View'}
+                >
+                  {expandedFull ? (
+                    <SquareExitFullScreenIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    <SquareExpandIcon className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
               {onCustomize && (
                 <button
                   type="button"
@@ -923,22 +1209,6 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             >
               Engage <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDial(agent);
-              }}
-              className={`min-h-[38px] rounded-lg font-semibold text-xs flex items-center justify-center transition-colors ${
-                isEmergency
-                  ? 'bg-rose-600 text-white hover:bg-rose-500'
-                  : 'bg-zinc-100 border border-zinc-300 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-white/15 dark:text-white dark:hover:bg-zinc-700'
-              }`}
-              aria-label="Dial"
-              title="Dial"
-            >
-              <Phone className="w-3.5 h-3.5" />
-            </button>
             {!isEmergency ? (
               <button
                 type="button"
@@ -967,9 +1237,71 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 )}
               </button>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDial(agent);
+              }}
+              className={`min-h-[38px] rounded-lg font-semibold text-xs flex items-center justify-center transition-colors ${
+                isEmergency
+                  ? 'bg-rose-600 text-white hover:bg-rose-500'
+                  : 'bg-zinc-100 border border-zinc-300 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:border-white/15 dark:text-white dark:hover:bg-zinc-700'
+              }`}
+              aria-label="Dial"
+              title="Dial"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {renderCardBody(false)}
+
+      {isCardFullScreen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[75] bg-zinc-950/88 backdrop-blur-xl flex flex-col items-center justify-center p-2.5 sm:p-6"
+            onClick={() => setIsCardFullScreen(false)}
+          >
+            <div
+              className="w-full max-w-[920px] flex items-center justify-between gap-2 pb-2.5 text-white shrink-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="text-xs font-mono text-zinc-300 truncate">
+                Full Screen Card · {agent.handle}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCardFullScreen(false)}
+                className="min-h-[34px] px-3 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
+                aria-label="Exit Full Screen"
+              >
+                <SquareExitFullScreenIcon className="w-3.5 h-3.5" />
+                <span>Exit Full Screen</span>
+              </button>
+            </div>
+
+            <div className="w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              {renderCardBody(true)}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      <AgentMediaGalleryModal
+        open={galleryOpen}
+        agent={agent}
+        initialIndex={galleryInitialIdx}
+        onClose={() => setGalleryOpen(false)}
+        onUpdateAgentMedia={onUpdateAgentMedia}
+      />
+    </>
   );
 };

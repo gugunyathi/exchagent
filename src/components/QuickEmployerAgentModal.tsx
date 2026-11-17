@@ -23,6 +23,7 @@ import {
   formatMoney,
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
+import { LegalDocTab } from '../data/legalDocuments';
 import { emitToast } from '../lib/toast';
 
 interface QuickEmployerAgentModalProps {
@@ -44,6 +45,7 @@ interface QuickEmployerAgentModalProps {
   onAddBooking: (booking: BookingDoc) => Promise<void>;
   onLogAudit: (entry: Omit<PoppyAuditLogEntry, 'id' | 'timestamp'>) => void;
   onOpenHiringDesk: (companyHandle: string) => void;
+  onOpenLegal?: (doc: LegalDocTab) => void;
 }
 
 const SAMPLE_JOB_LISTINGS = [
@@ -87,10 +89,12 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
   onAddBooking,
   onLogAudit,
   onOpenHiringDesk,
+  onOpenLegal,
 }) => {
   const [jobUrl, setJobUrl] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [department, setDepartment] = useState('');
+  const [acceptedEmployerTerms, setAcceptedEmployerTerms] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -131,6 +135,10 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
     const trimmedUrl = jobUrl.trim();
     if (!trimmedUrl) {
       setErrorMsg('Please enter a job listing or careers page URL.');
+      return;
+    }
+    if (!acceptedEmployerTerms) {
+      setErrorMsg('Please accept the SWITCHZ Employer Recruitment Agreement & Fee Schedule to continue.');
       return;
     }
 
@@ -375,7 +383,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                 Instant Business Onboarding &amp; Automated Candidate Matching
               </p>
               <p className="text-[11px] text-emerald-800 dark:text-emerald-300/90 leading-relaxed">
-                Paste your open job or careers listing URL. Switchboard generates a verified enterprise `.agent` card, extracts vacancies, provisions an <span className="font-mono font-semibold">@agentmail.to</span> hiring desk, and scores candidate agents with one-click interview invites.
+                Paste your open job or careers listing URL. SWITCHZ generates a verified enterprise `.agent` card, extracts vacancies, provisions an <span className="font-mono font-semibold">@agentmail.to</span> hiring desk, and scores candidate agents with one-click interview invites.
               </p>
             </div>
 
@@ -449,6 +457,52 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
               </div>
             </div>
 
+            {/* Employer Master Recruitment Agreement Clickwrap */}
+            <label className="flex items-start gap-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acceptedEmployerTerms}
+                onChange={(e) => {
+                  setAcceptedEmployerTerms(e.target.checked);
+                  if (e.target.checked) setErrorMsg(null);
+                }}
+                className="mt-0.5 w-4 h-4 rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
+              />
+              <span className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                I am authorized to bind <span className="font-semibold text-zinc-950 dark:text-white">{companyName.trim() || '[Company Name]'}</span> and accept the SWITCHZ{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onOpenLegal) {
+                      onClose();
+                      onOpenLegal('terms');
+                    }
+                  }}
+                  className="font-semibold underline text-zinc-950 dark:text-white hover:text-emerald-600"
+                >
+                  Platform Terms (/term)
+                </button>{' '}
+                &amp;{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (onOpenLegal) {
+                      onClose();
+                      onOpenLegal('employer');
+                    }
+                  }}
+                  className="font-semibold underline text-zinc-950 dark:text-white hover:text-emerald-600"
+                >
+                  Global Recruitment Agreement (/employeragreement)
+                </button>{' '}
+                with Silvernest Pty Ltd (South Africa), including applicable placement fees (20%–30% or $5,000 USD remote flat fee), Net 14 payment terms, and 12-month candidate ownership.
+              </span>
+            </label>
+
             {errorMsg && (
               <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl p-2.5">
                 {errorMsg}
@@ -461,7 +515,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
               </span>
               <button
                 type="submit"
-                disabled={creating}
+                disabled={creating || !acceptedEmployerTerms}
                 className="min-h-[42px] px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-2 transition-all shadow-md disabled:opacity-50"
               >
                 {creating ? (

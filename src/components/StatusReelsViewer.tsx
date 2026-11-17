@@ -15,30 +15,34 @@ import {
   ArrowRight,
   Building2,
   ArrowLeft,
+  Handshake,
+  Briefcase,
+  MapPin,
+  Plus,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
-import { AgentDoc, BookingDoc, CurrencyMode, formatMoney } from '../types/firestore';
+import {
+  AgentDoc,
+  AgentStatusPostDoc,
+  BookingDoc,
+  CurrencyMode,
+  formatMoney,
+} from '../types/firestore';
 import { AgentIdentityCard } from './AgentIdentityCard';
 import { resolveAgentImage } from '../lib/agentImages';
+import { StatusCategoryBadge, getStatusCategoryLabel } from './StatusCategoryBadge';
 
 type ReelSlide =
-  | { kind: 'agent'; id: string; agent: AgentDoc }
-  | {
-      kind: 'ad';
-      id: string;
-      sponsorHandle: string;
-      brandName: string;
-      brandCode: string;
-      accentColor: string;
-      headline: string;
-      offerValueZAR: number;
-      savingsLabel: string;
-      targetAgent?: AgentDoc;
-    };
+  | { kind: 'status'; id: string; status: AgentStatusPostDoc; targetAgent?: AgentDoc }
+  | { kind: 'agent'; id: string; agent: AgentDoc };
 
 interface StatusReelsViewerProps {
   open: boolean;
   initialAgentId: string | null;
+  initialStatusId?: string | null;
   agents: AgentDoc[];
+  statusPosts?: AgentStatusPostDoc[];
   bookings: BookingDoc[];
   currency: CurrencyMode;
   onClose: () => void;
@@ -48,14 +52,17 @@ interface StatusReelsViewerProps {
   onEmailAgent: (agent: AgentDoc) => void;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
+  onOpenPostStatus?: () => void;
 }
 
-const SLIDE_DURATION_MS = 6500;
+const SLIDE_DURATION_MS = 7000;
 
 export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
   open,
   initialAgentId,
+  initialStatusId,
   agents,
+  statusPosts = [],
   bookings,
   currency,
   onClose,
@@ -65,95 +72,61 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
   onEmailAgent,
   onToggleDiscoverable,
   onOpenVideoStudio,
+  onOpenPostStatus,
 }) => {
   const slides: ReelSlide[] = useMemo(() => {
-    if (agents.length === 0) return [];
+    const findAgent = (id: string, handle?: string) =>
+      agents.find((a) => a.id === id || (handle && a.handle === handle));
 
-    const startIdx = initialAgentId ? agents.findIndex((a) => a.id === initialAgentId) : 0;
-    const ordered =
-      startIdx > 0
-        ? [...agents.slice(startIdx), ...agents.slice(0, startIdx)]
-        : [...agents];
+    const statusSlides: ReelSlide[] = statusPosts.map((status) => ({
+      kind: 'status',
+      id: `status_${status.id}`,
+      status,
+      targetAgent: findAgent(status.agentId, status.agentHandle),
+    }));
 
-    const findByHandle = (h: string) => agents.find((a) => a.handle === h) || ordered[0];
+    const agentSlides: ReelSlide[] = agents.map((agent) => ({
+      kind: 'agent',
+      id: `reel_${agent.id}`,
+      agent,
+    }));
 
-    const adTemplates = [
-      {
-        id: 'ad_woolies',
-        sponsorHandle: 'ceo.woolworths.agent',
-        brandName: 'Woolworths SA',
-        brandCode: 'W',
-        accentColor: '#18181b',
-        headline: '12% WRewards Corporate Fleet Rebate',
-        offerValueZAR: 295000,
-        savingsLabel: 'Save 12% via x402',
-        targetAgent: findByHandle('ceo.woolworths.agent'),
-      },
-      {
-        id: 'ad_bistro',
-        sponsorHandle: 'sandton.bistro.agent',
-        brandName: 'Marble & Flame',
-        brandCode: 'M&F',
-        accentColor: '#065F46',
-        headline: '22% Off Executive Tasting · BLE Beacon',
-        offerValueZAR: 28500,
-        savingsLabel: '22% Passing Offer',
-        targetAgent: findByHandle('sandton.bistro.agent'),
-      },
-      {
-        id: 'ad_mtn',
-        sponsorHandle: 'procurement.mtn.agent',
-        brandName: 'MTN Enterprise',
-        brandCode: 'MTN',
-        accentColor: '#92400E',
-        headline: 'Open 5G Solar Tower Tender',
-        offerValueZAR: 420000,
-        savingsLabel: 'Live Reverse-RFP',
-        targetAgent: findByHandle('procurement.mtn.agent'),
-      },
-      {
-        id: 'ad_takealot',
-        sponsorHandle: 'fleet.takealot.agent',
-        brandName: 'Takealot Logistics',
-        brandCode: 'TKL',
-        accentColor: '#075985',
-        headline: 'Same-Day EV Dispatch Slot',
-        offerValueZAR: 280000,
-        savingsLabel: 'Save 18% Fleet SLA',
-        targetAgent: findByHandle('fleet.takealot.agent'),
-      },
-    ];
+    // Order interleaved status cards followed by directory cards, rotated to requested starting item
+    const combined: ReelSlide[] = [];
+    const maxLen = Math.max(statusSlides.length, agentSlides.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < statusSlides.length) combined.push(statusSlides[i]);
+      if (i < agentSlides.length) combined.push(agentSlides[i]);
+    }
 
-    const list: ReelSlide[] = [];
-    let adIdx = 0;
+    if (combined.length === 0) return [];
 
-    ordered.forEach((agent, idx) => {
-      list.push({
-        kind: 'agent',
-        id: `reel_${agent.id}`,
-        agent,
-      });
+    let startIdx = -1;
+    if (initialStatusId) {
+      startIdx = combined.findIndex(
+        (s) => s.kind === 'status' && s.status.id === initialStatusId
+      );
+    }
+    if (startIdx < 0 && initialAgentId) {
+      startIdx = combined.findIndex(
+        (s) =>
+          (s.kind === 'status' && s.status.agentId === initialAgentId) ||
+          (s.kind === 'agent' && s.agent.id === initialAgentId)
+      );
+    }
 
-      if ((idx + 1) % 2 === 0 && idx < ordered.length - 1) {
-        const ad = adTemplates[adIdx % adTemplates.length];
-        adIdx += 1;
-        list.push({
-          kind: 'ad',
-          ...ad,
-          id: `${ad.id}_${idx}`,
-        });
-      }
-    });
-
-    return list;
-  }, [agents, initialAgentId]);
+    if (startIdx > 0) {
+      return [...combined.slice(startIdx), ...combined.slice(0, startIdx)];
+    }
+    return combined;
+  }, [agents, statusPosts, initialAgentId, initialStatusId]);
 
   const [currentIdx, setCurrentIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const [holdPaused, setHoldPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({});
-  const [adImgErrors, setAdImgErrors] = useState<Record<string, boolean>>({});
+  const [statusImgErrors, setStatusImgErrors] = useState<Record<string, boolean>>({});
   const [dragDeltaY, setDragDeltaY] = useState(0);
   const [dragDeltaX, setDragDeltaX] = useState(0);
 
@@ -169,14 +142,17 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
       setHoldPaused(false);
       lastSyncedIdRef.current = null;
     }
-  }, [open, initialAgentId]);
+  }, [open, initialAgentId, initialStatusId]);
 
   const activeSlide = slides[currentIdx] || null;
 
   useEffect(() => {
-    if (open && activeSlide?.kind === 'agent' && lastSyncedIdRef.current !== activeSlide.agent.id) {
-      lastSyncedIdRef.current = activeSlide.agent.id;
-      onActiveAgentChange(activeSlide.agent);
+    if (!open || !activeSlide) return;
+    const target =
+      activeSlide.kind === 'agent' ? activeSlide.agent : activeSlide.targetAgent;
+    if (target && lastSyncedIdRef.current !== target.id) {
+      lastSyncedIdRef.current = target.id;
+      onActiveAgentChange(target);
     }
   }, [open, activeSlide, onActiveAgentChange]);
 
@@ -310,6 +286,16 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
           {slides.map((s, idx) => {
             const fillPct =
               idx < currentIdx ? 100 : idx === currentIdx ? progress : 0;
+            const barClass =
+              s.kind === 'status'
+                ? s.status.category === 'hired'
+                  ? 'bg-[#0B4F9C] dark:bg-sky-400'
+                  : s.status.category === 'deal_approved'
+                  ? 'bg-[#007BFF] dark:bg-sky-400'
+                  : s.status.category === 'sponsored_ad'
+                  ? 'bg-amber-500 dark:bg-amber-400'
+                  : 'bg-emerald-600 dark:bg-emerald-400'
+                : 'bg-zinc-950 dark:bg-white';
             return (
               <button
                 key={s.id}
@@ -321,12 +307,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                 aria-label={`Reel ${idx + 1}`}
                 className="h-1 flex-1 rounded-full overflow-hidden bg-zinc-300 dark:bg-white/15"
               >
-                <div
-                  className={`h-full transition-none ${
-                    s.kind === 'ad' ? 'bg-amber-500 dark:bg-amber-400' : 'bg-zinc-950 dark:bg-white'
-                  }`}
-                  style={{ width: `${fillPct}%` }}
-                />
+                <div className={`h-full transition-none ${barClass}`} style={{ width: `${fillPct}%` }} />
               </button>
             );
           })}
@@ -349,22 +330,44 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             >
               <ArrowLeft className="w-3.5 h-3.5" />
             </button>
-            {activeSlide.kind === 'ad' ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 text-amber-800 dark:bg-amber-400/15 dark:border-amber-400/30 dark:text-amber-300 px-2 py-0.5 text-[10px] font-mono font-semibold">
-                <Megaphone className="w-3 h-3" />
-                SPONSORED
+
+            {activeSlide.kind === 'status' ? (
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <StatusCategoryBadge
+                  category={activeSlide.status.category}
+                  authorType={activeSlide.status.authorType}
+                  size="sm"
+                />
+                <span className="text-xs font-mono text-zinc-900 dark:text-zinc-100 font-semibold truncate">
+                  {getStatusCategoryLabel(activeSlide.status.category, activeSlide.status.authorType)}
+                </span>
               </span>
             ) : (
               <span className="text-xs font-mono text-zinc-900 dark:text-zinc-200 truncate font-medium">
                 {activeSlide.agent.handle}
               </span>
             )}
+
             <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-500 tabular-nums shrink-0">
               {currentIdx + 1}/{slides.length}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenPostStatus && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenPostStatus();
+                }}
+                className="h-9 px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1 shadow-xs"
+                title="Post a new Hired, Deal Approved, Sponsored Ad, or Generic status"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Post</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setPaused((p) => !p)}
@@ -447,92 +450,250 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             </div>
           ) : (
             (() => {
-              const adImage = activeSlide.targetAgent
-                ? resolveAgentImage(activeSlide.targetAgent)
-                : undefined;
-              const showAdPhoto = Boolean(adImage) && !adImgErrors[activeSlide.id];
+              const st = activeSlide.status;
+              const authorAgent = activeSlide.targetAgent;
+              const bgPhoto = authorAgent ? resolveAgentImage(authorAgent) : undefined;
+              const showPhoto = Boolean(bgPhoto) && !statusImgErrors[st.id];
+              const cardThemeBg =
+                st.category === 'hired'
+                  ? '#0B3B75'
+                  : st.category === 'deal_approved'
+                  ? '#07438E'
+                  : st.category === 'sponsored_ad'
+                  ? st.accentColor || '#78350F'
+                  : st.accentColor || '#18181b';
+
+              const bannerTag =
+                st.category === 'hired'
+                  ? 'HIRED · OFFER SIGNED'
+                  : st.category === 'deal_approved'
+                  ? 'DEAL APPROVED & SIGNED'
+                  : st.category === 'sponsored_ad'
+                  ? 'SPONSORED AD'
+                  : st.authorType === 'persona'
+                  ? 'LINKEDIN STATUS'
+                  : 'AI AGENT UPDATE';
+
               return (
                 <div
-                  className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-amber-400/40 text-white flex flex-col justify-between h-[358px] sm:h-[404px] p-5 relative"
-                  style={{
-                    backgroundColor: activeSlide.accentColor,
-                  }}
+                  className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-white/25 text-white flex flex-col justify-between h-[372px] sm:h-[416px] p-4 sm:p-5 relative"
+                  style={{ backgroundColor: cardThemeBg }}
                 >
-                  {showAdPhoto && (
+                  {showPhoto && (
                     <>
                       <img
-                        src={adImage}
-                        alt={activeSlide.brandName}
+                        src={bgPhoto}
+                        alt={st.authorName}
                         referrerPolicy="no-referrer"
                         onError={() =>
-                          setAdImgErrors((prev) => ({ ...prev, [activeSlide.id]: true }))
+                          setStatusImgErrors((prev) => ({ ...prev, [st.id]: true }))
                         }
-                        className="absolute inset-0 w-full h-full object-cover object-center"
+                        className={`absolute inset-0 w-full h-full object-cover ${
+                          st.authorType === 'persona' ? 'object-top' : 'object-center'
+                        }`}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/45 pointer-events-none" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/75 to-black/60 pointer-events-none" />
                     </>
                   )}
 
-                  <div className="relative z-10 flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-400 text-zinc-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs">
-                      <Megaphone className="w-3 h-3" /> Sponsored
-                    </span>
-                    <button
-                      type="button"
-                      onClick={goNext}
-                      className="min-h-[30px] text-xs font-mono text-white/90 hover:text-white inline-flex items-center gap-1 bg-black/45 backdrop-blur-xs border border-white/15 px-2.5 py-1 rounded-lg"
-                    >
-                      Skip <ArrowRight className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="relative z-10 my-auto py-2 text-center space-y-2.5">
-                    <div className="w-12 h-12 rounded-xl mx-auto flex items-center justify-center font-display font-bold text-base border border-white/30 bg-black/45 backdrop-blur-sm shadow-md">
-                      {activeSlide.brandCode}
+                  {/* Top Row: Category Badge Pill + Auto/Skip */}
+                  <div className="relative z-10 flex items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-black/50 backdrop-blur-md border border-white/20 pl-1 pr-2.5 py-1">
+                      <StatusCategoryBadge
+                        category={st.category}
+                        authorType={st.authorType}
+                        size="md"
+                      />
+                      <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-white">
+                        {bannerTag}
+                      </span>
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs font-mono text-amber-300 flex items-center justify-center gap-1 drop-shadow-xs">
-                        <Building2 className="w-3.5 h-3.5" />
-                        {activeSlide.brandName}
-                      </p>
-                      <h3 className="font-display text-lg sm:text-xl font-bold leading-tight text-white drop-shadow-sm">
-                        {activeSlide.headline}
+                    <div className="flex items-center gap-1.5">
+                      {st.autoGenerated && (
+                        <span className="text-[9.5px] font-mono bg-emerald-500/25 border border-emerald-300/40 text-emerald-200 px-2 py-0.5 rounded-full">
+                          Auto-Post
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className="min-h-[28px] text-[11px] font-mono text-white/90 hover:text-white inline-flex items-center gap-1 bg-black/45 backdrop-blur-xs border border-white/15 px-2 py-0.5 rounded-lg"
+                      >
+                        Next <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Author Identity + Dedicated Status Content */}
+                  <div className="relative z-10 my-auto space-y-3 py-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative shrink-0">
+                        <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/75 bg-zinc-900 flex items-center justify-center font-bold text-xs shadow-md">
+                          {showPhoto ? (
+                            <img
+                              src={bgPhoto}
+                              alt={st.authorName}
+                              className={`w-full h-full object-cover ${
+                                st.authorType === 'persona' ? 'object-top' : 'object-center'
+                              }`}
+                            />
+                          ) : (
+                            <span>{st.authorName.slice(0, 2).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusCategoryBadge
+                            category={st.category}
+                            authorType={st.authorType}
+                            size="xs"
+                          />
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-display font-bold text-sm text-white truncate drop-shadow-xs">
+                          {st.authorName}
+                        </p>
+                        <p className="text-[11px] font-mono text-sky-200 truncate">
+                          {st.agentHandle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <h3 className="font-display text-base sm:text-lg font-bold leading-snug text-white drop-shadow-sm">
+                        {st.headline}
                       </h3>
+                      <p className="text-xs text-zinc-200 leading-relaxed line-clamp-3">
+                        {st.body}
+                      </p>
                     </div>
 
-                    <div className="inline-flex flex-col items-center rounded-xl bg-black/55 backdrop-blur-sm border border-white/20 px-4 py-2">
-                      <span className="text-[11px] font-mono text-emerald-300">
-                        {activeSlide.savingsLabel}
-                      </span>
-                      <span className="font-mono text-base font-bold text-white tabular-nums">
-                        {formatMoney(activeSlide.offerValueZAR, currency)}
-                      </span>
-                    </div>
+                    {/* Structured Info Box per Status Category */}
+                    {st.category === 'hired' && (
+                      <div className="rounded-xl bg-[#0B4F9C]/55 backdrop-blur-sm border border-sky-300/35 p-2.5 space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-white">
+                          <span className="inline-flex items-center gap-1.5 truncate">
+                            <Handshake className="w-3.5 h-3.5 text-sky-200 shrink-0" />
+                            {st.partnerName || st.authorOrg}
+                          </span>
+                          {st.savingsLabel && (
+                            <span className="text-[10px] font-mono text-emerald-300 shrink-0">
+                              {st.savingsLabel}
+                            </span>
+                          )}
+                        </div>
+                        {st.roleTitle && (
+                          <p className="text-[11px] text-sky-100 flex items-center gap-1 truncate">
+                            <Briefcase className="w-3 h-3 shrink-0" />
+                            {st.roleTitle}
+                          </p>
+                        )}
+                        {st.regionZone && (
+                          <p className="text-[10.5px] font-mono text-sky-200 flex items-center gap-1 truncate">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            {st.regionZone}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {st.category === 'deal_approved' && (
+                      <div className="rounded-xl bg-[#007BFF]/40 backdrop-blur-sm border border-sky-300/40 p-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0 space-y-0.5">
+                          <p className="text-[11px] font-semibold text-white flex items-center gap-1 truncate">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                            {st.partnerName ? `Signed with ${st.partnerName}` : 'Business Deal Signed Off'}
+                          </p>
+                          <p className="text-[10.5px] font-mono text-emerald-200 truncate">
+                            {st.savingsLabel || 'Approved & Settled'}
+                          </p>
+                        </div>
+                        {st.dealValueZAR !== undefined && (
+                          <div className="text-right shrink-0">
+                            <p className="text-[9.5px] font-mono uppercase text-sky-200">Deal Value</p>
+                            <p className="font-mono text-sm font-bold text-white tabular-nums">
+                              {formatMoney(st.dealValueZAR, currency)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {st.category === 'sponsored_ad' && (
+                      <div className="rounded-xl bg-amber-500/25 backdrop-blur-sm border border-amber-300/40 p-2.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-amber-200 flex items-center gap-1 truncate">
+                            <Megaphone className="w-3.5 h-3.5 shrink-0" />
+                            {st.savingsLabel || 'Promoted Offer'}
+                          </p>
+                          <p className="text-[10.5px] font-mono text-white/80 truncate">
+                            {st.authorOrg}
+                          </p>
+                        </div>
+                        {st.dealValueZAR !== undefined && (
+                          <span className="font-mono text-sm font-bold text-white tabular-nums shrink-0">
+                            {formatMoney(st.dealValueZAR, currency)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {st.category === 'generic' && (
+                      <div className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 px-3 py-2 flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-zinc-100 inline-flex items-center gap-1.5">
+                          {st.authorType === 'persona' ? (
+                            <span className="w-4 h-4 rounded bg-[#0A66C2] text-white font-bold text-[9px] inline-flex items-center justify-center">
+                              in
+                            </span>
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+                          )}
+                          {st.authorOrg}
+                        </span>
+                        <span className="text-[10px] font-mono text-zinc-300">
+                          {new Date(st.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="relative z-10 grid grid-cols-3 gap-2 pt-3 border-t border-white/20">
-                    {activeSlide.targetAgent && (
+                  {/* Card Footer Action Row: Engage + Email + Dial */}
+                  <div className="relative z-10 flex items-center gap-1.5 pt-2.5 border-t border-white/20">
+                    {authorAgent && (
                       <>
                         <button
                           type="button"
                           onClick={() => {
                             onClose();
-                            onEngageAgent(activeSlide.targetAgent!);
+                            onEngageAgent(authorAgent);
                           }}
-                          className="col-span-2 min-h-[40px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 shadow-sm"
+                          className="flex-1 min-h-[38px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 shadow-sm"
                         >
                           <Zap className="w-3.5 h-3.5" />
-                          Claim Offer
+                          <span className="truncate">{st.ctaLabel || 'Engage'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => {
                             onClose();
-                            onDialAgent(activeSlide.targetAgent!);
+                            onEmailAgent(authorAgent);
                           }}
-                          className="min-h-[40px] rounded-xl bg-black/50 backdrop-blur-xs border border-white/20 text-white flex items-center justify-center hover:bg-black/65"
-                          aria-label="Dial Sponsor"
+                          className="w-10 min-h-[38px] rounded-xl bg-black/50 backdrop-blur-xs border border-white/20 text-white flex items-center justify-center hover:bg-black/65 shrink-0"
+                          aria-label={`Email ${authorAgent.displayName}`}
+                          title="Email"
+                        >
+                          <Mail className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onDialAgent(authorAgent);
+                          }}
+                          className="w-10 min-h-[38px] rounded-xl bg-black/50 backdrop-blur-xs border border-white/20 text-white flex items-center justify-center hover:bg-black/65 shrink-0"
+                          aria-label={`Dial ${authorAgent.displayName}`}
+                          title="Dial"
                         >
                           <Phone className="w-4 h-4" />
                         </button>
@@ -601,6 +762,18 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
             </button>
             <button
               type="button"
+              disabled={isEmergency}
+              onClick={() => {
+                onClose();
+                onEmailAgent(activeSlide.agent);
+              }}
+              className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center disabled:opacity-35"
+              aria-label="Email"
+            >
+              <Mail className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 onClose();
                 onDialAgent(activeSlide.agent);
@@ -613,18 +786,6 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
               aria-label="Dial"
             >
               <Phone className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              disabled={isEmergency}
-              onClick={() => {
-                onClose();
-                onEmailAgent(activeSlide.agent);
-              }}
-              className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center disabled:opacity-35"
-              aria-label="Email"
-            >
-              <Mail className="w-4 h-4" />
             </button>
             <button
               type="button"
@@ -652,7 +813,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                 className="flex-1 min-h-[38px] rounded-full bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" />
-                Claim Deal
+                {activeSlide.status.ctaLabel || 'Engage'}
               </button>
             )}
             <button

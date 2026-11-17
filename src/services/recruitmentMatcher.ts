@@ -54,12 +54,23 @@ export function matchCandidateToJob(
       ? 90
       : 84;
 
-  const weights = job.weights || { skills: 0.45, experience: 0.25, compensation: 0.15, location: 0.15 };
+  const rawW = job.weights || { skills: 0.45, experience: 0.25, compensation: 0.15, location: 0.15 };
+  const norm = (val: number, fallback: number) => {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return n > 1 ? n / 100 : n;
+  };
+  const wSkills = norm(rawW.skills, 0.45);
+  const wExp = norm(rawW.experience, 0.25);
+  const wComp = norm(rawW.compensation, 0.15);
+  const wLoc = norm(rawW.location, 0.15);
+  const wSum = wSkills + wExp + wComp + wLoc || 1;
   const rawScore = Math.round(
-    skillsOverlap * weights.skills +
-    experienceFit * weights.experience +
-    compensationFit * weights.compensation +
-    locationCultureFit * weights.location
+    (skillsOverlap * wSkills +
+      experienceFit * wExp +
+      compensationFit * wComp +
+      locationCultureFit * wLoc) /
+      wSum
   );
   const score = Math.min(98, Math.max(68, rawScore));
 

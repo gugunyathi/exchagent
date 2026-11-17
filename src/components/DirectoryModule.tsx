@@ -12,6 +12,7 @@ import {
   CardBackgroundTheme,
   CardEdgeRadius,
   CardBorderStyle,
+  AgentStatusPostDoc,
 } from '../types/firestore';
 import { LocalCurrencyCode, formatCurrencyFromUsd, formatUsdPrice } from '../lib/fx';
 import { quoteHandlePricing } from '../services/paymentRails';
@@ -56,6 +57,10 @@ interface DirectoryModuleProps {
   onCloseDeployModal?: () => void;
   onOpenQuickJobAgent?: () => void;
   onOpenQuickEmployerAgent?: () => void;
+  onOpenProfileHistory?: (agent: AgentDoc) => void;
+  onOpenCompanyHr?: (agent: AgentDoc) => void;
+  statusPosts?: AgentStatusPostDoc[];
+  onOpenPostStatus?: () => void;
 }
 
 export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
@@ -88,10 +93,15 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   onCloseDeployModal,
   onOpenQuickJobAgent,
   onOpenQuickEmployerAgent,
+  onOpenProfileHistory,
+  onOpenCompanyHr,
+  statusPosts = [],
+  onOpenPostStatus,
 }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(agents[0]?.id || null);
   const [reelOpen, setReelOpen] = useState(false);
   const [reelStartAgentId, setReelStartAgentId] = useState<string | null>(null);
+  const [reelStartStatusId, setReelStartStatusId] = useState<string | null>(null);
   const [gridFlipped, setGridFlipped] = useState<Record<string, boolean>>({});
   const [showDeploy, setShowDeploy] = useState(openDeployModalInitially);
 
@@ -301,13 +311,23 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       {/* Top Stories / Promoted Agent Circles Strip */}
       <PromotedStatusCircles
         agents={agents}
+        statusPosts={statusPosts}
         selectedAgentId={selectedAgentId}
         onOpenReelForAgent={(agent) => {
           onResetFilters();
           setSelectedAgentId(agent.id);
+          setReelStartStatusId(null);
           setReelStartAgentId(agent.id);
           setReelOpen(true);
         }}
+        onOpenReelForStatus={(status) => {
+          onResetFilters();
+          setSelectedAgentId(status.agentId);
+          setReelStartStatusId(status.id);
+          setReelStartAgentId(status.agentId);
+          setReelOpen(true);
+        }}
+        onOpenPostStatus={onOpenPostStatus}
       />
 
       {/* Compact Single-Row Filter & View Toolbar */}
@@ -347,30 +367,6 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         </SwipeScrollArea>
 
         <div className="flex items-center gap-1 shrink-0">
-          {onOpenQuickJobAgent && (
-            <button
-              type="button"
-              onClick={onOpenQuickJobAgent}
-              className="min-h-[34px] px-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors shadow-2xs"
-              title="Paste LinkedIn URL for a free Job Agent + 10 matches"
-            >
-              <Linkedin className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">1-Click Job Agent</span>
-              <span className="sm:hidden">Job Agent</span>
-            </button>
-          )}
-          {onOpenQuickEmployerAgent && (
-            <button
-              type="button"
-              onClick={onOpenQuickEmployerAgent}
-              className="min-h-[34px] px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors shadow-2xs"
-              title="Paste Job URL for a 1-click Employer Agent + auto-match candidates"
-            >
-              <Building2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Hire with Agent</span>
-              <span className="sm:hidden">Hire</span>
-            </button>
-          )}
           <button
             type="button"
             onClick={onToggleSearchBar}
@@ -450,7 +446,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
             </button>
           </div>
         ) : viewMode === 'carousel' ? (
-          <div className="min-h-full w-full flex flex-col items-center justify-center py-1 pb-2">
+          <div className="min-h-full w-full flex flex-col items-center justify-center py-1 pb-14">
             <AgentCardCarousel
               agents={filtered}
               bookings={bookings}
@@ -465,6 +461,9 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               onCustomizeCard={onCustomizeCard}
               onSaveContact={onSaveContact}
               savedContactHandles={savedContactHandles}
+              onOpenProfileHistory={onOpenProfileHistory}
+              onOpenCompanyHr={onOpenCompanyHr}
+              onUpdateAgentMedia={onDeployAgent}
             />
           </div>
         ) : (
@@ -492,6 +491,9 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   onCustomize={onCustomizeCard}
                   onSaveContact={onSaveContact}
                   isSavedContact={Boolean(savedContactHandles?.has(agent.handle.toLowerCase()))}
+                  onOpenProfileHistory={onOpenProfileHistory}
+                  onOpenCompanyHr={onOpenCompanyHr}
+                  onUpdateAgentMedia={onDeployAgent}
                 />
               </div>
             ))}
@@ -974,7 +976,9 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       <StatusReelsViewer
         open={reelOpen}
         initialAgentId={reelStartAgentId}
+        initialStatusId={reelStartStatusId}
         agents={agents}
+        statusPosts={statusPosts}
         bookings={bookings}
         currency={currency}
         onClose={() => setReelOpen(false)}
@@ -984,6 +988,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         onEmailAgent={onEmailAgent}
         onToggleDiscoverable={onToggleDiscoverable}
         onOpenVideoStudio={onOpenVideoStudio}
+        onOpenPostStatus={onOpenPostStatus}
       />
     </div>
   );
