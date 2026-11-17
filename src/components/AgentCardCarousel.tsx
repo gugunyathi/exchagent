@@ -16,12 +16,14 @@ interface AgentCardCarouselProps {
   currency: CurrencyMode;
   selectedAgentId?: string | null;
   onActiveAgentChange?: (agent: AgentDoc) => void;
-  onSelectForPitch: (agent: AgentDoc) => void;
+  onSelectForEngage: (agent: AgentDoc) => void;
   onDialAgent: (agent: AgentDoc) => void;
   onEmailAgent: (agent: AgentDoc) => void;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
   onCustomizeCard?: (agent: AgentDoc) => void;
+  onSaveContact?: (agent: AgentDoc) => void;
+  savedContactHandles?: Set<string>;
 }
 
 export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
@@ -30,12 +32,14 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
   currency,
   selectedAgentId,
   onActiveAgentChange,
-  onSelectForPitch,
+  onSelectForEngage,
   onDialAgent,
   onEmailAgent,
   onToggleDiscoverable,
   onOpenVideoStudio,
   onCustomizeCard,
+  onSaveContact,
+  savedContactHandles,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [flippedMap, setFlippedMap] = useState<Record<string, boolean>>({});
@@ -108,9 +112,9 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         toggleFlipFor(activeAgent.id);
-      } else if (e.key.toLowerCase() === 'p') {
+      } else if (e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        onSelectForPitch(activeAgent);
+        onSelectForEngage(activeAgent);
       } else if (e.key.toLowerCase() === 'd') {
         e.preventDefault();
         onDialAgent(activeAgent);
@@ -119,7 +123,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeAgent, goPrev, goNext, toggleFlipFor, onSelectForPitch, onDialAgent]);
+  }, [activeAgent, goPrev, goNext, toggleFlipFor, onSelectForEngage, onDialAgent]);
 
   const beginDrag = (clientX: number, clientY: number) => {
     pointerStartXRef.current = clientX;
@@ -168,7 +172,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
         window.clearTimeout(singleTapTimerRef.current);
         singleTapTimerRef.current = null;
       }
-      onSelectForPitch(activeAgent);
+      onSelectForEngage(activeAgent);
     } else {
       singleTapTimerRef.current = window.setTimeout(() => {
         toggleFlipFor(activeAgent.id);
@@ -215,7 +219,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
                 flipped={false}
                 isActive={false}
                 onFlipToggle={() => goPrev()}
-                onPitch={onSelectForPitch}
+                onEngage={onSelectForEngage}
                 onDial={onDialAgent}
                 onEmail={onEmailAgent}
                 onToggleDiscoverable={onToggleDiscoverable}
@@ -247,12 +251,14 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
               flipped={Boolean(flippedMap[activeAgent.id])}
               isActive={true}
               onFlipToggle={() => toggleFlipFor(activeAgent.id)}
-              onPitch={onSelectForPitch}
+              onEngage={onSelectForEngage}
               onDial={onDialAgent}
               onEmail={onEmailAgent}
               onToggleDiscoverable={onToggleDiscoverable}
               onOpenVideoStudio={onOpenVideoStudio}
               onCustomize={onCustomizeCard}
+              onSaveContact={onSaveContact}
+              isSavedContact={Boolean(savedContactHandles?.has(activeAgent.handle.toLowerCase()))}
             />
           </div>
 
@@ -269,7 +275,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
                 flipped={false}
                 isActive={false}
                 onFlipToggle={() => goNext()}
-                onPitch={onSelectForPitch}
+                onEngage={onSelectForEngage}
                 onDial={onDialAgent}
                 onEmail={onEmailAgent}
                 onToggleDiscoverable={onToggleDiscoverable}
@@ -309,11 +315,11 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
           <div className="bg-white/95 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 rounded-full p-1 flex items-center gap-1 flex-1 min-w-0 shadow-sm">
             <button
               type="button"
-              onClick={() => onSelectForPitch(activeAgent)}
+              onClick={() => onSelectForEngage(activeAgent)}
               className="flex-1 min-h-[34px] rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white font-semibold text-xs inline-flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Pitch</span>
+              <span>Engage</span>
             </button>
 
             {onCustomizeCard && (
@@ -363,7 +369,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
         </div>
 
         <p className="text-[10.5px] text-zinc-600 dark:text-zinc-500 font-medium hidden sm:block">
-          Click card to flip · Double-click to pitch · Arrow keys to navigate
+          Click card to flip · Double-click to engage · Arrow keys to navigate
         </p>
       </div>
     </div>

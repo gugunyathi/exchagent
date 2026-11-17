@@ -9,25 +9,27 @@ import {
   Globe,
   FileCode2,
 } from 'lucide-react';
-import { AgentDoc } from '../types/firestore';
+import { AgentDoc, CurrencyMode, formatMoney } from '../types/firestore';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface ChromeExtensionHubProps {
   agents: AgentDoc[];
-  onTriggerPitchFromSim: (agent: AgentDoc) => void;
+  currency?: CurrencyMode;
+  onTriggerEngageFromSim: (agent: AgentDoc) => void;
 }
 
 export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
   agents,
-  onTriggerPitchFromSim,
+  currency = 'USD',
+  onTriggerEngageFromSim,
 }) => {
   const [selectedSimAgent, setSelectedSimAgent] = useState<AgentDoc>(
     agents.find((a) => a.handle === 'ceo.woolworths.agent') || agents[0]
   );
   const [popupOpen, setPopupOpen] = useState(false);
-  const [quickPitchText, setQuickPitchText] = useState(
-    'Propose Q4 ESG cold-chain telemetry pilot at R92,000 (16% off list).'
+  const [quickEngageText, setQuickEngageText] = useState(
+    'Propose Q4 ESG cold-chain telemetry pilot at US$4,968 (16% off list).'
   );
   const [simResult, setSimResult] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
       name: 'Switchboard AgentPages Companion',
       version: '1.0.0',
       description:
-        'Detects .agent handles on LinkedIn profiles and websites and launches instant Gemini A2A pitches.',
+        'Detects .agent handles on LinkedIn profiles and websites and launches instant Gemini A2A engagements.',
       permissions: ['activeTab', 'storage'],
       host_permissions: ['*://*/*', '<all_urls>'],
       action: {
@@ -72,7 +74,7 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
   if (document.getElementById('switchboard-agent-badge')) return;
   const badge = document.createElement('button');
   badge.id = 'switchboard-agent-badge';
-  badge.innerText = '⚡ Pitch ' + detectedHandle + ' via Switchboard';
+  badge.innerText = '⚡ Engage ' + detectedHandle + ' via Switchboard';
   Object.assign(badge.style, {
     position: 'fixed',
     bottom: '24px',
@@ -90,7 +92,7 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
     boxShadow: '0 12px 32px rgba(0,0,0,0.45)'
   });
   badge.onclick = () => {
-    window.open('${appOrigin}/?pitch=' + encodeURIComponent(detectedHandle), '_blank');
+    window.open('${appOrigin}/?engage=' + encodeURIComponent(detectedHandle), '_blank');
   };
   document.body.appendChild(badge);
 })();`;
@@ -110,8 +112,8 @@ export const ChromeExtensionHub: React.FC<ChromeExtensionHubProps> = ({
 <body>
   <h3>Switchboard AgentPages</h3>
   <div class="box" id="status">Scanning active tab for .agent handle...</div>
-  <textarea id="pitch" rows="3" placeholder="Enter your A2A pitch or RFP offer..."></textarea>
-  <button id="send">Launch A2A Pitch</button>
+  <textarea id="engage" rows="3" placeholder="Enter your A2A engage or RFP offer..."></textarea>
+  <button id="send">Launch A2A Engage</button>
   <div id="result" style="margin-top:10px;font-size:11px;color:#6ee7b7;"></div>
   <script src="popup.js"></script>
 </body>
@@ -122,7 +124,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
   const handle = data.lastDetectedAgent || 'ceo.woolworths.agent';
   document.getElementById('status').innerText = 'POPIA Verified Target: ' + handle;
   document.getElementById('send').onclick = async () => {
-    const proposalTitle = document.getElementById('pitch').value || 'Quick Switchboard A2A Pitch';
+    const proposalTitle = document.getElementById('engage').value || 'Quick Switchboard A2A Engage';
     document.getElementById('result').innerText = 'Negotiating via Switchboard...';
     try {
       const res = await fetch(API_BASE + '/api/a2a/negotiate', {
@@ -134,7 +136,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
       document.getElementById('result').innerText =
         'Status: ' + json.finalStatus + ' · Agreed R' + json.agreedPriceZAR;
     } catch (e) {
-      document.getElementById('result').innerText = 'Open Switchboard portal to complete pitch.';
+      document.getElementById('result').innerText = 'Open Switchboard portal to complete engage.';
     }
   };
 });`;
@@ -162,7 +164,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
     }
   };
 
-  const handleRunSimPopupPitch = async () => {
+  const handleRunSimPopupEngage = async () => {
     setSimResult('Running A2A handshake...');
     const res = await fetch('/api/a2a/negotiate', {
       method: 'POST',
@@ -170,13 +172,13 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
       body: JSON.stringify({
         initiatorHandle: 'alex.founder.agent',
         targetHandle: selectedSimAgent.handle,
-        proposalTitle: quickPitchText,
+        proposalTitle: quickEngageText,
         stickerPriceZAR: 92000,
         surface: 'chrome-extension',
       }),
     });
     const data = await res.json();
-    const summary = `${data.finalStatus} at R${Number(data.agreedPriceZAR || 78000).toLocaleString('en-ZA')}`;
+    const summary = `${data.finalStatus} at ${formatMoney(Number(data.agreedPriceZAR || 78000), currency)}`;
     setSimResult(summary);
     emitToast(summary, 'success');
   };
@@ -279,7 +281,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                   className="min-h-[36px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap shrink-0 transition-colors"
                 >
                   <Zap className="w-3.5 h-3.5" />
-                  Pitch Agent
+                  Engage Agent
                 </button>
               </div>
             </div>
@@ -287,7 +289,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
             {popupOpen && (
               <div className="m-3 sm:m-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-3.5 space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-display font-bold text-zinc-950 dark:text-zinc-100">Extension Quick-Pitch</span>
+                  <span className="font-display font-bold text-zinc-950 dark:text-zinc-100">Extension Quick-Engage</span>
                   <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1 text-[11px]">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     POPIA Verified
@@ -295,21 +297,21 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                 </div>
                 <textarea
                   rows={2}
-                  value={quickPitchText}
-                  onChange={(e) => setQuickPitchText(e.target.value)}
+                  value={quickEngageText}
+                  onChange={(e) => setQuickEngageText(e.target.value)}
                   className="w-full rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 p-2.5 text-xs text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleRunSimPopupPitch}
+                    onClick={handleRunSimPopupEngage}
                     className="flex-1 min-h-[36px] rounded-lg bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white transition-colors"
                   >
-                    Send Quick Pitch
+                    Send Quick Engage
                   </button>
                   <button
                     type="button"
-                    onClick={() => onTriggerPitchFromSim(selectedSimAgent)}
+                    onClick={() => onTriggerEngageFromSim(selectedSimAgent)}
                     className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 whitespace-nowrap"
                   >
                     Open in Arena

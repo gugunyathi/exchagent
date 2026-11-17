@@ -91,10 +91,10 @@ const SWITCHBOARD_SKILLS: SkillSpec[] = [
     method: 'POST',
     endpoint: '/api/email/triage',
     auth: 'OAuth2',
-    summary: 'Classify inbound pitch & trigger auto-counter or calendar hold.',
+    summary: 'Classify inbound engage & trigger auto-counter or calendar hold.',
     sampleBody: {
       fromAddress: 'chris.moleme@switchboard.agent',
-      toAddress: 'pitch@ceo.woolworths.agent',
+      toAddress: 'engage@ceo.woolworths.agent',
       subject: 'B2B Growth Proposal — R85,000',
       body: 'Full-stack B2B lead gen suite for R85,000 with 16% discount.',
       targetMinDiscountPct: 14,

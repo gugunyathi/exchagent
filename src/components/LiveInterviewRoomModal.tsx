@@ -12,6 +12,7 @@ import {
   X,
   UserCheck,
   Clock,
+  ArrowLeft,
 } from 'lucide-react';
 import { AgentDoc, BookingDoc, JobPostingDoc, PreScreenReview } from '../types/firestore';
 import { emitToast } from '../lib/toast';
@@ -164,6 +165,18 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
     });
   };
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
   const secs = String(elapsedSec % 60).padStart(2, '0');
 
@@ -178,25 +191,37 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
       >
         <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between gap-2 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-300 text-rose-700 dark:bg-rose-500/15 dark:border-rose-400/30 text-[10px] font-mono dark:text-rose-300 font-semibold">
-                LIVE CALL
-              </span>
-              <span className="text-xs font-mono text-zinc-600 dark:text-zinc-400 inline-flex items-center gap-1 tabular-nums">
-                <Clock className="w-3 h-3" /> {mins}:{secs}
-              </span>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white shrink-0 transition-colors"
+              aria-label="Back to Video Studio"
+              title="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-50 border border-rose-300 text-rose-700 dark:bg-rose-500/15 dark:border-rose-400/30 text-[10px] font-mono dark:text-rose-300 font-semibold">
+                  LIVE CALL
+                </span>
+                <span className="text-xs font-mono text-zinc-600 dark:text-zinc-400 inline-flex items-center gap-1 tabular-nums">
+                  <Clock className="w-3 h-3" /> {mins}:{secs}
+                </span>
+              </div>
+              <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-zinc-50 truncate mt-0.5 tracking-tight">
+                {booking?.title || job?.title || `Live Panel: ${candidate.displayName}`}
+              </h3>
             </div>
-            <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-zinc-50 truncate mt-0.5 tracking-tight">
-              {booking?.title || job?.title || `Live Panel: ${candidate.displayName}`}
-            </h3>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white shrink-0"
+            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white shrink-0 transition-colors"
             aria-label="Close room"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>

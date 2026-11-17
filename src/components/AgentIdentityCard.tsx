@@ -14,6 +14,7 @@ import {
   Zap,
   ShieldAlert,
   Palette,
+  BookmarkPlus,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -33,12 +34,14 @@ interface AgentIdentityCardProps {
   flipped: boolean;
   isActive?: boolean;
   onFlipToggle: () => void;
-  onPitch: (agent: AgentDoc) => void;
+  onEngage: (agent: AgentDoc) => void;
   onDial: (agent: AgentDoc) => void;
   onEmail: (agent: AgentDoc) => void;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
   onCustomize?: (agent: AgentDoc) => void;
+  onSaveContact?: (agent: AgentDoc) => void;
+  isSavedContact?: boolean;
 }
 
 /** Deterministic crisp SVG QR matrix seeded from agent handle */
@@ -330,12 +333,14 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
   flipped,
   isActive = true,
   onFlipToggle,
-  onPitch,
+  onEngage,
   onDial,
   onEmail,
   onToggleDiscoverable,
   onOpenVideoStudio,
   onCustomize,
+  onSaveContact,
+  isSavedContact = false,
 }) => {
   const [copiedField, setCopiedField] = React.useState<string | null>(null);
   const [imgError, setImgError] = React.useState(false);
@@ -492,6 +497,25 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
 
             <div className="relative z-10 flex items-center gap-1.5">
+              {onSaveContact && !isEmergency && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSaveContact(agent);
+                  }}
+                  className={`w-6 h-6 rounded-md backdrop-blur-xs flex items-center justify-center transition-colors ${
+                    isSavedContact
+                      ? 'bg-emerald-500/80 text-white'
+                      : 'bg-white/15 hover:bg-white/30 text-white'
+                  }`}
+                  title={isSavedContact ? 'Saved in Contacts' : 'Save to Personal Contacts'}
+                  aria-label="Save to Personal Contacts"
+                >
+                  {isSavedContact ? <Check className="w-3.5 h-3.5" /> : <BookmarkPlus className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
               {onCustomize && (
                 <button
                   type="button"
@@ -614,6 +638,19 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   )}
                   <span className="truncate">{linkedinOrWeb}</span>
                 </a>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEmail(agent);
+                  }}
+                  className="flex items-center gap-1.5 text-[10.5px] font-mono text-sky-700 dark:text-sky-400 hover:underline w-full text-left"
+                  title={`Email ${agent.agentEmail}`}
+                >
+                  <Mail className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{agent.agentEmail}</span>
+                </button>
               </div>
 
               <button
@@ -631,7 +668,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
           </div>
 
-          {/* Crisp Front Action Bar (Flip, Pitch, Dial) */}
+          {/* Crisp Front Action Bar (Flip, Engage, Dial) */}
           <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-950/80 border-t border-zinc-200 dark:border-white/10 grid grid-cols-4 gap-1.5 shrink-0">
             <button
               type="button"
@@ -649,7 +686,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onPitch(agent);
+                onEngage(agent);
               }}
               className={`col-span-2 min-h-[36px] rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors ${
                 isEmergency
@@ -658,7 +695,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               }`}
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Pitch</span>
+              <span>Engage</span>
             </button>
 
             <button
@@ -738,6 +775,22 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               >
                 <span className="truncate">{didValue}</span>
                 {copiedField === 'did' ? (
+                  <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                ) : (
+                  <Copy className="w-3 h-3 text-zinc-500 shrink-0" />
+                )}
+              </button>
+            </div>
+
+            <div className="py-1.5 flex items-center justify-between gap-2">
+              <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Agent Email</span>
+              <button
+                type="button"
+                onClick={(e) => copyText(e, 'email', agent.agentEmail, 'agent email')}
+                className="font-mono text-sky-700 dark:text-sky-400 hover:underline inline-flex items-center gap-1 min-w-0"
+              >
+                <span className="truncate">{agent.agentEmail}</span>
+                {copiedField === 'email' ? (
                   <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 ) : (
                   <Copy className="w-3 h-3 text-zinc-500 shrink-0" />
@@ -864,11 +917,11 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onPitch(agent);
+                onEngage(agent);
               }}
               className="col-span-2 min-h-[38px] rounded-lg bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white font-semibold text-xs inline-flex items-center justify-center gap-1 transition-colors"
             >
-              Pitch <ArrowUpRight className="w-3.5 h-3.5" />
+              Engage <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"

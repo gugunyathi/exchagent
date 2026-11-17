@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { Search, X, LayoutGrid, GalleryHorizontalEnd, Users, Building2, Radio } from 'lucide-react';
+import { Search, X, LayoutGrid, GalleryHorizontalEnd, Users, Building2, Radio, ArrowLeft, Linkedin } from 'lucide-react';
 import {
   AgentDoc,
   AgentRoleCategory,
   BookingDoc,
   CurrencyMode,
-  ZAR_PER_USD,
+  usdToZar,
+  formatMoney,
   CardBannerStyle,
   CardBackgroundPattern,
   CardBackgroundTheme,
   CardEdgeRadius,
   CardBorderStyle,
 } from '../types/firestore';
+import { LocalCurrencyCode, formatCurrencyFromUsd, formatUsdPrice } from '../lib/fx';
 import { quoteHandlePricing } from '../services/paymentRails';
 import { AgentCardCarousel } from './AgentCardCarousel';
 import { AgentIdentityCard } from './AgentIdentityCard';
@@ -28,6 +30,8 @@ interface DirectoryModuleProps {
   agents: AgentDoc[];
   bookings: BookingDoc[];
   currency: CurrencyMode;
+  localCurrency?: LocalCurrencyCode;
+  fxRates?: Record<LocalCurrencyCode, number>;
   ownerUid: string;
   filterType: DirectoryFilterType;
   viewMode: DirectoryViewMode;
@@ -39,21 +43,27 @@ interface DirectoryModuleProps {
   onSearchQueryChange: (q: string) => void;
   onCloseSearchBar: () => void;
   onResetFilters: () => void;
-  onSelectForPitch: (agent: AgentDoc) => void;
+  onSelectForEngage: (agent: AgentDoc) => void;
   onDialAgent: (agent: AgentDoc) => void;
   onEmailAgent: (agent: AgentDoc) => void;
   onDeployAgent: (agent: AgentDoc) => Promise<void>;
   onToggleDiscoverable: (agentId: string) => void;
   onOpenVideoStudio?: (agent: AgentDoc) => void;
   onCustomizeCard?: (agent: AgentDoc) => void;
+  onSaveContact?: (agent: AgentDoc) => void;
+  savedContactHandles?: Set<string>;
   openDeployModalInitially?: boolean;
   onCloseDeployModal?: () => void;
+  onOpenQuickJobAgent?: () => void;
+  onOpenQuickEmployerAgent?: () => void;
 }
 
 export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   agents,
   bookings,
   currency,
+  localCurrency = 'ZAR',
+  fxRates,
   ownerUid,
   filterType,
   viewMode,
@@ -65,15 +75,19 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   onSearchQueryChange,
   onCloseSearchBar,
   onResetFilters,
-  onSelectForPitch,
+  onSelectForEngage,
   onDialAgent,
   onEmailAgent,
   onDeployAgent,
   onToggleDiscoverable,
   onOpenVideoStudio,
   onCustomizeCard,
+  onSaveContact,
+  savedContactHandles,
   openDeployModalInitially = false,
   onCloseDeployModal,
+  onOpenQuickJobAgent,
+  onOpenQuickEmployerAgent,
 }) => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(agents[0]?.id || null);
   const [reelOpen, setReelOpen] = useState(false);
@@ -91,7 +105,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   const [newRoleCategory, setNewRoleCategory] = useState<AgentRoleCategory>('job_seeker');
   const [newProfileUrl, setNewProfileUrl] = useState('');
   const [newBrandCode, setNewBrandCode] = useState('');
-  const [maxSpendZAR, setMaxSpendZAR] = useState(50000);
+  const [maxSpendUSD, setMaxSpendUSD] = useState(2700);
   const [minDiscountPct, setMinDiscountPct] = useState(12);
   const [skillsCsv, setSkillsCsv] = useState('B2B Lead Gen, Calendar Sync, x402 Pay');
   const [buyerKind, setBuyerKind] = useState<'human' | 'bot'>('human');
@@ -106,6 +120,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   const [newBorderStyle, setNewBorderStyle] = useState<CardBorderStyle>('hairline');
   const [newAccentColor, setNewAccentColor] = useState('#0284c7');
   const [newImageUrl, setNewImageUrl] = useState<string>('');
+  const [provisionAgentMail, setProvisionAgentMail] = useState(true);
 
   React.useEffect(() => {
     setShowDeploy(openDeployModalInitially);
@@ -128,10 +143,22 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
 
   const handleQuote = quoteHandlePricing(newHandle || 'myagent');
 
-  const closeDeploy = () => {
+  const closeDeploy = React.useCallback(() => {
     setShowDeploy(false);
     onCloseDeployModal?.();
-  };
+  }, [onCloseDeployModal]);
+
+  React.useEffect(() => {
+    if (!showDeploy) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDeploy();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showDeploy, closeDeploy]);
 
   const handleDeploySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +173,28 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
     const shortNum = String(Math.floor(500 + Math.random() * 499));
     const baseSlug = handleQuote.baseName.replace(/[^a-z0-9]/gi, '');
     const cleanUrl = newProfileUrl.trim().replace(/^https?:\/\//i, '');
+
+    let resolvedAgentEmail = `engage@${handleQuote.normalizedHandle}`;
+    if (provisionAgentMail) {
+      try {
+        const mailRes = await fetch('/api/agentmail/inboxes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            handle: handleQuote.normalizedHandle,
+            displayName: newDisplayName.trim(),
+          }),
+        });
+        if (mailRes.ok) {
+          const mailData = await mailRes.json();
+          if (mailData?.inbox?.email) {
+            resolvedAgentEmail = mailData.inbox.email;
+          }
+        }
+      } catch {
+        // fallback cleanly to handle-based address
+      }
+    }
 
     const created: AgentDoc = {
       id,
@@ -162,7 +211,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       popiaConsentActive: true,
       voiceNumber: `+27 87 243 ${shortNum}`,
       shortcode: shortNum,
-      agentEmail: `pitch@${handleQuote.normalizedHandle}`,
+      agentEmail: resolvedAgentEmail,
       mcpEndpoint: `https://agent.${baseSlug || 'switchboard'}.io/v1/interact`,
       linkedinUrl:
         newType === 'persona'
@@ -211,7 +260,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         .map((s) => s.trim())
         .filter(Boolean),
       guardrails: {
-        maxAutoSpendZAR: Number(maxSpendZAR) || 50000,
+        maxAutoSpendZAR: usdToZar(Number(maxSpendUSD) || 2700),
         minDiscountPct: Number(minDiscountPct) || 10,
         blockedCategories: ['unverified-spam'],
         workingHoursSAST: '08:00-17:00',
@@ -298,6 +347,30 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         </SwipeScrollArea>
 
         <div className="flex items-center gap-1 shrink-0">
+          {onOpenQuickJobAgent && (
+            <button
+              type="button"
+              onClick={onOpenQuickJobAgent}
+              className="min-h-[34px] px-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors shadow-2xs"
+              title="Paste LinkedIn URL for a free Job Agent + 10 matches"
+            >
+              <Linkedin className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">1-Click Job Agent</span>
+              <span className="sm:hidden">Job Agent</span>
+            </button>
+          )}
+          {onOpenQuickEmployerAgent && (
+            <button
+              type="button"
+              onClick={onOpenQuickEmployerAgent}
+              className="min-h-[34px] px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors shadow-2xs"
+              title="Paste Job URL for a 1-click Employer Agent + auto-match candidates"
+            >
+              <Building2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Hire with Agent</span>
+              <span className="sm:hidden">Hire</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleSearchBar}
@@ -384,12 +457,14 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               currency={currency}
               selectedAgentId={selectedAgentId}
               onActiveAgentChange={(a) => setSelectedAgentId(a.id)}
-              onSelectForPitch={onSelectForPitch}
+              onSelectForEngage={onSelectForEngage}
               onDialAgent={onDialAgent}
               onEmailAgent={onEmailAgent}
               onToggleDiscoverable={onToggleDiscoverable}
               onOpenVideoStudio={onOpenVideoStudio}
               onCustomizeCard={onCustomizeCard}
+              onSaveContact={onSaveContact}
+              savedContactHandles={savedContactHandles}
             />
           </div>
         ) : (
@@ -398,7 +473,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
               <div
                 key={agent.id}
                 onClick={() => setGridFlipped((p) => ({ ...p, [agent.id]: !p[agent.id] }))}
-                onDoubleClick={() => onSelectForPitch(agent)}
+                onDoubleClick={() => onSelectForEngage(agent)}
                 className="cursor-pointer"
               >
                 <AgentIdentityCard
@@ -409,12 +484,14 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   onFlipToggle={() =>
                     setGridFlipped((p) => ({ ...p, [agent.id]: !p[agent.id] }))
                   }
-                  onPitch={onSelectForPitch}
+                  onEngage={onSelectForEngage}
                   onDial={onDialAgent}
                   onEmail={onEmailAgent}
                   onToggleDiscoverable={onToggleDiscoverable}
                   onOpenVideoStudio={onOpenVideoStudio}
                   onCustomize={onCustomizeCard}
+                  onSaveContact={onSaveContact}
+                  isSavedContact={Boolean(savedContactHandles?.has(agent.handle.toLowerCase()))}
                 />
               </div>
             ))}
@@ -435,9 +512,20 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
           >
             <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1 mb-1" />
             <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
-              <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight">
-                New Agent Card
-              </h2>
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={closeDeploy}
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                  aria-label="Back to Directory"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
+                  New Agent Card
+                </h2>
+              </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
@@ -466,11 +554,60 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   onClick={closeDeploy}
                   className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center ml-1"
                   aria-label="Close"
+                  title="Close"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
+
+            {onOpenQuickJobAgent && (
+              <div className="rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-500/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-sky-950 dark:text-sky-200">
+                    Starting a job search? Use 1-Click LinkedIn Quickstart
+                  </p>
+                  <p className="text-[11px] text-sky-800 dark:text-sky-300/90">
+                    Paste your LinkedIn URL to get a free Standard .agent card, @agentmail.to inbox, 10 job matches &amp; interview booking.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDeploy();
+                    onOpenQuickJobAgent();
+                  }}
+                  className="min-h-[36px] px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 transition-colors"
+                >
+                  <Linkedin className="w-3.5 h-3.5" />
+                  <span>Quickstart</span>
+                </button>
+              </div>
+            )}
+
+            {onOpenQuickEmployerAgent && (
+              <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-emerald-950 dark:text-emerald-200">
+                    Hiring company? Use 1-Click Job Listing Quickstart
+                  </p>
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-300/90">
+                    Paste your job listing or careers page URL to deploy an Employer Agent, post vacancies &amp; auto-match candidate agents.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDeploy();
+                    onOpenQuickEmployerAgent();
+                  }}
+                  className="min-h-[36px] px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 shrink-0 transition-colors"
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Hire Fast</span>
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
@@ -488,10 +625,18 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   {handleQuote.isProtectedCivic
                     ? 'LOCKED'
                     : buyerKind === 'bot'
-                    ? `$${handleQuote.botX402PriceUSD.toFixed(2)}`
+                    ? `${formatUsdPrice(handleQuote.botX402PriceUSD)}${
+                        localCurrency !== 'USD'
+                          ? ` (≈ ${formatCurrencyFromUsd(handleQuote.botX402PriceUSD, localCurrency, fxRates)})`
+                          : ''
+                      }`
                     : handleQuote.humanPriceUSD === 0
                     ? 'FREE'
-                    : `$${handleQuote.humanPriceUSD}`}
+                    : `${formatUsdPrice(handleQuote.humanPriceUSD)}${
+                        localCurrency !== 'USD'
+                          ? ` (≈ ${formatCurrencyFromUsd(handleQuote.humanPriceUSD, localCurrency, fxRates)})`
+                          : ''
+                      }`}
                 </span>
               </div>
 
@@ -606,15 +751,15 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Cap (ZAR)</label>
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Cap (US$)</label>
                   <input
                     type="number"
-                    value={maxSpendZAR}
-                    onChange={(e) => setMaxSpendZAR(Number(e.target.value))}
+                    value={maxSpendUSD}
+                    onChange={(e) => setMaxSpendUSD(Number(e.target.value))}
                     className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono tabular-nums text-zinc-950 dark:text-white"
                   />
                   <span className="text-[10px] font-mono text-zinc-600 dark:text-zinc-500">
-                    ≈ ${(maxSpendZAR / ZAR_PER_USD).toFixed(0)} USD
+                    ≈ {formatMoney(usdToZar(maxSpendUSD), localCurrency === 'USD' ? 'ZAR' : localCurrency)} ({localCurrency === 'USD' ? 'ZAR' : localCurrency})
                   </span>
                 </div>
 
@@ -640,6 +785,18 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono text-zinc-900 dark:text-zinc-200"
                 />
               </div>
+
+              <label className="sm:col-span-2 flex items-center gap-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 px-3 py-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={provisionAgentMail}
+                  onChange={(e) => setProvisionAgentMail(e.target.checked)}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-xs text-zinc-800 dark:text-zinc-200">
+                  Assign a live <span className="font-mono font-semibold text-sky-700 dark:text-sky-400">@agentmail.to</span> inbox on deploy
+                </span>
+              </label>
 
               {/* Card Personalization & Edges Section */}
               <div className="sm:col-span-2 pt-2 border-t border-zinc-200 dark:border-white/10 space-y-3">
@@ -822,7 +979,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
         currency={currency}
         onClose={() => setReelOpen(false)}
         onActiveAgentChange={(a) => setSelectedAgentId(a.id)}
-        onPitchAgent={onSelectForPitch}
+        onEngageAgent={onSelectForEngage}
         onDialAgent={onDialAgent}
         onEmailAgent={onEmailAgent}
         onToggleDiscoverable={onToggleDiscoverable}

@@ -99,7 +99,7 @@
     },
     "AgentEmail": {
       "title": "AgentEmail",
-      "description": "Agentic email pitch or RFP response processed by Gemini triage.",
+      "description": "Agentic email engage or RFP response processed by Gemini triage.",
       "type": "object",
       "properties": {
         "fromAddress": { "type": "string", "maxLength": 128 },
@@ -108,7 +108,7 @@
         "body": { "type": "string", "maxLength": 4000 },
         "threadId": { "type": "string", "maxLength": 128 },
         "ownerUid": { "type": "string", "maxLength": 128 },
-        "aiClassification": { "type": "string", "enum": ["QUALIFIED_PITCH", "RFP_RESPONSE", "SPAM_BLOCKED", "MEETING_CONFIRMED"] },
+        "aiClassification": { "type": "string", "enum": ["QUALIFIED_ENGAGE", "RFP_RESPONSE", "SPAM_BLOCKED", "MEETING_CONFIRMED"] },
         "autoReplied": { "type": "boolean" },
         "timestamp": { "type": "string", "format": "date-time" }
       },
@@ -128,6 +128,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["callerUid", "targetHandle", "dialedNumber", "channel", "isEmergency", "transcript", "createdAt"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "Personal contact book entry for shared human or business agent cards.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "handle": { "type": "string", "maxLength": 64 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "type": { "type": "string", "enum": ["persona", "business"] },
+        "source": { "type": "string", "enum": ["event_wifi", "event_ble", "ble_beacon", "dooh_geofence", "direct_share", "directory"] },
+        "favorite": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "sharedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "handle", "displayName", "type", "source", "favorite", "sharedAt"]
     }
   },
   "firestore": {
@@ -158,6 +174,10 @@
     "/voice_chat_sessions/{callId}": {
       "schema": { "$ref": "#/entities/VoiceChatSession" },
       "description": "Live voice and chat dialer transcripts."
+    },
+    "/contacts/{contactId}": {
+      "schema": { "$ref": "#/entities/Contact" },
+      "description": "Per-user personal contacts for shared agent and business cards."
     }
   }
 }

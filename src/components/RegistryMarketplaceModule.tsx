@@ -7,14 +7,22 @@ import {
   Trophy,
   ChevronDown,
   ChevronUp,
+  Globe,
+  LocateFixed,
 } from 'lucide-react';
 import {
   AgentHandleDoc,
   AuctionDoc,
   SecondaryListingDoc,
   CurrencyMode,
-  ZAR_PER_USD,
 } from '../types/firestore';
+import {
+  CURRENCY_LIST,
+  LocalCurrencyCode,
+  formatCurrencyFromUsd,
+  formatLocalRateBanner,
+  formatUsdPrice,
+} from '../lib/fx';
 import { quoteHandlePricing } from '../services/paymentRails';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
@@ -24,8 +32,16 @@ interface RegistryMarketplaceModuleProps {
   auctions: AuctionDoc[];
   secondaryListings: SecondaryListingDoc[];
   currency: CurrencyMode;
+  localCurrency: LocalCurrencyCode;
+  locationLabel: string;
+  fxRates: Record<LocalCurrencyCode, number>;
+  fxSource: 'live' | 'reference';
+  detectingLocation: boolean;
   ownerUid: string;
   ownerName: string;
+  onSelectCurrency: (currency: CurrencyMode) => void;
+  onSelectLocalCurrency: (currency: LocalCurrencyCode) => void;
+  onDetectLocation: () => void;
   onClaimHandle: (record: AgentHandleDoc) => void;
   onPlaceBid: (auctionId: string, amountUSD: number, bidderHandle: string) => void;
   onBuyoutListing: (listingId: string, buyerHandle: string) => AgentHandleDoc | null;
@@ -37,7 +53,7 @@ const SLIDING_SCALE_ROWS = [
   { tier: '3-Character', humanUSD: 200, note: 'Executive ticker (pay.agent, mtn.agent)' },
   { tier: '4-Character', humanUSD: 50, note: 'Studio & startup tier' },
   { tier: '5–6 Characters', humanUSD: 10, note: 'Growth brand namespace' },
-  { tier: '7+ Characters', humanUSD: 0, note: 'Free for verified humans · $0.20 x402 for bots' },
+  { tier: '7+ Characters', humanUSD: 0, note: 'Free for verified humans · US$0.20 x402 for bots' },
 ];
 
 export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps> = ({
@@ -45,8 +61,16 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   auctions,
   secondaryListings,
   currency,
+  localCurrency,
+  locationLabel,
+  fxRates,
+  fxSource,
+  detectingLocation,
   ownerUid,
   ownerName,
+  onSelectCurrency,
+  onSelectLocalCurrency,
+  onDetectLocation,
   onClaimHandle,
   onPlaceBid,
   onBuyoutListing,
@@ -54,7 +78,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   const [subTab, setSubTab] = useState<'search' | 'auctions' | 'marketplace' | 'leaderboard'>('search');
   const [queryInput, setQueryInput] = useState('');
   const [buyerType, setBuyerType] = useState<'human' | 'bot'>('human');
-  const [tiersExpanded, setTiersExpanded] = useState(false);
+  const [tiersExpanded, setTiersExpanded] = useState(true);
   const [bidAmountById, setBidAmountById] = useState<Record<string, number>>({});
 
   const quote = quoteHandlePricing(queryInput || 'switchboard');
@@ -64,11 +88,18 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
     (l) => l.handle === quote.normalizedHandle && l.status === 'AVAILABLE'
   );
 
-  const formatUSDOrZAR = (usd: number) => {
-    if (currency === 'ZAR') {
-      return `R${Math.round(usd * ZAR_PER_USD).toLocaleString('en-ZA')}`;
+  const effectiveLocal: LocalCurrencyCode = localCurrency === 'USD' ? 'ZAR' : localCurrency;
+
+  const formatPrimaryPrice = (usd: number) =>
+    formatCurrencyFromUsd(usd, currency, fxRates, { compactWholeUnits: true });
+
+  const formatSecondaryEquiv = (usd: number): string | null => {
+    if (usd <= 0) return null;
+    if (currency === 'USD') {
+      if (localCurrency === 'USD') return null;
+      return `≈ ${formatCurrencyFromUsd(usd, localCurrency, fxRates)} ${localCurrency}`;
     }
-    return `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1 && usd > 0 ? 2 : 0 })}`;
+    return `(${formatUsdPrice(usd)})`;
   };
 
   const handleClaim = async () => {
@@ -91,7 +122,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
     onClaimHandle(record);
     emitToast(
       `Claimed ${record.handle} (${
-        record.paidVia === 'free_human' ? 'Free Human Tier' : formatUSDOrZAR(priceUSD)
+        record.paidVia === 'free_human' ? 'Free Human Tier' : formatPrimaryPrice(priceUSD)
       })`,
       'success'
     );
@@ -113,42 +144,123 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   return (
     <div className="space-y-4">
       {/* Header & Sub-Navigation */}
-      <div className="glass-panel rounded-2xl p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base sm:text-lg font-display font-bold text-zinc-950 dark:text-zinc-50 tracking-tight">
-            .agent Registry
-          </h2>
-          <p className="text-xs text-zinc-600 dark:text-zinc-400">
-            Shortcodes, auctions &amp; verified handle ownership
-          </p>
+      <div className="glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-display font-bold text-zinc-950 dark:text-zinc-50 tracking-tight">
+              .agent Registry
+            </h2>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400">
+              Shortcodes, auctions &amp; verified handle ownership · Base currency US$
+            </p>
+          </div>
+
+          <SwipeScrollArea
+            direction="horizontal"
+            className="w-full lg:w-auto"
+            innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+          >
+            {(
+              [
+                { id: 'search', label: 'Search' },
+                { id: 'auctions', label: `Auctions (${auctions.length})` },
+                { id: 'marketplace', label: `Secondary (${secondaryListings.filter((l) => l.status === 'AVAILABLE').length})` },
+                { id: 'leaderboard', label: 'Leaderboard' },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSubTab(tab.id)}
+                className={`min-h-[36px] px-3.5 rounded-lg text-xs transition-colors whitespace-nowrap shrink-0 ${
+                  subTab === tab.id
+                    ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </SwipeScrollArea>
         </div>
 
-        <SwipeScrollArea
-          direction="horizontal"
-          className="w-full lg:w-auto"
-          innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
-        >
-          {(
-            [
-              { id: 'search', label: 'Search' },
-              { id: 'auctions', label: `Auctions (${auctions.length})` },
-              { id: 'marketplace', label: `Secondary (${secondaryListings.filter((l) => l.status === 'AVAILABLE').length})` },
-              { id: 'leaderboard', label: 'Leaderboard' },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSubTab(tab.id)}
-              className={`min-h-[36px] px-3.5 rounded-lg text-xs transition-colors whitespace-nowrap shrink-0 ${
-                subTab === tab.id
-                  ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
+        {/* Location & Live FX Rate Bar */}
+        <div className="pt-2.5 border-t border-zinc-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300 font-medium">
+              <Globe className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>{locationLabel}</span>
+            </span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 font-mono text-[11px] tabular-nums text-zinc-800 dark:text-zinc-200">
+              {formatLocalRateBanner(effectiveLocal, fxRates)}
+            </span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold uppercase ${
+                fxSource === 'live'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30'
+                  : 'bg-zinc-100 text-zinc-600 border border-zinc-300 dark:bg-zinc-800 dark:text-zinc-400 dark:border-white/10'
               }`}
             >
-              {tab.label}
+              {fxSource === 'live' ? 'Live FX' : 'Ref FX'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => onSelectCurrency('USD')}
+                className={`px-2.5 py-1 rounded text-[11px] font-mono transition-colors ${
+                  currency === 'USD'
+                    ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                }`}
+              >
+                US$
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectCurrency(effectiveLocal)}
+                className={`px-2.5 py-1 rounded text-[11px] font-mono transition-colors ${
+                  currency === effectiveLocal
+                    ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                }`}
+              >
+                {effectiveLocal}
+              </button>
+            </div>
+
+            <select
+              aria-label="Local Currency"
+              value={currency === 'USD' ? localCurrency : currency}
+              onChange={(e) => {
+                const chosen = e.target.value as LocalCurrencyCode;
+                onSelectLocalCurrency(chosen);
+                if (currency !== 'USD') {
+                  onSelectCurrency(chosen);
+                }
+              }}
+              className="min-h-[30px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-sky-600"
+            >
+              {CURRENCY_LIST.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} ({c.symbol.trim()}) · {c.region}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={onDetectLocation}
+              disabled={detectingLocation}
+              className="min-h-[30px] inline-flex items-center gap-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-medium text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+              title="Detect local currency from GPS location"
+            >
+              <LocateFixed className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+              <span>{detectingLocation ? 'Locating...' : 'Detect'}</span>
             </button>
-          ))}
-        </SwipeScrollArea>
+          </div>
+        </div>
       </div>
 
       {subTab === 'search' && (
@@ -211,11 +323,21 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                     {quote.isProtectedCivic
                       ? 'PROTECTED'
                       : buyerType === 'bot'
-                      ? formatUSDOrZAR(quote.botX402PriceUSD)
+                      ? formatPrimaryPrice(quote.botX402PriceUSD)
                       : quote.humanPriceUSD === 0
                       ? 'FREE (Human)'
-                      : formatUSDOrZAR(quote.humanPriceUSD)}
+                      : formatPrimaryPrice(quote.humanPriceUSD)}
                   </p>
+                  {!quote.isProtectedCivic &&
+                    formatSecondaryEquiv(
+                      buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD
+                    ) && (
+                      <p className="text-[11px] font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {formatSecondaryEquiv(
+                          buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD
+                        )}
+                      </p>
+                    )}
                 </div>
               </div>
 
@@ -227,7 +349,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
               ) : existingAuction ? (
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-zinc-200 dark:border-white/10">
                   <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 tabular-nums">
-                    English Auction · Top Bid {formatUSDOrZAR(existingAuction.currentBidUSD)}
+                    English Auction · Top Bid {formatPrimaryPrice(existingAuction.currentBidUSD)}
                   </span>
                   <button
                     type="button"
@@ -240,7 +362,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
               ) : existingListing ? (
                 <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-zinc-200 dark:border-white/10">
                   <span className="text-xs font-semibold text-sky-700 dark:text-sky-400 tabular-nums">
-                    Secondary Listing · {formatUSDOrZAR(existingListing.buyoutPriceUSD)}
+                    Secondary Listing · {formatPrimaryPrice(existingListing.buyoutPriceUSD)}
                   </span>
                   <button
                     type="button"
@@ -274,23 +396,42 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
               onClick={() => setTiersExpanded((v) => !v)}
               className="w-full min-h-[38px] rounded-xl bg-white dark:bg-zinc-900/70 border border-zinc-300 dark:border-white/15 px-3.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:border-zinc-400 dark:hover:text-white flex items-center justify-between"
             >
-              <span>View Sliding-Scale Pricing Tiers</span>
+              <span>Sliding-Scale Pricing Tiers (US$ + {effectiveLocal} Local FX)</span>
               {tiersExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
             {tiersExpanded && (
               <div className="divide-y divide-zinc-200 dark:divide-white/10 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 px-3.5">
-                {SLIDING_SCALE_ROWS.map((row) => (
-                  <div key={row.tier} className="py-2.5 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-zinc-900 dark:text-zinc-200">{row.tier}</p>
-                      <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">{row.note}</p>
+                {SLIDING_SCALE_ROWS.map((row) => {
+                  const primaryText =
+                    row.humanUSD === 0
+                      ? `FREE / ${formatPrimaryPrice(0.2)}`
+                      : formatPrimaryPrice(row.humanUSD);
+                  const secondaryText =
+                    row.humanUSD === 0
+                      ? formatSecondaryEquiv(0.2)
+                        ? `Bot ${formatSecondaryEquiv(0.2)}`
+                        : null
+                      : formatSecondaryEquiv(row.humanUSD);
+                  return (
+                    <div key={row.tier} className="py-2.5 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-zinc-900 dark:text-zinc-200">{row.tier}</p>
+                        <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">{row.note}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-100 block">
+                          {primaryText}
+                        </span>
+                        {secondaryText && (
+                          <span className="font-mono tabular-nums text-[10.5px] text-zinc-500 dark:text-zinc-400 block">
+                            {secondaryText}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-100 shrink-0">
-                      {row.humanUSD === 0 ? 'FREE / $0.20' : formatUSDOrZAR(row.humanUSD)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -302,6 +443,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
           {auctions.map((auc) => {
             const minNextBid = auc.currentBidUSD + 100;
             const bidVal = bidAmountById[auc.id] ?? minNextBid;
+            const localTop = formatSecondaryEquiv(auc.currentBidUSD);
             return (
               <div key={auc.id} className="glass-panel rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between gap-2 text-xs text-zinc-600 dark:text-zinc-400">
@@ -309,7 +451,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                     {auc.kind === 'iconic_number' ? 'Shortcode Auction' : 'Brand Auction'}
                   </span>
                   <span className="font-mono tabular-nums">
-                    Ends {new Date(auc.endsAt).toLocaleDateString('en-ZA')}
+                    Ends {new Date(auc.endsAt).toLocaleDateString()}
                   </span>
                 </div>
 
@@ -322,8 +464,13 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   <div>
                     <p className="text-zinc-500 dark:text-zinc-400">Top Bid</p>
                     <p className="text-base font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                      {formatUSDOrZAR(auc.currentBidUSD)}
+                      {formatPrimaryPrice(auc.currentBidUSD)}
                     </p>
+                    {localTop && (
+                      <p className="text-[11px] font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {localTop}
+                      </p>
+                    )}
                   </div>
                   <div className="min-w-0">
                     <p className="text-zinc-500 dark:text-zinc-400 tabular-nums">Leader ({auc.bidsCount} bids)</p>
@@ -334,27 +481,32 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-                  <input
-                    type="number"
-                    min={minNextBid}
-                    step={50}
-                    value={bidVal}
-                    onChange={(e) =>
-                      setBidAmountById((prev) => ({ ...prev, [auc.id]: Number(e.target.value) }))
-                    }
-                    className="w-full sm:w-32 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
-                  />
+                  <div className="relative w-full sm:w-36">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono text-zinc-500">
+                      US$
+                    </span>
+                    <input
+                      type="number"
+                      min={minNextBid}
+                      step={50}
+                      value={bidVal}
+                      onChange={(e) =>
+                        setBidAmountById((prev) => ({ ...prev, [auc.id]: Number(e.target.value) }))
+                      }
+                      className="w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-9 pr-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
                       const nextAmount = Math.max(minNextBid, bidVal);
                       onPlaceBid(auc.id, nextAmount, 'alex.founder.agent');
-                      emitToast(`Bid placed: ${formatUSDOrZAR(nextAmount)} on ${auc.handle}`, 'success');
+                      emitToast(`Bid placed: ${formatPrimaryPrice(nextAmount)} on ${auc.handle}`, 'success');
                     }}
                     className="flex-1 min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-4 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap transition-colors"
                   >
                     <Gavel className="w-3.5 h-3.5" />
-                    Place Bid ({formatUSDOrZAR(Math.max(minNextBid, bidVal))})
+                    Place Bid ({formatPrimaryPrice(Math.max(minNextBid, bidVal))})
                   </button>
                 </div>
               </div>
@@ -365,42 +517,50 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
 
       {subTab === 'marketplace' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {secondaryListings.map((item) => (
-            <div key={item.id} className="glass-panel rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
-                <span>{item.category}</span>
-                <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">{item.status}</span>
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xl font-mono font-bold text-zinc-950 dark:text-zinc-50 truncate">{item.handle}</h3>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 truncate">
-                  Seller: <span className="font-mono font-medium text-zinc-900 dark:text-zinc-200">{item.sellerHandle}</span>
-                </p>
-              </div>
-              <div className="pt-2.5 border-t border-zinc-200 dark:border-white/10 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Buyout</p>
-                  <p className="text-base font-mono tabular-nums font-bold text-zinc-950 dark:text-zinc-50">
-                    {formatUSDOrZAR(item.buyoutPriceUSD)}
+          {secondaryListings.map((item) => {
+            const localBuyout = formatSecondaryEquiv(item.buyoutPriceUSD);
+            return (
+              <div key={item.id} className="glass-panel rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
+                  <span>{item.category}</span>
+                  <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">{item.status}</span>
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xl font-mono font-bold text-zinc-950 dark:text-zinc-50 truncate">{item.handle}</h3>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 truncate">
+                    Seller: <span className="font-mono font-medium text-zinc-900 dark:text-zinc-200">{item.sellerHandle}</span>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={item.status !== 'AVAILABLE'}
-                  onClick={() => {
-                    const bought = onBuyoutListing(item.id, ownerName);
-                    if (bought) {
-                      emitToast(`Bought ${bought.handle} via x402 escrow`, 'success');
-                    }
-                  }}
-                  className="min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-3.5 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40 whitespace-nowrap transition-colors"
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  {item.status === 'AVAILABLE' ? 'Buyout' : 'Sold'}
-                </button>
+                <div className="pt-2.5 border-t border-zinc-200 dark:border-white/10 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Buyout</p>
+                    <p className="text-base font-mono tabular-nums font-bold text-zinc-950 dark:text-zinc-50">
+                      {formatPrimaryPrice(item.buyoutPriceUSD)}
+                    </p>
+                    {localBuyout && (
+                      <p className="text-[10.5px] font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {localBuyout}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={item.status !== 'AVAILABLE'}
+                    onClick={() => {
+                      const bought = onBuyoutListing(item.id, ownerName);
+                      if (bought) {
+                        emitToast(`Bought ${bought.handle} via x402 escrow`, 'success');
+                      }
+                    }}
+                    className="min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-3.5 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40 whitespace-nowrap transition-colors"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    {item.status === 'AVAILABLE' ? 'Buyout' : 'Sold'}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -420,7 +580,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                     <span className="text-xs font-semibold text-zinc-950 dark:text-zinc-100 truncate">{row.owner}</span>
                   </div>
                   <span className="font-mono tabular-nums text-xs font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
-                    {formatUSDOrZAR(row.totalValueUSD)}
+                    {formatPrimaryPrice(row.totalValueUSD)}
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-600 dark:text-zinc-400 truncate">
@@ -447,7 +607,12 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   <td className="py-2.5 px-4 font-mono tabular-nums text-zinc-600 dark:text-zinc-400">{row.count}</td>
                   <td className="py-2.5 px-4 font-mono text-zinc-800 dark:text-zinc-300">{row.handles.join(', ')}</td>
                   <td className="py-2.5 pl-4 font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 text-right">
-                    {formatUSDOrZAR(row.totalValueUSD)}
+                    {formatPrimaryPrice(row.totalValueUSD)}
+                    {formatSecondaryEquiv(row.totalValueUSD) && (
+                      <span className="block text-[10px] font-normal text-zinc-500 dark:text-zinc-400">
+                        {formatSecondaryEquiv(row.totalValueUSD)}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

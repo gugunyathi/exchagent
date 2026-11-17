@@ -13,6 +13,7 @@ import {
   Delete,
   User,
   Building2,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -119,6 +120,25 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
   const [listening, setListening] = useState(false);
   const [messageInput, setMessageInput] = useState('');
   const [sending, setSending] = useState(false);
+
+  const handleCloseDialer = React.useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCloseDialer();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, handleCloseDialer]);
   const [dispatchedUnits, setDispatchedUnits] = useState<DispatchedUnit[]>([]);
   const [transcript, setTranscript] = useState<
     Array<{ role: 'user' | 'agent'; text: string; timestamp: string }>
@@ -355,32 +375,48 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
         <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
         {/* Header */}
         <div
-          className={`px-4 py-3 border-b flex items-center justify-between shrink-0 ${
+          className={`px-4 py-3 border-b flex items-center justify-between gap-2 shrink-0 ${
             isEmergency
               ? 'bg-rose-50 border-rose-300 dark:bg-rose-950/50 dark:border-rose-500/30'
               : 'border-zinc-200 dark:border-white/10'
           }`}
         >
-          <div className="min-w-0">
-            <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
-              {isEmergency ? 'CIVIC SOS · FREE' : 'Predictive Voice & Chat'}
-            </p>
-            <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-white truncate tracking-tight">
-              {isEmergency
-                ? '911 Dispatch Agent'
-                : matchedAgent?.displayName || 'Dial Number or Handle'}
-            </h3>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (inCall) {
+                  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                  }
+                  setInCall(false);
+                } else {
+                  handleCloseDialer();
+                }
+              }}
+              className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
+              aria-label={inCall ? 'Back to dialpad' : 'Back'}
+              title={inCall ? 'Back to dialpad' : 'Back'}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="min-w-0">
+              <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 truncate">
+                {isEmergency ? 'CIVIC SOS · FREE' : 'Predictive Voice & Chat'}
+              </p>
+              <h3 className="font-display text-sm sm:text-base font-bold text-zinc-950 dark:text-white truncate tracking-tight">
+                {isEmergency
+                  ? '911 Dispatch Agent'
+                  : matchedAgent?.displayName || 'Dial Number or Handle'}
+              </h3>
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => {
-              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-              }
-              onClose();
-            }}
-            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+            onClick={handleCloseDialer}
+            className="w-9 h-9 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
             aria-label="Close Dialer"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>

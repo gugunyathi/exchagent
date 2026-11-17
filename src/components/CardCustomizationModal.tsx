@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Eye,
   Camera,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -135,14 +136,25 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
   const [draftImageUrl, setDraftImageUrl] = useState<string>(agent.imageUrl || '');
   const [previewFlipped, setPreviewFlipped] = useState(false);
 
-  // Sync draft when agent changes
   useEffect(() => {
     if (agent) {
       setDraftStyle(agent.cardStyle || defaultStyle);
       setDraftImageUrl(agent.imageUrl || '');
       setPreviewFlipped(false);
     }
-  }, [agent.id]);
+  }, [agent?.id]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   const updateDraft = (patch: Partial<AgentCardCustomization>) => {
     setDraftStyle((prev) => ({ ...prev, ...patch }));
@@ -191,6 +203,21 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
         {/* Modal Top Bar */}
         <div className="shrink-0 px-4 py-3 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between gap-3 bg-zinc-50/75 dark:bg-zinc-900/50">
           <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab !== 'presets') {
+                  setActiveTab('presets');
+                } else {
+                  onClose();
+                }
+              }}
+              className="w-8 h-8 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0 transition-colors"
+              aria-label={activeTab !== 'presets' ? 'Back to Presets' : 'Back'}
+              title={activeTab !== 'presets' ? 'Back to Presets' : 'Back'}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
             <div className="w-8 h-8 rounded-lg bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center shrink-0">
               <Palette className="w-4 h-4" />
             </div>
@@ -219,6 +246,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
               onClick={onClose}
               className="w-8 h-8 rounded-lg border border-zinc-300 dark:border-white/15 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center"
               aria-label="Close"
+              title="Close"
             >
               <X className="w-4 h-4" />
             </button>
@@ -252,7 +280,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                 flipped={previewFlipped}
                 isActive={true}
                 onFlipToggle={() => setPreviewFlipped((v) => !v)}
-                onPitch={() => emitToast('Preview interaction')}
+                onEngage={() => emitToast('Preview interaction')}
                 onDial={() => emitToast('Preview dialer')}
                 onEmail={() => emitToast('Preview email')}
                 onToggleDiscoverable={() => {}}

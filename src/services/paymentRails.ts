@@ -1,4 +1,5 @@
-import { PaymentRail, ZAR_PER_USD } from '../types/firestore';
+import { PaymentRail, zarToUsd } from '../types/firestore';
+import { formatUsdPrice } from '../lib/fx';
 import { PROTECTED_EMERGENCY_NUMBERS } from '../data/seedData';
 
 export interface HandlePricingQuote {
@@ -162,7 +163,7 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
     isAuctionRequired: false,
     humanPriceUSD: 0,
     botX402PriceUSD: 0.2,
-    tierLabel: '7+ Chars (Free Human / $0.20 USDC x402 Bot)',
+    tierLabel: '7+ Chars (Free Human / US$0.20 USDC x402 Bot)',
   };
 }
 
@@ -178,7 +179,7 @@ export interface X402Challenge {
 }
 
 export function createX402Challenge(amountZAR: number, rail: PaymentRail): X402Challenge {
-  const amountUSD = Number((amountZAR / ZAR_PER_USD).toFixed(2));
+  const amountUSD = zarToUsd(amountZAR);
   const addrMap: Record<PaymentRail, string> = {
     x402_base: '0x8F2aSwitchboardBaseUSDC9104E',
     x402_arc: 'arc1qswitchboardsettlement008a',
@@ -208,7 +209,7 @@ export function executeSimulatedSettlement(
   if (rail === 'paypal_vault') {
     return {
       txHash: `PAYPAL_VAULT_ORD_${randHex.slice(0, 10).toUpperCase()}`,
-      receiptNote: `PayPal Orders v2 Vault Delegate captured R${amountZAR.toLocaleString('en-ZA')}`,
+      receiptNote: `PayPal Orders v2 Vault Delegate captured ${formatUsdPrice(zarToUsd(amountZAR))}`,
     };
   }
   if (rail === 'x402_solana') {

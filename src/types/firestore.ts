@@ -1,6 +1,12 @@
+import {
+  LocalCurrencyCode,
+  formatCurrencyFromUsd,
+  getFxRatePerUsd,
+} from '../lib/fx';
+
 export const ZAR_PER_USD = 18.52;
 
-export type CurrencyMode = 'ZAR' | 'USD';
+export type CurrencyMode = LocalCurrencyCode;
 
 export type SurfaceMode = 'desktop' | 'mobile' | 'watch' | 'ar' | 'carplay';
 
@@ -404,6 +410,7 @@ export interface RecruitmentMatchDoc {
   blindMode: boolean;
   status: 'suggested' | 'applied' | 'screening' | 'shortlisted' | 'interview' | 'offer' | 'hired' | 'rejected';
   operationId?: string;
+  interviewPitch?: string;
   updatedAt: string;
 }
 
@@ -553,7 +560,7 @@ export interface AgentEmailDoc {
   replyBody?: string;
   threadId: string;
   ownerUid: string;
-  aiClassification: 'QUALIFIED_PITCH' | 'RFP_RESPONSE' | 'SPAM_BLOCKED' | 'MEETING_CONFIRMED';
+  aiClassification: 'QUALIFIED_ENGAGE' | 'RFP_RESPONSE' | 'SPAM_BLOCKED' | 'MEETING_CONFIRMED';
   autoReplied: boolean;
   proposedPriceZAR?: number;
   timestamp: string;
@@ -598,21 +605,114 @@ export interface PasserbyHandshakeEvent {
   matchScore: number;
   summary: string;
   incentive?: string;
+  kind?: 'commerce' | 'job' | 'event_peer';
+  jobId?: string;
   timestamp: string;
 }
 
+export type ProximityTransport = 'same_wifi' | 'ble_beacon' | 'dooh_geofence' | 'web_bluetooth';
+
+export type ProximityIntent = 'networking' | 'job_seeking' | 'hiring' | 'commerce' | 'partnership';
+
+export interface ProximityPeerDoc {
+  id: string;
+  handle: string;
+  ownerUid?: string;
+  displayName: string;
+  roleTitle: string;
+  organization: string;
+  type: 'persona' | 'business';
+  verified: boolean;
+  intent: ProximityIntent;
+  skills: string[];
+  summary?: string;
+  imageUrl?: string;
+  brandLogoCode?: string;
+  brandColor?: string;
+  cardStyle?: AgentCardCustomization;
+  voiceNumber?: string;
+  agentEmail?: string;
+  locationLabel: string;
+  distanceMeters: number;
+  transport: ProximityTransport;
+  roomCode: string;
+  subnetTag?: string;
+  sameWifi?: boolean;
+  lat?: number;
+  lng?: number;
+  incentive?: string;
+  matchedScore?: number;
+  lastSeenAt: string;
+}
+
+export type ContactSource =
+  | 'event_wifi'
+  | 'event_ble'
+  | 'ble_beacon'
+  | 'dooh_geofence'
+  | 'direct_share'
+  | 'directory';
+
+export interface PersonalContactDoc {
+  id: string;
+  ownerUid: string;
+  agentId?: string;
+  handle: string;
+  displayName: string;
+  roleTitle: string;
+  organization: string;
+  type: 'persona' | 'business';
+  agentRoleCategory?: AgentRoleCategory;
+  verified: boolean;
+  voiceNumber: string;
+  agentEmail: string;
+  linkedinUrl?: string;
+  websiteUrl?: string;
+  skills: string[];
+  summary?: string;
+  imageUrl?: string;
+  brandColor?: string;
+  brandLogoCode?: string;
+  cardStyle?: AgentCardCustomization;
+  guardrails?: AgentGuardrails;
+  source: ContactSource;
+  sharedAtLocation?: string;
+  eventName?: string;
+  sharedByHandle?: string;
+  favorite: boolean;
+  tags: string[];
+  notes: string;
+  sharedAt: string;
+  lastEngagedAt?: string;
+}
+
+export interface AiOpportunitySuggestion {
+  id: string;
+  title: string;
+  category: 'job_match' | 'b2b_deal' | 'partnership' | 'service_pitch' | 'event_followup';
+  contactId?: string;
+  targetHandle: string;
+  targetName: string;
+  summary: string;
+  rationale: string;
+  suggestedProposalTitle: string;
+  recommendedDealZAR: number;
+  confidencePct: number;
+  negotiationAngle: string;
+  jobId?: string;
+}
+
 export function zarToUsd(zar: number): number {
-  return Number((zar / ZAR_PER_USD).toFixed(2));
+  const rate = getFxRatePerUsd('ZAR');
+  return Number((zar / rate).toFixed(2));
 }
 
 export function usdToZar(usd: number): number {
-  return Math.round(usd * ZAR_PER_USD);
+  const rate = getFxRatePerUsd('ZAR');
+  return Math.round(usd * rate);
 }
 
 export function formatMoney(amountZAR: number, currency: CurrencyMode): string {
-  if (currency === 'USD') {
-    const usd = zarToUsd(amountZAR);
-    return `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
-  return `R${Math.round(amountZAR).toLocaleString('en-ZA')}`;
+  const usd = zarToUsd(amountZAR);
+  return formatCurrencyFromUsd(usd, currency);
 }

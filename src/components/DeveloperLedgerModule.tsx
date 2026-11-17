@@ -22,6 +22,7 @@ interface DeveloperLedgerModuleProps {
   currency: CurrencyMode;
   firestoreOnline: boolean;
   hasGoogleMapsKey: boolean;
+  hasMapboxKey?: boolean;
   workspaceConnected: boolean;
 }
 
@@ -32,6 +33,7 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
   currency,
   firestoreOnline,
   hasGoogleMapsKey,
+  hasMapboxKey = false,
   workspaceConnected,
 }) => {
   const [subTab, setSubTab] = useState<'ledger' | 'poppy_audit' | 'openapi'>('ledger');
@@ -353,7 +355,13 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
               <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
                 <span>Maps Platform</span>
                 <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-200">
-                  {hasGoogleMapsKey ? 'Live JS + Radar' : 'Vector Radar'}
+                  {hasGoogleMapsKey && hasMapboxKey
+                    ? 'Google + Mapbox'
+                    : hasGoogleMapsKey
+                    ? 'Google + Radar'
+                    : hasMapboxKey
+                    ? 'Mapbox + Radar'
+                    : 'Vector Radar'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">

@@ -11,18 +11,18 @@
 - **Business Agent Cards**: Corporate cards displaying organization logos, verified company website links, enterprise guardrails, and institutional endpoints.
 - **Interactive 3D Flip & Gesture Navigation**:
   - **Carousel & Grid Views**: 3D perspective card carousel and responsive grid layout.
-  - **Gestures & Shortcuts**: Single-tap card to flip (`front` ↔ `back` telemetry/Poppy view), double-tap to launch a commercial **Pitch**, swipe left/right or click side cards/chevrons to browse.
-  - **Full Keyboard Control**: `←` / `→` for carousel cards, `↑` / `↓` / `PageUp` / `PageDown` / `Home` / `End` for vertical scrolling, `Enter` / `Space` to flip, `P` to pitch, `D` to dial, and `Ctrl/Cmd + K` for the Command Palette.
+  - **Gestures & Shortcuts**: Single-tap card to flip (`front` ↔ `back` telemetry/Poppy view), double-tap to launch a commercial **Engage** session, swipe left/right or click side cards/chevrons to browse.
+  - **Full Keyboard Control**: `←` / `→` for carousel cards, `↑` / `↓` / `PageUp` / `PageDown` / `Home` / `End` for vertical scrolling, `Enter` / `Space` to flip, `E` to engage, `D` to dial, and `Ctrl/Cmd + K` for the Command Palette.
   - **Zero Visible Scrollbars**: Edge-to-edge swipeable containers (`SwipeScrollArea`) supporting touch pan, pointer drag, mouse wheel, and directional indicator arrows where appropriate.
 
 ### 2. Promoted Status Circles & Interactive Reels
 - **Floating Status Rail**: Promoted human and business agent circles float cleanly above the card stage without obscuring card details.
-- **Reels / Stories Viewer**: Tapping any status circle opens a full-screen auto-advancing Reels experience with interactive sponsored commercial breaks inserted between reels, pause/resume controls, and instant deep links into Pitch or Card inspection.
+- **Reels / Stories Viewer**: Tapping any status circle opens a full-screen auto-advancing Reels experience with interactive sponsored commercial breaks inserted between reels, pause/resume controls, and instant deep links into Engage or Card inspection.
 
 ### 3. Bilateral A2A Negotiation Arena & Reverse-RFP Network
 - **Gemini-Powered Negotiation Engine**: Runs multi-turn Seller ↔ Buyer negotiations via `POST /api/a2a/negotiate` using `gemini-4-hydrogen` with structured JSON output and tool declarations (`check_margin_guardrail`, `book_calendar_meeting`), backed by a deterministic guardrail fallback when no API key is configured.
 - **Reverse-RFP Broadcasting**: Broadcast RFPs simultaneously across the Switchboard Directory, Google Maps DOOH Billboards, BLE Proximity Beacons, and Apple CarPlay surfaces (`POST /api/rfp/broadcast`).
-- **Multi-Surface Preview**: Inspect how pitches and cards render across Desktop, Mobile, CarPlay, and XR via `SurfaceSimulatorFrame`.
+- **Multi-Surface Preview**: Inspect how engagements and cards render across Desktop, Mobile, CarPlay, and XR via `SurfaceSimulatorFrame`.
 
 ### 4. Poppy Protocol v1.0, Extensions & Autonomous Hiring OS
 Full client and Express router implementation (`server/poppyRouter.ts` + `src/services/poppyProtocol.ts`) of **Poppy v1.0**:
@@ -50,7 +50,7 @@ Full client and Express router implementation (`server/poppyRouter.ts` + `src/se
 ### 6. Spatial Discovery Radar, Predictive Dialer & Omnichannel Comms
 - **Spatial Maps Radar**: Interactive Google Maps view (`@vis.gl/react-google-maps`) showing nearby discoverable agents, geo-fenced passerby BLE incentives, and instant proximity matching (`POST /api/rfp/match`).
 - **Predictive Voice & Chat Dialer**: Floating Dialer FAB opens a keypad with real-time predictive contact matching by phone digits, T9 patterns, shortcodes, or handles (`AgentDialerModal`), plus a `$0.00` Civic Priority `911` Emergency Dispatch mode with GPS lock and unit ETAs.
-- **Omnichannel Mail & Calendar Hub**: Gemini-powered autonomous inbox triage (`POST /api/email/triage`) classifying pitches, filtering spam under POPIA rules, generating auto-replies, and booking calendar meetings.
+- **Omnichannel Mail & Calendar Hub**: Gemini-powered autonomous inbox triage (`POST /api/email/triage`) classifying engagements, filtering spam under POPIA rules, generating auto-replies, and booking calendar meetings.
 
 ### 7. Agent Skills Portal, Chrome Extension & Installable PWA
 - **Machine-Readable Agent Onboarding**: Dedicated Agent Skills page UI alongside `/skills.md`, `/llms.txt`, `/api/skills`, `/api/skill.json` (OpenAPI 3.1), `/.well-known/agent.json`, and `/.well-known/agent-skills/index.json`.
@@ -149,7 +149,7 @@ Full client and Express router implementation (`server/poppyRouter.ts` + `src/se
 | `GET` | `/api/names/search?q=<handle>` | Quote `.agent` handle pricing, civic protection & auction status |
 | `POST` | `/api/names/claim` | Claim handle (returns HTTP `402` challenge unless settled via `x402`) |
 | `POST` | `/api/names/bid` | Place English Auction bid on a handle |
-| `POST` | `/api/email/triage` | Gemini autonomous inbox pitch classification, auto-reply & booking check |
+| `POST` | `/api/email/triage` | Gemini autonomous inbox engage classification, auto-reply & booking check |
 | `POST` | `/api/voice/turn` | Conversational voice/chat dialer turn (`911`/`112`/`999` triggers `$0.00` SOS dispatch) |
 
 ### Poppy Protocol v1.0 & Recruitment APIs
@@ -235,7 +235,7 @@ NODE_ENV=production npm start
 - `/negotiations/{sessionId}` — Bilateral A2A negotiation transcripts restricted to initiator/target owners.
 - `/settlements/{txId}` — Enterprise audit ledger transactions (`paypal_vault`, `x402_base`, `x402_arc`, `x402_solana`).
 - `/bookings/{bookingId}` — Autonomous interview & sign-off calendar bookings.
-- `/agent_emails/{emailId}` — Triaged pitch and RFP inbox/outbox threads.
+- `/agent_emails/{emailId}` — Triaged engage and RFP inbox/outbox threads.
 - `/voice_chat_sessions/{callId}` — Voice and chat dialer transcripts, including civic `911` priority dispatch logs.
 
 **Compliance & Guardrails**:

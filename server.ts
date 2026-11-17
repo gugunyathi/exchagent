@@ -2,11 +2,27 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Type, FunctionDeclaration } from '@google/genai';
-import { SEED_AGENTS, SEED_RFPS, SEED_AUCTIONS, SEED_CLAIMED_HANDLES, SEED_SECONDARY_LISTINGS } from './src/data/seedData';
+import {
+  SEED_AGENTS,
+  SEED_RFPS,
+  SEED_AUCTIONS,
+  SEED_CLAIMED_HANDLES,
+  SEED_SECONDARY_LISTINGS,
+  SEED_JOBS,
+  SEED_EVENT_PEERS,
+} from './src/data/seedData';
 import { quoteHandlePricing } from './src/services/paymentRails';
-import { ZAR_PER_USD } from './src/types/firestore';
+import { ZAR_PER_USD, ProximityPeerDoc } from './src/types/firestore';
+import {
+  CURRENCY_CATALOG,
+  DEFAULT_RATES_PER_USD,
+  LocalCurrencyCode,
+  detectCurrencyFromCoords,
+  detectCurrencyFromCountryCode,
+} from './src/lib/fx';
 import { createPoppyRouter } from './server/poppyRouter';
 import { createAgentMailRouter } from './server/agentmailRouter';
 
@@ -70,12 +86,120 @@ async function startServer() {
     });
   });
 
+  let fxCache: {
+    rates: Record<LocalCurrencyCode, number>;
+    updatedAt: number;
+    source: 'live' | 'reference';
+  } = {
+    rates: { ...DEFAULT_RATES_PER_USD },
+    updatedAt: 0,
+    source: 'reference',
+  };
+
+  async function refreshFxRates(): Promise<typeof fxCache> {
+    const now = Date.now();
+    if (fxCache.source === 'live' && now - fxCache.updatedAt < 60 * 60 * 1000) {
+      return fxCache;
+    }
+    try {
+      const resp = await fetch('https://open.er-api.com/v6/latest/USD', {
+        signal: AbortSignal.timeout(3500),
+      });
+      if (resp.ok) {
+        const json = (await resp.json()) as {
+          result?: string;
+          rates?: Record<string, number>;
+        };
+        if (json?.rates && typeof json.rates === 'object') {
+          const merged = { ...DEFAULT_RATES_PER_USD };
+          for (const code of Object.keys(CURRENCY_CATALOG) as LocalCurrencyCode[]) {
+            const val = json.rates[code];
+            if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+              merged[code] = val;
+            }
+          }
+          fxCache = {
+            rates: merged,
+            updatedAt: now,
+            source: 'live',
+          };
+          return fxCache;
+        }
+      }
+    } catch {
+      // Fallback gracefully to reference rates if offline or upstream unavailable
+    }
+    if (fxCache.updatedAt === 0) {
+      fxCache = { ...fxCache, updatedAt: now };
+    }
+    return fxCache;
+  }
+
+  app.get('/api/fx/rates', async (req, res) => {
+    const snapshot = await refreshFxRates();
+
+    const latParam = Number(req.query.lat);
+    const lngParam = Number(req.query.lng);
+    let geoHit: { currency: LocalCurrencyCode; locationLabel: string } | null = null;
+    let geoMatched = false;
+
+    if (Number.isFinite(latParam) && Number.isFinite(lngParam) && req.query.lat !== undefined && req.query.lng !== undefined) {
+      geoHit = detectCurrencyFromCoords(latParam, lngParam);
+      if (geoHit) geoMatched = true;
+    }
+
+    if (!geoHit) {
+      const headerCountry =
+        (req.headers['x-appengine-country'] as string | undefined) ||
+        (req.headers['cf-ipcountry'] as string | undefined) ||
+        (req.headers['x-vercel-ip-country'] as string | undefined) ||
+        (req.headers['x-country-code'] as string | undefined);
+      if (headerCountry && headerCountry !== 'ZZ') {
+        geoHit = detectCurrencyFromCountryCode(headerCountry);
+        if (geoHit) geoMatched = true;
+      }
+    }
+
+    if (!geoHit) {
+      const acceptLang = String(req.headers['accept-language'] || '');
+      const firstTag = acceptLang.split(',')[0]?.split(';')[0]?.trim() || '';
+      const subParts = firstTag.split('-');
+      if (subParts.length >= 2) {
+        geoHit = detectCurrencyFromCountryCode(subParts[subParts.length - 1]);
+      }
+    }
+
+    res.json({
+      base: 'USD',
+      rates: snapshot.rates,
+      source: snapshot.source,
+      updatedAt: new Date(snapshot.updatedAt).toISOString(),
+      suggestedCurrency: geoHit?.currency || 'USD',
+      suggestedLocationLabel: geoHit?.locationLabel || 'United States',
+      geoMatched,
+    });
+  });
+
   app.get('/api/config/public', (_req, res) => {
-    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+    const mapsKey =
+      process.env.VITE_GOOGLE_MAPS_API_KEY ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      process.env.MAPS_API_KEY ||
+      '';
+    const mapboxToken =
+      process.env.VITE_MAPBOX_ACCESS_TOKEN ||
+      process.env.VITE_MAPBOX_API_KEY ||
+      process.env.MAPBOX_ACCESS_TOKEN ||
+      process.env.MAPBOX_API_KEY ||
+      process.env.MAPBOX_TOKEN ||
+      process.env.MAPBOX_PUBLIC_TOKEN ||
+      '';
     res.json({
       googleMapsApiKey: mapsKey,
       hasGoogleMapsKey: Boolean(mapsKey),
-      zarPerUsd: ZAR_PER_USD,
+      mapboxAccessToken: mapboxToken,
+      hasMapboxKey: Boolean(mapboxToken),
+      zarPerUsd: fxCache.rates.ZAR || ZAR_PER_USD,
       appUrl: process.env.APP_URL || '',
     });
   });
@@ -141,7 +265,7 @@ async function startServer() {
         '- POST /api/a2a/negotiate — Run bilateral Gemini A2A negotiation loop',
         '- POST /api/rfp/broadcast — Publish a reverse-RFP to directory, DOOH billboards, and BLE beacons',
         '- GET /api/names/search?q=<handle> — Check .agent handle pricing, civic protection, and auction status',
-        '- POST /api/email/triage — Autonomous Gemini email pitch triage & auto-reply',
+        '- POST /api/email/triage — Autonomous Gemini email engage triage & auto-reply',
         '- POST /api/voice/turn — Voice/chat agent dialer including 911 civic priority dispatch',
         '- GET /api/skill.json — OpenAPI 3.1 tool schema for Claude, Gemini, and GPT agents',
       ].join('\n')
@@ -528,9 +652,9 @@ async function startServer() {
                       vendorHandle: { type: Type.STRING },
                       bidZAR: { type: Type.NUMBER },
                       matchScore: { type: Type.NUMBER },
-                      pitchSummary: { type: Type.STRING },
+                      engageSummary: { type: Type.STRING },
                     },
-                    required: ['vendorHandle', 'bidZAR', 'matchScore', 'pitchSummary'],
+                    required: ['vendorHandle', 'bidZAR', 'matchScore', 'engageSummary'],
                   },
                 },
               },
@@ -558,7 +682,7 @@ async function startServer() {
         vendorHandle: c.handle,
         bidZAR: Math.round(budgetZAR * (0.84 + idx * 0.04)),
         matchScore: 95 - idx * 4,
-        pitchSummary: `${c.displayName} auto-matched via ${broadcastChannels.join(' + ')} with ${16 - idx * 4}% instant savings.`,
+        engageSummary: `${c.displayName} auto-matched via ${broadcastChannels.join(' + ')} with ${16 - idx * 4}% instant savings.`,
       })),
     });
   });
@@ -590,6 +714,351 @@ async function startServer() {
       matchScore: 94,
       incentive,
     });
+  });
+
+  // Same Wi-Fi LAN & BLE Proximity Event Mesh Registry
+  interface StoredProximityPeer extends ProximityPeerDoc {
+    expiresAtMs: number;
+  }
+  const activeProximityPeers = new Map<string, StoredProximityPeer>();
+  const proximityExchangeLogs: Array<{
+    id: string;
+    fromHandle: string;
+    toHandle: string;
+    roomCode: string;
+    transport: string;
+    mode: 'card_share' | 'share_and_negotiate';
+    timestamp: string;
+  }> = [];
+
+  function extractClientSubnetTag(req: express.Request): string {
+    const rawForwarded = String(req.headers['x-forwarded-for'] || '');
+    const clientIp =
+      (rawForwarded.split(',')[0] || '').trim() ||
+      req.socket?.remoteAddress ||
+      req.ip ||
+      '127.0.0.1';
+    const normalized = clientIp.replace('::ffff:', '');
+    const parts = normalized.split('.');
+    const prefix = parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}` : normalized.slice(0, 16);
+    const digest = crypto.createHash('sha256').update(prefix).digest('hex').slice(0, 6);
+    return `wifi-lan-${digest}`;
+  }
+
+  function pruneExpiredPeers() {
+    const now = Date.now();
+    for (const [key, peer] of activeProximityPeers.entries()) {
+      if (peer.expiresAtMs <= now) {
+        activeProximityPeers.delete(key);
+      }
+    }
+  }
+
+  app.post('/api/proximity/announce', (req, res) => {
+    pruneExpiredPeers();
+    const body = req.body || {};
+    const handle = String(body.handle || '').trim();
+    if (!handle) {
+      return res.status(400).json({ error: 'handle is required to broadcast in proximity mesh.' });
+    }
+
+    const roomCode = String(body.roomCode || 'sandton-summit-2026').trim().toLowerCase();
+    const key = `${roomCode}::${handle.toLowerCase()}`;
+
+    if (body.active === false) {
+      activeProximityPeers.delete(key);
+      return res.json({ status: 'STOPPED', handle, roomCode });
+    }
+
+    const subnetTag = extractClientSubnetTag(req);
+    const peer: StoredProximityPeer = {
+      id: String(body.id || `peer_live_${crypto.randomBytes(4).toString('hex')}`),
+      handle,
+      ownerUid: body.ownerUid ? String(body.ownerUid) : undefined,
+      displayName: String(body.displayName || handle),
+      roleTitle: String(body.roleTitle || 'Agent Card'),
+      organization: String(body.organization || 'Independent'),
+      type: body.type === 'business' ? 'business' : 'persona',
+      verified: body.verified !== false,
+      intent: body.intent || 'networking',
+      skills: Array.isArray(body.skills) ? body.skills.slice(0, 8).map(String) : [],
+      summary: body.summary ? String(body.summary) : undefined,
+      imageUrl: body.imageUrl ? String(body.imageUrl) : undefined,
+      brandLogoCode: body.brandLogoCode ? String(body.brandLogoCode) : undefined,
+      brandColor: body.brandColor ? String(body.brandColor) : undefined,
+      cardStyle: body.cardStyle && typeof body.cardStyle === 'object' ? body.cardStyle : undefined,
+      voiceNumber: body.voiceNumber ? String(body.voiceNumber) : undefined,
+      agentEmail: body.agentEmail ? String(body.agentEmail) : undefined,
+      locationLabel: String(body.locationLabel || `Event Room · ${roomCode}`),
+      distanceMeters: Number.isFinite(Number(body.distanceMeters)) ? Number(body.distanceMeters) : 8,
+      transport: body.transport || 'same_wifi',
+      roomCode,
+      subnetTag,
+      sameWifi: true,
+      lat: Number.isFinite(Number(body.lat)) ? Number(body.lat) : undefined,
+      lng: Number.isFinite(Number(body.lng)) ? Number(body.lng) : undefined,
+      incentive: body.incentive ? String(body.incentive) : undefined,
+      matchedScore: 95,
+      lastSeenAt: new Date().toISOString(),
+      expiresAtMs: Date.now() + 10 * 60 * 1000,
+    };
+
+    activeProximityPeers.set(key, peer);
+    const { expiresAtMs: _ignore, ...publicPeer } = peer;
+    return res.json({
+      status: 'BROADCASTING',
+      subnetTag,
+      peer: publicPeer,
+      activeRoomCount: activeProximityPeers.size,
+    });
+  });
+
+  app.get('/api/proximity/peers', (req, res) => {
+    pruneExpiredPeers();
+    const roomCode = String(req.query.room || 'sandton-summit-2026').trim().toLowerCase();
+    const callerHandle = String(req.query.selfHandle || '').trim().toLowerCase();
+    const includeBeacons = req.query.includeBeacons !== 'false';
+    const callerSubnet = extractClientSubnetTag(req);
+
+    const livePeers: ProximityPeerDoc[] = [];
+    for (const stored of activeProximityPeers.values()) {
+      const matchesRoom = stored.roomCode === roomCode;
+      const matchesSubnet = stored.subnetTag === callerSubnet;
+      if (!matchesRoom && !matchesSubnet) continue;
+      if (callerHandle && stored.handle.toLowerCase() === callerHandle) continue;
+      const { expiresAtMs: _ignore, ...publicPeer } = stored;
+      livePeers.push({
+        ...publicPeer,
+        sameWifi: matchesSubnet,
+      });
+    }
+
+    const seedPeers = includeBeacons
+      ? SEED_EVENT_PEERS.filter((sp) => {
+          if (callerHandle && sp.handle.toLowerCase() === callerHandle) return false;
+          if (livePeers.some((lp) => lp.handle.toLowerCase() === sp.handle.toLowerCase())) return false;
+          return roomCode === 'sandton-summit-2026' || roomCode === 'auto-wifi' || sp.roomCode === roomCode;
+        }).map((sp) => ({
+          ...sp,
+          roomCode: roomCode === 'auto-wifi' ? sp.roomCode : roomCode,
+        }))
+      : [];
+
+    const combined = [...livePeers, ...seedPeers];
+    res.json({
+      roomCode,
+      callerSubnet,
+      count: combined.length,
+      peers: combined,
+    });
+  });
+
+  app.post('/api/proximity/exchange', (req, res) => {
+    const {
+      fromHandle = 'alex.founder.agent',
+      toHandle,
+      roomCode = 'sandton-summit-2026',
+      transport = 'same_wifi',
+      mode = 'card_share',
+    } = req.body || {};
+
+    if (!toHandle) {
+      return res.status(400).json({ error: 'toHandle is required for proximity card exchange.' });
+    }
+
+    const record = {
+      id: `exch_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      fromHandle: String(fromHandle),
+      toHandle: String(toHandle),
+      roomCode: String(roomCode),
+      transport: String(transport),
+      mode: mode === 'share_and_negotiate' ? ('share_and_negotiate' as const) : ('card_share' as const),
+      timestamp: new Date().toISOString(),
+    };
+    proximityExchangeLogs.unshift(record);
+    if (proximityExchangeLogs.length > 100) proximityExchangeLogs.length = 100;
+
+    return res.json({
+      status: 'EXCHANGED',
+      record,
+      message:
+        record.mode === 'share_and_negotiate'
+          ? `Card exchanged with ${record.toHandle} via ${record.transport} — A2A negotiation pre-loaded.`
+          : `Shared your .agent card with ${record.toHandle} via ${record.transport}.`,
+    });
+  });
+
+  // Smart AI Opportunity Scout across user's Personal Contacts, Jobs & RFPs (Strict Gemini API)
+  app.post('/api/ai/opportunities', async (req, res) => {
+    const ai = getGeminiClient();
+    if (!ai) {
+      return res.status(503).json({
+        code: 'GEMINI_NOT_CONFIGURED',
+        error:
+          'GEMINI_API_KEY is not configured in server secrets. Add GEMINI_API_KEY to enable the Smart AI Opportunity Scout.',
+      });
+    }
+
+    const { userAgent, contacts = [], jobs = SEED_JOBS, rfps = SEED_RFPS, recentPeers = [] } = req.body || {};
+    if (!userAgent || !userAgent.handle) {
+      return res.status(400).json({
+        code: 'INVALID_REQUEST',
+        error: 'userAgent with handle is required.',
+      });
+    }
+
+    try {
+      const compactContacts = (Array.isArray(contacts) ? contacts : []).slice(0, 20).map((c: Record<string, unknown>) => ({
+        id: c.id,
+        handle: c.handle,
+        displayName: c.displayName,
+        organization: c.organization,
+        roleTitle: c.roleTitle,
+        type: c.type,
+        skills: c.skills,
+        source: c.source,
+        sharedAtLocation: c.sharedAtLocation,
+        notes: c.notes,
+        maxAutoSpendZAR: (c.guardrails as Record<string, unknown> | undefined)?.maxAutoSpendZAR,
+      }));
+
+      const compactJobs = (Array.isArray(jobs) ? jobs : []).slice(0, 12).map((j: Record<string, unknown>) => ({
+        id: j.id,
+        title: j.title,
+        companyName: j.companyName,
+        companyAgentHandle: j.companyAgentHandle,
+        remoteMode: j.remoteMode,
+        salaryRangeZAR: j.salaryRangeZAR,
+        requiredSkills: j.requiredSkills,
+        location: j.location,
+      }));
+
+      const compactRfps = (Array.isArray(rfps) ? rfps : []).slice(0, 10).map((r: Record<string, unknown>) => ({
+        id: r.id,
+        title: r.title,
+        publisherHandle: r.publisherHandle,
+        budgetZAR: r.budgetZAR,
+        category: r.category,
+      }));
+
+      const compactPeers = (Array.isArray(recentPeers) ? recentPeers : []).slice(0, 10).map((p: Record<string, unknown>) => ({
+        handle: p.handle,
+        displayName: p.displayName,
+        intent: p.intent,
+        incentive: p.incentive,
+        locationLabel: p.locationLabel,
+      }));
+
+      const prompt = [
+        `You are the autonomous Switchboard Opportunity Scout AI advising the human owner of ${userAgent.handle}.`,
+        `Active User Agent:`,
+        JSON.stringify({
+          handle: userAgent.handle,
+          displayName: userAgent.displayName,
+          roleTitle: userAgent.roleTitle,
+          organization: userAgent.organization,
+          skills: userAgent.skills,
+          cvSummary: userAgent.cvSummary,
+          guardrails: userAgent.guardrails,
+        }),
+        `Personal Contacts (shared agent/business cards):`,
+        JSON.stringify(compactContacts),
+        `Open Jobs:`,
+        JSON.stringify(compactJobs),
+        `Active Reverse-RFPs:`,
+        JSON.stringify(compactRfps),
+        `Recent Nearby Event Peers:`,
+        JSON.stringify(compactPeers),
+        `Analyze all contacts, notes, shared locations, open jobs, RFPs, and event peers. Identify 3 to 5 concrete, actionable opportunities where the user's agent can immediately negotiate a deal, apply/pitch for a job, close a vendor discount, or form a partnership.`,
+        `For every opportunity:`,
+        `- targetHandle MUST match a handle from contacts, jobs, rfps, or event peers.`,
+        `- If it relates to an item in Personal Contacts, include its contactId.`,
+        `- If it relates to an open job, include its jobId.`,
+        `- recommendedDealZAR MUST be a realistic positive ZAR value grounded in the contact guardrails, job salary, or RFP budget.`,
+        `- suggestedProposalTitle MUST be concise and ready to launch directly into A2A Negotiation.`,
+        `- Never fabricate metrics outside the provided data.`,
+      ].join('\n\n');
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING },
+              opportunities: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    category: {
+                      type: Type.STRING,
+                      enum: ['job_match', 'b2b_deal', 'partnership', 'service_pitch', 'event_followup'],
+                    },
+                    contactId: { type: Type.STRING },
+                    jobId: { type: Type.STRING },
+                    targetHandle: { type: Type.STRING },
+                    targetName: { type: Type.STRING },
+                    summary: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                    suggestedProposalTitle: { type: Type.STRING },
+                    recommendedDealZAR: { type: Type.NUMBER },
+                    confidencePct: { type: Type.NUMBER },
+                    negotiationAngle: { type: Type.STRING },
+                  },
+                  required: [
+                    'id',
+                    'title',
+                    'category',
+                    'targetHandle',
+                    'targetName',
+                    'summary',
+                    'rationale',
+                    'suggestedProposalTitle',
+                    'recommendedDealZAR',
+                    'confidencePct',
+                    'negotiationAngle',
+                  ],
+                },
+              },
+            },
+            required: ['summary', 'opportunities'],
+          },
+        },
+      });
+
+      const rawText = (response.text || '{}').trim();
+      const parsed = JSON.parse(rawText) as {
+        summary?: string;
+        opportunities?: Array<Record<string, unknown>>;
+      };
+
+      if (!Array.isArray(parsed.opportunities)) {
+        return res.status(502).json({
+          code: 'GEMINI_INVALID_OUTPUT',
+          error: 'Gemini returned an unexpected schema for opportunities. Please retry.',
+        });
+      }
+
+      return res.json({
+        engine: 'gemini-4-hydrogen',
+        generatedAt: new Date().toISOString(),
+        summary: parsed.summary || 'Ranked opportunities ready for agent negotiation.',
+        opportunities: parsed.opportunities,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upstream Gemini request failed.';
+      const status = msg.includes('429') || msg.toLowerCase().includes('quota') ? 429 : 502;
+      return res.status(status).json({
+        code: status === 429 ? 'GEMINI_RATE_LIMITED' : 'GEMINI_UPSTREAM_ERROR',
+        error: msg,
+      });
+    }
   });
 
   // Part 2: .agent Handle & Number Registry API
@@ -678,7 +1147,7 @@ async function startServer() {
   app.post('/api/email/triage', async (req, res) => {
     const {
       fromAddress = 'vendor@solargrid.co.za',
-      toAddress = 'pitch@ceo.woolworths.agent',
+      toAddress = 'engage@ceo.woolworths.agent',
       subject = 'Proposal: Solar Micro-Grid Quote',
       body = '',
       targetMinDiscountPct = 14,
@@ -706,7 +1175,7 @@ async function startServer() {
               properties: {
                 aiClassification: {
                   type: Type.STRING,
-                  enum: ['QUALIFIED_PITCH', 'RFP_RESPONSE', 'SPAM_BLOCKED', 'MEETING_CONFIRMED'],
+                  enum: ['QUALIFIED_ENGAGE', 'RFP_RESPONSE', 'SPAM_BLOCKED', 'MEETING_CONFIRMED'],
                 },
                 proposedPriceZAR: { type: Type.NUMBER },
                 shouldBookMeeting: { type: Type.BOOLEAN },
@@ -736,14 +1205,14 @@ async function startServer() {
 
     return res.json({
       engine: 'switchboard-mail-triage',
-      aiClassification: isSpam ? 'SPAM_BLOCKED' : shouldBookMeeting ? 'MEETING_CONFIRMED' : 'QUALIFIED_PITCH',
+      aiClassification: isSpam ? 'SPAM_BLOCKED' : shouldBookMeeting ? 'MEETING_CONFIRMED' : 'QUALIFIED_ENGAGE',
       proposedPriceZAR: isSpam ? 0 : extractedPrice,
       shouldBookMeeting,
       replyBody: isSpam
         ? 'Blocked by POPIA anti-spam guardrail. Unverified bulk solicitation rejected automatically.'
         : shouldBookMeeting
         ? `POPIA verification passed. Your proposal (R${extractedPrice.toLocaleString('en-ZA')}) clears our executive threshold. Provisionally booked a 30-min Google Meet slot for tomorrow at 10:00 SAST — please confirm or counter-offer via x402.`
-        : `Thank you for pitching ${toAddress}. Your inquiry is logged and queued for async review under our ${targetMinDiscountPct}% partner discount guardrail.`,
+        : `Thank you for engaging ${toAddress}. Your inquiry is logged and queued for async review under our ${targetMinDiscountPct}% partner discount guardrail.`,
     });
   });
 

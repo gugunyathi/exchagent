@@ -14,6 +14,7 @@ import {
   Megaphone,
   ArrowRight,
   Building2,
+  ArrowLeft,
 } from 'lucide-react';
 import { AgentDoc, BookingDoc, CurrencyMode, formatMoney } from '../types/firestore';
 import { AgentIdentityCard } from './AgentIdentityCard';
@@ -42,7 +43,7 @@ interface StatusReelsViewerProps {
   currency: CurrencyMode;
   onClose: () => void;
   onActiveAgentChange: (agent: AgentDoc) => void;
-  onPitchAgent: (agent: AgentDoc) => void;
+  onEngageAgent: (agent: AgentDoc) => void;
   onDialAgent: (agent: AgentDoc) => void;
   onEmailAgent: (agent: AgentDoc) => void;
   onToggleDiscoverable: (agentId: string) => void;
@@ -59,7 +60,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
   currency,
   onClose,
   onActiveAgentChange,
-  onPitchAgent,
+  onEngageAgent,
   onDialAgent,
   onEmailAgent,
   onToggleDiscoverable,
@@ -333,6 +334,21 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (currentIdx > 0) {
+                  goPrev();
+                } else {
+                  onClose();
+                }
+              }}
+              className="w-8 h-8 rounded-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-xs shrink-0"
+              aria-label={currentIdx > 0 ? 'Back to previous reel' : 'Back to Directory'}
+              title={currentIdx > 0 ? 'Previous reel' : 'Back to Directory'}
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+            </button>
             {activeSlide.kind === 'ad' ? (
               <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 border border-amber-300 text-amber-800 dark:bg-amber-400/15 dark:border-amber-400/30 dark:text-amber-300 px-2 py-0.5 text-[10px] font-mono font-semibold">
                 <Megaphone className="w-3 h-3" />
@@ -406,9 +422,9 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                     [activeSlide.agent.id]: !p[activeSlide.agent.id],
                   }))
                 }
-                onPitch={(a) => {
+                onEngage={(a) => {
                   onClose();
-                  onPitchAgent(a);
+                  onEngageAgent(a);
                 }}
                 onDial={(a) => {
                   onClose();
@@ -502,7 +518,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                           type="button"
                           onClick={() => {
                             onClose();
-                            onPitchAgent(activeSlide.targetAgent!);
+                            onEngageAgent(activeSlide.targetAgent!);
                           }}
                           className="col-span-2 min-h-[40px] rounded-xl bg-white text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 shadow-sm"
                         >
@@ -576,12 +592,12 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
               type="button"
               onClick={() => {
                 onClose();
-                onPitchAgent(activeSlide.agent);
+                onEngageAgent(activeSlide.agent);
               }}
               className="flex-1 min-h-[38px] rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1 dark:hover:bg-white"
             >
               <Zap className="w-3.5 h-3.5" />
-              Pitch
+              Engage
             </button>
             <button
               type="button"
@@ -631,7 +647,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  onPitchAgent(activeSlide.targetAgent!);
+                  onEngageAgent(activeSlide.targetAgent!);
                 }}
                 className="flex-1 min-h-[38px] rounded-full bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold text-xs inline-flex items-center justify-center gap-1.5"
               >

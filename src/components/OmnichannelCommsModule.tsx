@@ -8,6 +8,8 @@ import {
   ExternalLink,
   Video,
   FileSpreadsheet,
+  ArrowLeft,
+  X,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -59,9 +61,9 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
   const [subTab, setSubTab] = useState<'mail' | 'calendar'>('mail');
 
   const [toAddress, setToAddress] = useState(
-    preselectedEmailTarget?.agentEmail || nonEmergency[0]?.agentEmail || 'pitch@ceo.woolworths.agent'
+    preselectedEmailTarget?.agentEmail || nonEmergency[0]?.agentEmail || 'engage@ceo.woolworths.agent'
   );
-  const [fromAddress, setFromAddress] = useState('alex.founder@switchboard.agent');
+  const [fromAddress, setFromAddress] = useState('exchagent@agentmail.to');
   const [subject, setSubject] = useState('Partnership Proposal: Sandton Cold-Chain & Solar Telemetry');
   const [body, setBody] = useState(
     'Hello — We can deploy 12 autonomous IoT cold-chain units for R85,000 total (18% below standard rate) with x402 Base settlement and full POPIA audit trails.'
@@ -78,12 +80,40 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
     }
   }, [preselectedEmailTarget]);
 
+  React.useEffect(() => {
+    if (!pendingGmailSend && !pendingCalendarBooking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingGmailSend(false);
+        setPendingCalendarBooking(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingGmailSend, pendingCalendarBooking]);
+
   const executeEmailSendAndTriage = async (alsoSendGmail: boolean) => {
     setTriaging(true);
     setPendingGmailSend(false);
     try {
       if (alsoSendGmail && workspaceToken) {
         await sendEmailViaGmailApi({ to: toAddress, subject, body });
+      } else if (
+        fromAddress.toLowerCase().endsWith('@agentmail.to') ||
+        toAddress.toLowerCase().endsWith('@agentmail.to')
+      ) {
+        await fetch('/api/agentmail/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inbox: fromAddress.toLowerCase().endsWith('@agentmail.to')
+              ? fromAddress
+              : 'exchagent@agentmail.to',
+            to: toAddress,
+            subject,
+            text: body,
+          }),
+        }).catch(() => {});
       }
 
       const targetAgent =
@@ -112,7 +142,7 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
         replyBody: data.replyBody,
         threadId: `thr_${Date.now()}`,
         ownerUid,
-        aiClassification: data.aiClassification || 'QUALIFIED_PITCH',
+        aiClassification: data.aiClassification || 'QUALIFIED_ENGAGE',
         autoReplied: true,
         proposedPriceZAR: data.proposedPriceZAR || 0,
         timestamp: new Date().toISOString(),
@@ -223,11 +253,11 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
 
       {subTab === 'mail' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          {/* Compose Pitch */}
+          {/* Compose Engage */}
           <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
               <Mail className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-              Agentic Pitch Mail
+              Agentic Engage Mail
             </h3>
 
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
@@ -481,9 +511,39 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
 
       {/* Mandatory User Confirmation Dialog before mutating Gmail */}
       {pendingGmailSend && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-display font-bold text-zinc-950 dark:text-zinc-50">Confirm Sending Email via Gmail</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setPendingGmailSend(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setPendingGmailSend(false)}
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h3 className="text-sm sm:text-base font-display font-bold text-zinc-950 dark:text-zinc-50 truncate">
+                  Confirm Sending Email
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingGmailSend(false)}
+                className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                aria-label="Close"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
               This will send a live email from your connected Gmail account to{' '}
               <span className="font-mono text-sky-700 dark:text-sky-400">{toAddress}</span> with subject{' '}
@@ -511,9 +571,39 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
 
       {/* Mandatory User Confirmation Dialog before mutating Google Calendar */}
       {pendingCalendarBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-display font-bold text-zinc-950 dark:text-zinc-50">Confirm Google Calendar Event Creation</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4"
+          onClick={() => setPendingCalendarBooking(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setPendingCalendarBooking(null)}
+                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h3 className="text-sm sm:text-base font-display font-bold text-zinc-950 dark:text-zinc-50 truncate">
+                  Confirm Calendar Event
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingCalendarBooking(null)}
+                className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                aria-label="Close"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
               Insert event <strong>&quot;{pendingCalendarBooking.title}&quot;</strong> into your primary Google Calendar for{' '}
               <span className="font-mono text-sky-700 dark:text-sky-400">

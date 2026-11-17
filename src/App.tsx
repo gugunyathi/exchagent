@@ -20,8 +20,10 @@ import {
   Building2,
   SlidersHorizontal,
   Briefcase,
+  ArrowLeft,
+  Sparkles,
 } from 'lucide-react';
-import { AgentDoc } from './types/firestore';
+import { AgentDoc, JobPostingDoc } from './types/firestore';
 import { useSwitchboardStore } from './store/useSwitchboardStore';
 import {
   DirectoryModule,
@@ -32,6 +34,7 @@ import { NegotiationArenaModule } from './components/NegotiationArenaModule';
 import { PoppyRecruitmentModule } from './components/PoppyRecruitmentModule';
 import { RegistryMarketplaceModule } from './components/RegistryMarketplaceModule';
 import { SpatialMapsDiscovery } from './components/SpatialMapsDiscovery';
+import { ContactsHubModule } from './components/ContactsHubModule';
 import { OmnichannelCommsModule } from './components/OmnichannelCommsModule';
 import { AgentMailInboxModule } from './components/AgentMailInboxModule';
 import { ChromeExtensionHub } from './components/ChromeExtensionHub';
@@ -40,10 +43,12 @@ import { AgentSkillsPage } from './components/AgentSkillsPage';
 import { SurfaceSimulatorFrame } from './components/SurfaceSimulatorFrame';
 import { AgentDialerModal } from './components/AgentDialerModal';
 import { CardCustomizationModal } from './components/CardCustomizationModal';
+import { QuickJobAgentModal } from './components/QuickJobAgentModal';
+import { QuickEmployerAgentModal } from './components/QuickEmployerAgentModal';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { BurgerMenuDrawer, DrawerRouteTarget } from './components/BurgerMenuDrawer';
 import { SwipeScrollArea } from './components/SwipeScrollArea';
-import { ToastViewport } from './lib/toast';
+import { ToastViewport, emitToast } from './lib/toast';
 import { ThemeToggle } from './lib/theme';
 
 export type MainNavTab = 'directory' | 'arena' | 'hiring' | 'registry' | 'spatial' | 'toolkit';
@@ -58,14 +63,22 @@ const PRIMARY_NAV_TABS: Array<{
   { id: 'arena', label: 'Negotiate', mobileLabel: 'Negotiate', icon: Zap },
   { id: 'hiring', label: 'Hiring', mobileLabel: 'Hiring', icon: Briefcase },
   { id: 'registry', label: 'Registry', mobileLabel: 'Registry', icon: Tag },
-  { id: 'spatial', label: 'Inbox & Map', mobileLabel: 'Map', icon: MapPin },
+  { id: 'spatial', label: 'Radar & Contacts', mobileLabel: 'Contacts', icon: MapPin },
 ];
 
 export default function App() {
   const store = useSwitchboardStore();
   const [activeTab, setActiveTab] = useState<MainNavTab>('directory');
-  const [spatialSubView, setSpatialSubView] = useState<'maps' | 'comms' | 'agentmail'>('maps');
+  const [spatialSubView, setSpatialSubView] = useState<'maps' | 'contacts' | 'comms' | 'agentmail'>('maps');
   const [toolkitSubView, setToolkitSubView] = useState<'skills' | 'extension' | 'ledger'>('skills');
+  const [navHistory, setNavHistory] = useState<
+    Array<{
+      tab: MainNavTab;
+      spatialSub: 'maps' | 'contacts' | 'comms' | 'agentmail';
+      toolkitSub: 'skills' | 'extension' | 'ledger';
+      surface: ReturnType<typeof useSwitchboardStore>['surface'];
+    }>
+  >([]);
 
   // Floating Directory Quick Actions
   const [directoryFilter, setDirectoryFilter] = useState<DirectoryFilterType>('all');
@@ -76,13 +89,20 @@ export default function App() {
   const [poppyInitialRoleTab, setPoppyInitialRoleTab] = useState<'seeker' | 'hiring' | 'recruiter' | 'video_live'>('seeker');
   const [poppyInitialSeekerId, setPoppyInitialSeekerId] = useState<string | null>(null);
 
-  const [selectedPitchAgent, setSelectedPitchAgent] = useState<AgentDoc | null>(null);
+  const [selectedEngageAgent, setSelectedEngageAgent] = useState<AgentDoc | null>(null);
+  const [engageProposalPrefill, setEngageProposalPrefill] = useState<{
+    title?: string;
+    stickerPriceZAR?: number;
+    nonce?: number;
+  } | null>(null);
   const [selectedEmailAgent, setSelectedEmailAgent] = useState<AgentDoc | null>(null);
   const [openDeployWizard, setOpenDeployWizard] = useState(false);
 
   const [dialerOpen, setDialerOpen] = useState(false);
   const [dialerInitialAgent, setDialerInitialAgent] = useState<AgentDoc | null>(null);
   const [customizingAgent, setCustomizingAgent] = useState<AgentDoc | null>(null);
+  const [quickJobModalOpen, setQuickJobModalOpen] = useState(false);
+  const [quickEmployerModalOpen, setQuickEmployerModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
@@ -111,13 +131,16 @@ export default function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const pitchHandle = params.get('pitch');
+    const engageHandle = params.get('engage');
     const tabParam = params.get('tab');
     if (tabParam === 'skills') {
       setActiveTab('toolkit');
       setToolkitSubView('skills');
     } else if (tabParam === 'poppy' || tabParam === 'hiring') {
       setActiveTab('hiring');
+    } else if (tabParam === 'contacts') {
+      setActiveTab('spatial');
+      setSpatialSubView('contacts');
     } else if (
       tabParam === 'directory' ||
       tabParam === 'arena' ||
@@ -126,12 +149,12 @@ export default function App() {
     ) {
       setActiveTab(tabParam);
     }
-    if (pitchHandle) {
+    if (engageHandle) {
       const found = store.agents.find(
-        (a) => a.handle.toLowerCase() === pitchHandle.toLowerCase()
+        (a) => a.handle.toLowerCase() === engageHandle.toLowerCase()
       );
       if (found) {
-        setSelectedPitchAgent(found);
+        setSelectedEngageAgent(found);
         setActiveTab('arena');
       }
     }
@@ -141,21 +164,165 @@ export default function App() {
   const openRfpCount = store.rfps.filter((r) => r.status === 'OPEN').length;
   const pendingPoppyCount = store.poppyOperations.filter((o) => o.status === 'pending').length;
 
-  const handleOpenPitch = (agent: AgentDoc) => {
-    setSelectedPitchAgent(agent);
-    store.setSurface('desktop');
-    setActiveTab('arena');
+  const savedContactHandles = React.useMemo(
+    () => new Set(store.contacts.map((c) => c.handle.toLowerCase())),
+    [store.contacts]
+  );
+
+  const activeUserAgent = React.useMemo(
+    () =>
+      store.agents.find(
+        (a) => a.ownerUid === store.currentUser.uid && a.handle !== '911.emergency.agent'
+      ) ||
+      store.agents.find((a) => a.handle === 'alex.founder.agent') ||
+      store.agents[0] ||
+      null,
+    [store.agents, store.currentUser.uid]
+  );
+
+  const pushCurrentRouteToHistory = React.useCallback(
+    (next: {
+      tab?: MainNavTab;
+      spatialSub?: 'maps' | 'contacts' | 'comms' | 'agentmail';
+      toolkitSub?: 'skills' | 'extension' | 'ledger';
+      surface?: typeof store.surface;
+    }) => {
+      const targetTab = next.tab ?? activeTab;
+      const targetSpatial = next.spatialSub ?? spatialSubView;
+      const targetToolkit = next.toolkitSub ?? toolkitSubView;
+      const targetSurface = next.surface ?? store.surface;
+      if (
+        targetTab === activeTab &&
+        targetSpatial === spatialSubView &&
+        targetToolkit === toolkitSubView &&
+        targetSurface === store.surface
+      ) {
+        return;
+      }
+      setNavHistory((prev) => [
+        ...prev.slice(-14),
+        {
+          tab: activeTab,
+          spatialSub: spatialSubView,
+          toolkitSub: toolkitSubView,
+          surface: store.surface,
+        },
+      ]);
+    },
+    [activeTab, spatialSubView, toolkitSubView, store.surface]
+  );
+
+  const navigateRoute = React.useCallback(
+    (next: {
+      tab?: MainNavTab;
+      spatialSub?: 'maps' | 'contacts' | 'comms' | 'agentmail';
+      toolkitSub?: 'skills' | 'extension' | 'ledger';
+      surface?: typeof store.surface;
+    }) => {
+      pushCurrentRouteToHistory(next);
+      if (next.surface !== undefined) store.setSurface(next.surface);
+      if (next.tab !== undefined) setActiveTab(next.tab);
+      if (next.spatialSub !== undefined) setSpatialSubView(next.spatialSub);
+      if (next.toolkitSub !== undefined) setToolkitSubView(next.toolkitSub);
+    },
+    [pushCurrentRouteToHistory, store]
+  );
+
+  const handleGoBack = React.useCallback(() => {
+    if (navHistory.length > 0) {
+      const last = navHistory[navHistory.length - 1];
+      setNavHistory((prev) => prev.slice(0, -1));
+      store.setSurface(last.surface);
+      setActiveTab(last.tab);
+      setSpatialSubView(last.spatialSub);
+      setToolkitSubView(last.toolkitSub);
+    } else if (store.surface !== 'desktop' || activeTab !== 'directory') {
+      store.setSurface('desktop');
+      setActiveTab('directory');
+    }
+  }, [navHistory, store, activeTab]);
+
+  const canGoBack = navHistory.length > 0 || activeTab !== 'directory' || store.surface !== 'desktop';
+
+  const resolveAgentByHandle = React.useCallback(
+    (handle: string): AgentDoc => {
+      const existing = store.agents.find(
+        (a) => a.handle.toLowerCase() === handle.toLowerCase()
+      );
+      if (existing) return existing;
+
+      const contact = store.contacts.find(
+        (c) => c.handle.toLowerCase() === handle.toLowerCase()
+      );
+      return {
+        id: contact?.agentId || `peer_${handle.replace(/[^a-z0-9]/gi, '_')}`,
+        handle: contact?.handle || handle,
+        ownerUid: contact?.ownerUid || store.currentUser.uid,
+        displayName: contact?.displayName || handle.replace('.agent', ''),
+        roleTitle: contact?.roleTitle || 'Event Mesh Agent',
+        organization: contact?.organization || 'Independent Agent',
+        type: contact?.type || 'persona',
+        agentRoleCategory: contact?.agentRoleCategory,
+        verified: contact?.verified ?? true,
+        popiaConsentActive: true,
+        voiceNumber: contact?.voiceNumber || '+27-87-AGENT-000',
+        agentEmail: contact?.agentEmail || `engage@${handle}`,
+        mcpEndpoint: `https://${handle}/mcp`,
+        linkedinUrl: contact?.linkedinUrl,
+        websiteUrl: contact?.websiteUrl,
+        brandColor: contact?.brandColor,
+        brandLogoCode: contact?.brandLogoCode,
+        imageUrl: contact?.imageUrl,
+        cardStyle: contact?.cardStyle,
+        summary: contact?.summary,
+        skills: contact?.skills || [],
+        guardrails: contact?.guardrails || {
+          maxAutoSpendZAR: 15000,
+          minDiscountPct: 8,
+          blockedCategories: [],
+        },
+        walletAddresses: {},
+        createdAt: new Date().toISOString(),
+      };
+    },
+    [store.agents, store.contacts, store.currentUser.uid]
+  );
+
+  const handleOpenEngage = (agent: AgentDoc) => {
+    setSelectedEngageAgent(agent);
+    setEngageProposalPrefill(null);
+    navigateRoute({ surface: 'desktop', tab: 'arena' });
+  };
+
+  const handleEngageProposal = (params: {
+    targetHandle: string;
+    proposalTitle?: string;
+    stickerPriceZAR?: number;
+  }) => {
+    const resolved = resolveAgentByHandle(params.targetHandle);
+    setSelectedEngageAgent(resolved);
+    setEngageProposalPrefill({
+      title: params.proposalTitle,
+      stickerPriceZAR: params.stickerPriceZAR,
+      nonce: Date.now(),
+    });
+    navigateRoute({ surface: 'desktop', tab: 'arena' });
   };
 
   const handleOpenVideoStudioForAgent = (agent: AgentDoc) => {
     setPoppyInitialSeekerId(agent.id);
     setPoppyInitialRoleTab('video_live');
-    store.setSurface('desktop');
-    setActiveTab('hiring');
+    navigateRoute({ surface: 'desktop', tab: 'hiring' });
   };
 
   const handleOpenDialerForAgent = (agent: AgentDoc) => {
     setDialerInitialAgent(agent);
+    setDialerOpen(true);
+  };
+
+  const handleDialByHandle = (handle: string) => {
+    const resolved = resolveAgentByHandle(handle);
+    setDialerInitialAgent(resolved);
     setDialerOpen(true);
   };
 
@@ -173,18 +340,91 @@ export default function App() {
 
   const handleOpenEmailForAgent = (agent: AgentDoc) => {
     setSelectedEmailAgent(agent);
-    store.setSurface('desktop');
-    setActiveTab('spatial');
-    setSpatialSubView('comms');
+    navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'comms' });
+  };
+
+  const handleEmailByHandle = (handle: string) => {
+    const resolved = resolveAgentByHandle(handle);
+    setSelectedEmailAgent(resolved);
+    navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'comms' });
+  };
+
+  const handleApplyJobFromRadar = (job: JobPostingDoc) => {
+    const seeker = activeUserAgent || store.agents[0];
+    if (!seeker) return;
+
+    const seekerSkills = new Set(
+      [...(seeker.skills || []), ...(seeker.cvSummary?.parsedSkills || [])].map((s) =>
+        s.toLowerCase()
+      )
+    );
+    const matched = job.requiredSkills.filter((req) =>
+      Array.from(seekerSkills).some(
+        (sk) => sk.includes(req.toLowerCase()) || req.toLowerCase().includes(sk)
+      )
+    );
+    const skillsOverlap = Math.min(
+      98,
+      Math.round((matched.length / Math.max(1, job.requiredSkills.length)) * 100)
+    );
+    const score = Math.max(72, Math.min(97, Math.round(skillsOverlap * 0.65 + 32)));
+    const opId = `op_radar_${Date.now()}`;
+    const matchId = `match_${job.id}_${seeker.id}`;
+    const now = new Date().toISOString();
+
+    store.upsertRecruitmentMatch({
+      id: matchId,
+      jobId: job.id,
+      jobTitle: job.title,
+      companyAgentHandle: job.companyAgentHandle,
+      seekerHandle: seeker.handle,
+      seekerName: seeker.displayName,
+      score,
+      factors: {
+        skillsOverlap: Math.max(60, skillsOverlap),
+        experienceFit: 88,
+        compensationFit: 90,
+        locationCultureFit: job.remoteMode === 'Remote' ? 96 : 89,
+      },
+      explanation: `Matched via Spatial Job Radar (${job.location} · ${job.remoteMode}). ${matched.length} overlapping core competencies identified.`,
+      strengths: matched.length > 0 ? matched : job.requiredSkills.slice(0, 2),
+      gaps: job.requiredSkills.filter((s) => !matched.includes(s)).slice(0, 2),
+      blindMode: Boolean(seeker.cvSummary?.blindScreening),
+      status: 'applied',
+      operationId: opId,
+      updatedAt: now,
+    });
+
+    store.proposePoppyOperation({
+      operation_id: opId,
+      revision: 'v3',
+      actionType: 'apply_job',
+      summary: `Submit POPIA-minimized Poppy application for "${job.title}" at ${job.companyName}`,
+      terms: {
+        jobId: job.id,
+        company: job.companyName,
+        remoteMode: job.remoteMode,
+        matchScore: score,
+      },
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      status: 'pending',
+      createdAt: now,
+      targetHandle: job.companyAgentHandle,
+      actorHandle: seeker.handle,
+    });
+
+    emitToast(`Poppy application queued for ${job.title}`, 'success');
+    setPoppyInitialRoleTab('seeker');
+    navigateRoute({ surface: 'desktop', tab: 'hiring' });
   };
 
   const handleDrawerNavigate = (target: DrawerRouteTarget) => {
-    store.setSurface('desktop');
-    setActiveTab(target.tab);
     if (target.tab === 'spatial') {
-      setSpatialSubView(target.sub);
+      navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: target.sub });
     } else if (target.tab === 'toolkit') {
-      setToolkitSubView(target.sub);
+      navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: target.sub });
+    } else {
+      navigateRoute({ surface: 'desktop', tab: target.tab });
     }
   };
 
@@ -209,15 +449,13 @@ export default function App() {
 
   const handleFloatingViewToggle = () => {
     setFloatingMenuExpanded(false);
-    store.setSurface('desktop');
-    setActiveTab('directory');
+    navigateRoute({ surface: 'desktop', tab: 'directory' });
     setDirectoryViewMode((v) => (v === 'carousel' ? 'grid' : 'carousel'));
   };
 
   const handleFloatingFilterToggle = (target: 'persona' | 'business') => {
     setFloatingMenuExpanded(false);
-    store.setSurface('desktop');
-    setActiveTab('directory');
+    navigateRoute({ surface: 'desktop', tab: 'directory' });
     setDirectoryFilter((prev) => (prev === target ? 'all' : target));
   };
 
@@ -242,7 +480,7 @@ export default function App() {
       {/* Editorial Single-Row Top Header */}
       <header className="h-12 sm:h-14 shrink-0 border-b border-zinc-200 dark:border-white/[0.08] bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md z-40">
         <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
-          <div className="flex items-center gap-2.5 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 shrink-0 min-w-0">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
@@ -252,12 +490,21 @@ export default function App() {
             >
               <Menu className="w-4 h-4" />
             </button>
+            {canGoBack && (
+              <button
+                type="button"
+                onClick={handleGoBack}
+                className="h-9 px-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center gap-1 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
+                aria-label="Go back to previous page"
+                title="Back"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Back</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => {
-                store.setSurface('desktop');
-                setActiveTab('directory');
-              }}
+              onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
               className="flex items-center gap-2 text-left shrink-0"
             >
               <img
@@ -279,10 +526,7 @@ export default function App() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => {
-                    store.setSurface('desktop');
-                    setActiveTab(item.id);
-                  }}
+                  onClick={() => navigateRoute({ surface: 'desktop', tab: item.id })}
                   className={`relative px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-zinc-100 text-zinc-950 border border-zinc-300 font-semibold shadow-2xs dark:bg-zinc-800/90 dark:text-white dark:border-white/15'
@@ -348,9 +592,10 @@ export default function App() {
               rfps={store.rfps}
               settlements={store.settlements}
               currency={store.currency}
-              onPitchAgent={handleOpenPitch}
+              onEngageAgent={handleOpenEngage}
               onDialNumber={handleDialNumberString}
-              onSwitchToDesktop={() => store.setSurface('desktop')}
+              onSwitchToDesktop={() => navigateRoute({ surface: 'desktop' })}
+              onGoBack={handleGoBack}
             />
           </SwipeScrollArea>
         ) : activeTab === 'directory' ? (
@@ -358,6 +603,8 @@ export default function App() {
             agents={store.agents}
             bookings={store.bookings}
             currency={store.currency}
+            localCurrency={store.localCurrency}
+            fxRates={store.fxRates}
             ownerUid={store.currentUser.uid}
             filterType={directoryFilter}
             viewMode={directoryViewMode}
@@ -373,15 +620,24 @@ export default function App() {
               setDirectorySearchQuery('');
               setDirectorySearchOpen(false);
             }}
-            onSelectForPitch={handleOpenPitch}
+            onSelectForEngage={handleOpenEngage}
             onDialAgent={handleOpenDialerForAgent}
             onEmailAgent={handleOpenEmailForAgent}
             onDeployAgent={store.addOrUpdateAgent}
             onToggleDiscoverable={store.toggleAgentDiscoverability}
             onOpenVideoStudio={handleOpenVideoStudioForAgent}
             onCustomizeCard={(agent) => setCustomizingAgent(agent)}
+            onSaveContact={(agent) =>
+              store.saveContact(agent, {
+                source: 'directory',
+                sharedAtLocation: agent.geoLocation?.label || 'Switchboard Directory',
+              })
+            }
+            savedContactHandles={savedContactHandles}
             openDeployModalInitially={openDeployWizard}
             onCloseDeployModal={() => setOpenDeployWizard(false)}
+            onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
+            onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
           />
         ) : (
           <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-24 space-y-4">
@@ -390,8 +646,11 @@ export default function App() {
                 agents={store.agents}
                 rfps={store.rfps}
                 negotiations={store.negotiations}
-                selectedTargetAgent={selectedPitchAgent}
+                selectedTargetAgent={selectedEngageAgent}
+                initialProposal={engageProposalPrefill}
                 currency={store.currency}
+                localCurrency={store.localCurrency}
+                fxRates={store.fxRates}
                 ownerUid={store.currentUser.uid}
                 onSaveNegotiation={store.saveNegotiation}
                 onSettleDeal={store.settleDeal}
@@ -427,6 +686,8 @@ export default function App() {
                 onToggleConsentScope={store.toggleConsentScope}
                 onRevokeAllConsents={store.revokeAllConsents}
                 onLogAudit={store.logPoppyAudit}
+                onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
+                onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
               />
             )}
 
@@ -436,8 +697,16 @@ export default function App() {
                 auctions={store.auctions}
                 secondaryListings={store.secondaryListings}
                 currency={store.currency}
+                localCurrency={store.localCurrency}
+                locationLabel={store.locationLabel}
+                fxRates={store.fxRates}
+                fxSource={store.fxSource}
+                detectingLocation={store.detectingLocation}
                 ownerUid={store.currentUser.uid}
                 ownerName={store.currentUser.displayName}
+                onSelectCurrency={store.setCurrency}
+                onSelectLocalCurrency={store.setLocalCurrency}
+                onDetectLocation={store.detectLocationAndCurrency}
                 onClaimHandle={store.claimHandleRecord}
                 onPlaceBid={store.placeAuctionBid}
                 onBuyoutListing={store.buyoutSecondaryListing}
@@ -446,30 +715,66 @@ export default function App() {
 
             {activeTab === 'spatial' && (
               <div className="space-y-3">
-                <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs overflow-x-auto no-scrollbar max-w-full">
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ spatialSub: 'maps' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        spatialSubView === 'maps'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      Maps &amp; BLE Radar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ spatialSub: 'contacts' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        spatialSubView === 'contacts'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      Contacts &amp; AI ({store.contacts.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ spatialSub: 'agentmail' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        spatialSubView === 'agentmail'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Bot className="w-3.5 h-3.5 text-sky-400" />
+                      AgentMail
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ spatialSub: 'comms' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        spatialSubView === 'comms'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      Mail &amp; Calendar
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setSpatialSubView('maps')}
-                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      spatialSubView === 'maps'
-                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
-                        : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
-                    }`}
+                    onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
+                    className="min-h-[36px] px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5"
+                    aria-label="Close Radar & Contacts and return to Directory"
                   >
-                    <MapPin className="w-3.5 h-3.5" />
-                    Maps &amp; BLE Radar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSpatialSubView('agentmail')}
-                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      spatialSubView === 'agentmail'
-                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
-                        : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
-                    }`}
-                  >
-                    <Bot className="w-3.5 h-3.5 text-sky-400" />
-                    AgentMail (exchagent@)
+                    <X className="w-3.5 h-3.5" />
+                    <span>Close</span>
                   </button>
                 </div>
 
@@ -477,17 +782,50 @@ export default function App() {
                   <SpatialMapsDiscovery
                     agents={store.agents}
                     rfps={store.rfps}
+                    jobs={store.jobs}
+                    activeUserAgent={activeUserAgent}
+                    savedContactHandles={savedContactHandles}
                     userLocation={store.userLocation}
                     onUpdateUserLocation={store.setUserLocation}
                     passerbyEvents={store.passerbyEvents}
                     onAddPasserbyEvent={store.addPasserbyEvent}
                     dispatchedUnits={store.dispatchedUnits}
                     googleMapsApiKey={store.googleMapsApiKey}
+                    mapboxAccessToken={store.mapboxAccessToken}
                     currency={store.currency}
-                    onPitchAgent={handleOpenPitch}
+                    onEngageAgent={handleOpenEngage}
+                    onEngageProposal={handleEngageProposal}
+                    onSaveContact={store.saveContact}
+                    onApplyJobFromRadar={handleApplyJobFromRadar}
+                  />
+                ) : spatialSubView === 'contacts' ? (
+                  <ContactsHubModule
+                    contacts={store.contacts}
+                    agents={store.agents}
+                    jobs={store.jobs}
+                    rfps={store.rfps}
+                    currency={store.currency}
+                    ownerUid={store.currentUser.uid}
+                    aiOpportunities={store.aiOpportunities}
+                    aiOpportunitiesMeta={store.aiOpportunitiesMeta}
+                    aiOpportunitiesLoading={store.aiOpportunitiesLoading}
+                    aiOpportunitiesError={store.aiOpportunitiesError}
+                    onSaveContact={store.saveContact}
+                    onUpdateContact={store.updateContact}
+                    onToggleFavorite={store.toggleContactFavorite}
+                    onDeleteContact={store.deleteContact}
+                    onScanOpportunities={(agent) => store.scanOpportunitiesWithAi(agent)}
+                    onEngageProposal={handleEngageProposal}
+                    onApplyJob={handleApplyJobFromRadar}
+                    onDialHandle={handleDialByHandle}
+                    onEmailHandle={handleEmailByHandle}
+                    onSaveNegotiation={store.saveNegotiation}
+                    onAddBooking={store.addBooking}
                   />
                 ) : spatialSubView === 'agentmail' ? (
                   <AgentMailInboxModule
+                    agents={store.agents}
+                    onUpdateAgent={store.addOrUpdateAgent}
                     currency={store.currency}
                     ownerUid={store.currentUser.uid}
                   />
@@ -510,42 +848,54 @@ export default function App() {
 
             {activeTab === 'toolkit' && (
               <div className="space-y-3">
-                <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ toolkitSub: 'skills' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        toolkitSubView === 'skills'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Bot className="w-3.5 h-3.5" />
+                      Agent Skills
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ toolkitSub: 'extension' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        toolkitSubView === 'extension'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Puzzle className="w-3.5 h-3.5" />
+                      Extension
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigateRoute({ toolkitSub: 'ledger' })}
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                        toolkitSubView === 'ledger'
+                          ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
+                      }`}
+                    >
+                      <Terminal className="w-3.5 h-3.5" />
+                      Ledger
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setToolkitSubView('skills')}
-                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      toolkitSubView === 'skills'
-                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
-                        : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
-                    }`}
+                    onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
+                    className="min-h-[36px] px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5"
+                    aria-label="Close page and return to Directory"
                   >
-                    <Bot className="w-3.5 h-3.5" />
-                    Agent Skills
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setToolkitSubView('extension')}
-                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      toolkitSubView === 'extension'
-                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
-                        : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
-                    }`}
-                  >
-                    <Puzzle className="w-3.5 h-3.5" />
-                    Extension
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setToolkitSubView('ledger')}
-                    className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
-                      toolkitSubView === 'ledger'
-                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
-                        : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
-                    }`}
-                  >
-                    <Terminal className="w-3.5 h-3.5" />
-                    Ledger
+                    <X className="w-3.5 h-3.5" />
+                    <span>Close</span>
                   </button>
                 </div>
 
@@ -554,7 +904,8 @@ export default function App() {
                 ) : toolkitSubView === 'extension' ? (
                   <ChromeExtensionHub
                     agents={store.agents}
-                    onTriggerPitchFromSim={handleOpenPitch}
+                    currency={store.currency}
+                    onTriggerEngageFromSim={handleOpenEngage}
                   />
                 ) : (
                   <DeveloperLedgerModule
@@ -564,6 +915,7 @@ export default function App() {
                     currency={store.currency}
                     firestoreOnline={store.firestoreOnline}
                     hasGoogleMapsKey={Boolean(store.googleMapsApiKey)}
+                    hasMapboxKey={Boolean(store.mapboxAccessToken)}
                     workspaceConnected={Boolean(store.workspaceToken)}
                   />
                 )}
@@ -624,8 +976,7 @@ export default function App() {
                   active: false,
                   onClick: () => {
                     setFloatingMenuExpanded(false);
-                    store.setSurface('desktop');
-                    setActiveTab('directory');
+                    navigateRoute({ surface: 'desktop', tab: 'directory' });
                     setOpenDeployWizard(true);
                   },
                 },
@@ -701,8 +1052,7 @@ export default function App() {
               key={item.id}
               type="button"
               onClick={() => {
-                store.setSurface('desktop');
-                setActiveTab(item.id);
+                navigateRoute({ surface: 'desktop', tab: item.id });
               }}
               className={`relative min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-[10px] transition-colors ${
                 isActive
@@ -736,19 +1086,27 @@ export default function App() {
         toolkitSubView={toolkitSubView}
         surface={store.surface}
         currency={store.currency}
+        localCurrency={store.localCurrency}
+        locationLabel={store.locationLabel}
+        fxRates={store.fxRates}
         agentsCount={store.agents.length}
+        contactsCount={store.contacts.length}
         openRfpCount={openRfpCount}
         totalSavedZAR={totalSavedZAR}
         settlementsCount={store.settlements.length}
         userMode={store.currentUser.mode}
         userDisplayName={store.currentUser.displayName}
         onNavigate={handleDrawerNavigate}
-        onSetSurface={store.setSurface}
+        onSetSurface={(s) => navigateRoute({ surface: s })}
         onSetCurrency={store.setCurrency}
+        onSetLocalCurrency={store.setLocalCurrency}
+        onDetectLocation={store.detectLocationAndCurrency}
         onLoginGoogle={store.loginGoogle}
         onLoginPasskey={store.loginPasskeySim}
         onLogout={store.logout}
         onResetDemo={store.resetDemoData}
+        onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
+        onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
       />
 
       {/* Cmd/Ctrl+K Quick Jump Command Palette */}
@@ -761,7 +1119,22 @@ export default function App() {
             className="w-full max-w-lg rounded-2xl glass-panel border border-zinc-300 dark:border-white/15 shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-white/[0.08]">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-200 dark:border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (commandQuery) {
+                    setCommandQuery('');
+                  } else {
+                    setCommandOpen(false);
+                  }
+                }}
+                className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                aria-label={commandQuery ? 'Clear search' : 'Back'}
+                title={commandQuery ? 'Clear search' : 'Back'}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+              </button>
               <Search className="w-4 h-4 text-zinc-500 dark:text-zinc-400 shrink-0" />
               <input
                 type="text"
@@ -774,8 +1147,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setCommandOpen(false)}
-                className="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white flex items-center justify-center shrink-0"
+                className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white flex items-center justify-center shrink-0"
                 aria-label="Close Quick Search"
+                title="Close"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -785,9 +1159,35 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  store.setSurface('desktop');
-                  setActiveTab('toolkit');
-                  setToolkitSubView('skills');
+                  setCommandOpen(false);
+                  setQuickJobModalOpen(true);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-sky-50 dark:hover:bg-sky-950/40 flex items-center justify-between"
+              >
+                <span className="font-semibold text-sky-700 dark:text-sky-300 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400" /> 1-Click LinkedIn Job Agent
+                </span>
+                <span className="font-mono text-sky-600 dark:text-sky-400">10 Free</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCommandOpen(false);
+                  setQuickEmployerModalOpen(true);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-between"
+              >
+                <span className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> 1-Click Employer Agent (Post Job URL)
+                </span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400">Auto-Match</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'skills' });
                   setCommandOpen(false);
                 }}
                 className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
@@ -801,9 +1201,21 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
-                  store.setSurface('desktop');
-                  setActiveTab('toolkit');
-                  setToolkitSubView('ledger');
+                  navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'contacts' });
+                  setCommandOpen(false);
+                }}
+                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+              >
+                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Personal Contacts &amp; AI Scout
+                </span>
+                <span className="font-mono text-zinc-500">{store.contacts.length}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'ledger' });
                   setCommandOpen(false);
                 }}
                 className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
@@ -819,7 +1231,7 @@ export default function App() {
                   key={agent.id}
                   type="button"
                   onClick={() => {
-                    handleOpenPitch(agent);
+                    handleOpenEngage(agent);
                     setCommandOpen(false);
                   }}
                   className="w-full min-h-[44px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between gap-3"
@@ -855,6 +1267,45 @@ export default function App() {
         onSave={(updated) => {
           store.addOrUpdateAgent(updated);
           setCustomizingAgent(null);
+        }}
+      />
+
+      <QuickJobAgentModal
+        open={quickJobModalOpen}
+        onClose={() => setQuickJobModalOpen(false)}
+        jobs={store.jobs}
+        currency={store.currency}
+        ownerUid={store.currentUser.uid}
+        onCreateAgent={store.addOrUpdateAgent}
+        onUpsertMatchesBulk={store.upsertRecruitmentMatchesBulk}
+        onAddConsentGrant={store.addConsentGrant}
+        onProposeOperation={store.proposePoppyOperation}
+        onExecuteOperation={store.executePoppyOperation}
+        onAddBooking={store.addBooking}
+        onLogAudit={store.logPoppyAudit}
+        onOpenHiringDesk={(agentId) => {
+          setPoppyInitialSeekerId(agentId);
+          setPoppyInitialRoleTab('seeker');
+          navigateRoute({ surface: 'desktop', tab: 'hiring' });
+        }}
+      />
+
+      <QuickEmployerAgentModal
+        open={quickEmployerModalOpen}
+        onClose={() => setQuickEmployerModalOpen(false)}
+        candidates={store.agents}
+        currency={store.currency}
+        ownerUid={store.currentUser.uid}
+        onCreateAgent={store.addOrUpdateAgent}
+        onCreateJobsBulk={store.createJobsBulk}
+        onUpsertMatchesBulk={store.upsertRecruitmentMatchesBulk}
+        onProposeOperation={store.proposePoppyOperation}
+        onExecuteOperation={store.executePoppyOperation}
+        onAddBooking={store.addBooking}
+        onLogAudit={store.logPoppyAudit}
+        onOpenHiringDesk={() => {
+          setPoppyInitialRoleTab('hiring');
+          navigateRoute({ surface: 'desktop', tab: 'hiring' });
         }}
       />
 

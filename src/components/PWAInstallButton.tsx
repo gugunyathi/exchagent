@@ -15,6 +15,7 @@ import {
   Menu,
   RefreshCw,
   Compass,
+  ArrowLeft,
 } from 'lucide-react';
 import { InstallGuideKey, usePWAInstall } from '../hooks/usePWAInstall';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -187,6 +188,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'd
     }
   };
 
+  React.useEffect(() => {
+    if (!modalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [modalOpen]);
+
   const activeGuide = GUIDES[selectedGuide] || GUIDES['desktop-chromium'];
   const activeCategory = activeGuide.category;
   const currentUrl = typeof window !== 'undefined' ? window.location.href : '/';
@@ -203,7 +216,16 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'd
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(false)}
+                    className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                    aria-label="Back"
+                    title="Back"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
                   <img
                     src="/pwa-192x192.png"
                     alt="Switchboard"
@@ -223,6 +245,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({ variant = 'd
                   onClick={() => setModalOpen(false)}
                   className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
                   aria-label="Close install guide"
+                  title="Close"
                 >
                   <X className="w-4 h-4" />
                 </button>

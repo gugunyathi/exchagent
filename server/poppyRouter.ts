@@ -1179,5 +1179,695 @@ export function createPoppyRouter(): express.Router {
     });
   });
 
+  // 11. 1-Click Standard Job Search Agent from LinkedIn URL -> 10 Free Job Matches & Interview Pitches
+  router.post('/api/recruitment/linkedin-quickstart', async (req, res) => {
+    const {
+      linkedinUrl = '',
+      focusNote = '',
+      jobs: clientJobs,
+    } = req.body || {};
+
+    const rawUrl = String(linkedinUrl || '').trim();
+    if (!rawUrl) {
+      return res.status(400).json({ error: 'Please paste a LinkedIn profile URL (e.g. linkedin.com/in/your-name).' });
+    }
+
+    // Parse LinkedIn slug cleanly (no external scraping — compliant URL-reference normalization)
+    let cleanedPath = rawUrl
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\?.*$/, '')
+      .replace(/#.*$/, '');
+    const inMatch = cleanedPath.match(/linkedin\.com\/(?:in|pub)\/([^/]+)/i);
+    const slugRaw = inMatch ? inMatch[1] : cleanedPath.split('/').filter(Boolean).pop() || cleanedPath;
+    // Strip trailing LinkedIn hex hash suffix like -84a21b30 if present
+    const cleanSlug = slugRaw
+      .replace(/-[0-9a-f]{6,10}$/i, '')
+      .replace(/-[0-9]{2,6}$/i, '')
+      .replace(/[^a-z0-9._-]/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase() || 'jobseeker';
+
+    const slugWords = cleanSlug
+      .split(/[-_.]+/)
+      .filter((w) => w.length > 0 && !/^\d+$/.test(w));
+
+    const toTitle = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+    const inferredDisplayName =
+      slugWords.length >= 2
+        ? `${toTitle(slugWords[0])} ${toTitle(slugWords[1])}`
+        : slugWords.length === 1
+        ? `${toTitle(slugWords[0])} Candidate`
+        : 'Verified Candidate';
+
+    // Ensure 7+ characters base handle so it qualifies for FREE Standard Human tier ($0.00)
+    let baseHandle = slugWords.slice(0, 2).join('.');
+    if (baseHandle.length < 7) {
+      baseHandle = `${baseHandle || 'talent'}.jobagent`;
+    }
+    const normalizedHandle = `${baseHandle}.agent`;
+    const normalizedLinkedinUrl = `linkedin.com/in/${slugRaw.replace(/[^a-z0-9._-]/gi, '') || cleanSlug}`;
+
+    const jobPool = (Array.isArray(clientJobs) && clientJobs.length >= 10 ? clientJobs : SEED_JOBS).slice(0, 14);
+    const targetCount = Math.min(10, jobPool.length);
+
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const compactJobs = jobPool.map((j: Record<string, unknown>) => ({
+          id: j.id,
+          title: j.title,
+          companyName: j.companyName,
+          companyAgentHandle: j.companyAgentHandle,
+          location: j.location,
+          remoteMode: j.remoteMode,
+          salaryRangeZAR: j.salaryRangeZAR,
+          requiredSkills: j.requiredSkills,
+          minYearsExp: j.minYearsExp,
+        }));
+
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: [
+              `You are onboarding a human job seeker into Switchboard via a 1-click LinkedIn URL quickstart (Zero LinkedIn scraping — infer a clean, realistic professional starter profile from their LinkedIn handle/slug and optional note).`,
+              `LinkedIn URL: https://${normalizedLinkedinUrl}`,
+              `Derived Display Name: ${inferredDisplayName}`,
+              focusNote ? `User Target Role / Skills Note: ${focusNote}` : `No extra note provided — infer versatile high-demand digital/product/growth/tech skills aligned with the handle "${cleanSlug}" and match across open roles.`,
+              `Available Open Jobs (${compactJobs.length}):\n${JSON.stringify(compactJobs)}`,
+              `Tasks:`,
+              `1. Build the candidate's starter profile: displayName, roleTitle, headline, summary (1-2 sentences), organization ("Independent Talent" or inferred), yearsExp (number 3-10), 5 concise skills, 3 preferredRoles, salaryMinZAR (number 65000-120000).`,
+              `2. Rank and return EXACTLY ${targetCount} job matches from the provided jobs list (do not invent jobIds), ordered descending by score (between 72 and 98).`,
+              `3. For each match, provide concise explanation, 2 strengths, 1 gap, factor scores (skillsOverlap, experienceFit, compensationFit, locationCultureFit), and a crisp 1-sentence interviewPitch written from the candidate's agent to the company's hiring agent requesting a first-round interview.`,
+            ].join('\n\n'),
+            config: {
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  profile: {
+                    type: Type.OBJECT,
+                    properties: {
+                      displayName: { type: Type.STRING },
+                      roleTitle: { type: Type.STRING },
+                      headline: { type: Type.STRING },
+                      summary: { type: Type.STRING },
+                      organization: { type: Type.STRING },
+                      yearsExp: { type: Type.NUMBER },
+                      skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      preferredRoles: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      salaryMinZAR: { type: Type.NUMBER },
+                    },
+                    required: [
+                      'displayName',
+                      'roleTitle',
+                      'headline',
+                      'summary',
+                      'organization',
+                      'yearsExp',
+                      'skills',
+                      'preferredRoles',
+                      'salaryMinZAR',
+                    ],
+                  },
+                  matches: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        jobId: { type: Type.STRING },
+                        score: { type: Type.NUMBER },
+                        skillsOverlap: { type: Type.NUMBER },
+                        experienceFit: { type: Type.NUMBER },
+                        compensationFit: { type: Type.NUMBER },
+                        locationCultureFit: { type: Type.NUMBER },
+                        explanation: { type: Type.STRING },
+                        strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        gaps: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        interviewPitch: { type: Type.STRING },
+                      },
+                      required: [
+                        'jobId',
+                        'score',
+                        'skillsOverlap',
+                        'experienceFit',
+                        'compensationFit',
+                        'locationCultureFit',
+                        'explanation',
+                        'strengths',
+                        'gaps',
+                        'interviewPitch',
+                      ],
+                    },
+                  },
+                },
+                required: ['profile', 'matches'],
+              },
+            },
+          }),
+          9500
+        );
+
+        const parsed = JSON.parse((response.text || '{}').trim()) as {
+          profile?: Record<string, unknown>;
+          matches?: Array<Record<string, unknown>>;
+        };
+
+        if (parsed.profile && Array.isArray(parsed.matches) && parsed.matches.length > 0) {
+          const validJobsById = new Map<string, typeof SEED_JOBS[number]>();
+          jobPool.forEach((j: typeof SEED_JOBS[number]) => validJobsById.set(j.id, j));
+
+          const normalizedMatches = parsed.matches
+            .map((m) => {
+              const job = validJobsById.get(String(m.jobId));
+              if (!job) return null;
+              return {
+                jobId: job.id,
+                jobTitle: job.title,
+                companyName: job.companyName,
+                companyAgentHandle: job.companyAgentHandle,
+                score: Math.min(98, Math.max(70, Math.round(Number(m.score) || 84))),
+                factors: {
+                  skillsOverlap: Math.min(99, Math.max(60, Math.round(Number(m.skillsOverlap) || 85))),
+                  experienceFit: Math.min(99, Math.max(60, Math.round(Number(m.experienceFit) || 86))),
+                  compensationFit: Math.min(99, Math.max(60, Math.round(Number(m.compensationFit) || 88))),
+                  locationCultureFit: Math.min(99, Math.max(60, Math.round(Number(m.locationCultureFit) || 87))),
+                },
+                explanation: String(m.explanation || `Strong alignment with ${job.title} at ${job.companyName}.`),
+                strengths: Array.isArray(m.strengths) ? m.strengths.slice(0, 3).map(String) : ['Verified LinkedIn domain fit'],
+                gaps: Array.isArray(m.gaps) ? m.gaps.slice(0, 2).map(String) : ['Standard company onboarding'],
+                interviewPitch: String(
+                  m.interviewPitch ||
+                    `Hi ${job.companyName} Hiring Agent — representing ${parsed.profile?.displayName || inferredDisplayName} (${normalizedLinkedinUrl}) for ${job.title}. Ready for a 20-min screening call this week.`
+                ),
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 10);
+
+          // Top up cleanly to 10 if Gemini returned fewer valid IDs
+          if (normalizedMatches.length < targetCount) {
+            const seen = new Set(normalizedMatches.map((m) => m!.jobId));
+            for (const job of jobPool) {
+              if (normalizedMatches.length >= targetCount) break;
+              if (seen.has(job.id)) continue;
+              normalizedMatches.push({
+                jobId: job.id,
+                jobTitle: job.title,
+                companyName: job.companyName,
+                companyAgentHandle: job.companyAgentHandle,
+                score: 78,
+                factors: { skillsOverlap: 76, experienceFit: 82, compensationFit: 84, locationCultureFit: 85 },
+                explanation: `Transferable background matched for ${job.title} (${job.remoteMode}).`,
+                strengths: [job.requiredSkills.slice(0, 2).join(' & ') || 'Core leadership fit'],
+                gaps: ['Team domain walkthrough'],
+                interviewPitch: `Hello ${job.companyName} Agent — requesting an exploratory interview for ${job.title} on behalf of ${parsed.profile.displayName || inferredDisplayName}.`,
+              });
+            }
+          }
+
+          return res.json({
+            engine: 'gemini-4-hydrogen',
+            profile: {
+              displayName: String(parsed.profile.displayName || inferredDisplayName),
+              handle: normalizedHandle,
+              normalizedLinkedinUrl,
+              roleTitle: String(parsed.profile.roleTitle || 'Product, Growth & AI Systems Specialist'),
+              headline: String(parsed.profile.headline || 'Standard Job Search Agent · Verified Human'),
+              summary: String(
+                parsed.profile.summary ||
+                  `Autonomous Switchboard job search agent synced with ${normalizedLinkedinUrl} for direct A2A interview scheduling.`
+              ),
+              organization: String(parsed.profile.organization || 'Independent Talent'),
+              yearsExp: Math.max(2, Math.min(18, Math.round(Number(parsed.profile.yearsExp) || 5))),
+              skills: Array.isArray(parsed.profile.skills) && parsed.profile.skills.length > 0
+                ? parsed.profile.skills.slice(0, 6).map(String)
+                : ['B2B Lead Generation', 'SQL', 'Product Strategy', 'Growth Automation', 'TypeScript'],
+              preferredRoles: Array.isArray(parsed.profile.preferredRoles) && parsed.profile.preferredRoles.length > 0
+                ? parsed.profile.preferredRoles.slice(0, 3).map(String)
+                : ['Senior Product / Growth Lead', 'AI Operations Specialist'],
+              salaryMinZAR: Number(parsed.profile.salaryMinZAR) || 85000,
+              agentEmail: `engage@${normalizedHandle}`,
+            },
+            matches: normalizedMatches.sort((a, b) => b!.score - a!.score),
+          });
+        }
+      } catch (err) {
+        console.warn('LinkedIn quickstart Gemini fallback:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // Deterministic high-speed fallback (guarantees 10 ranked free job matches + interview pitches)
+    const hintLower = `${cleanSlug} ${focusNote}`.toLowerCase();
+    const skillHints: string[] = [];
+    if (/(product|pm|ux|design|figma)/.test(hintLower)) {
+      skillHints.push('Product Strategy', 'SQL', 'AI Funnel Ops', 'Design Systems', 'A/B Testing');
+    } else if (/(cloud|sec|devops|infra|k8s|cto|architect)/.test(hintLower)) {
+      skillHints.push('Kubernetes', 'GCP', 'Zero-Trust Security', 'POPIA Architecture', 'FinOps');
+    } else if (/(dev|eng|code|full|react|type|node|ai|data|ml)/.test(hintLower)) {
+      skillHints.push('TypeScript', 'React', 'Node.js', 'Python', 'SQL');
+    } else {
+      skillHints.push('B2B Lead Generation', 'Growth Automation', 'Product Strategy', 'SQL', 'AI Funnel Ops');
+    }
+
+    const fallbackMatches = jobPool
+      .map((job: typeof SEED_JOBS[number], idx: number) => {
+        const reqSkills: string[] = Array.isArray(job.requiredSkills) ? job.requiredSkills : [];
+        const overlapCount = reqSkills.filter((rs) =>
+          skillHints.some((sh) => rs.toLowerCase().includes(sh.toLowerCase()) || sh.toLowerCase().includes(rs.toLowerCase()))
+        ).length;
+        const score = Math.min(97, Math.max(73, 76 + overlapCount * 7 - Math.floor(idx / 3)));
+        const matchedNames = reqSkills.filter((rs) =>
+          skillHints.some((sh) => rs.toLowerCase().includes(sh.toLowerCase()) || sh.toLowerCase().includes(rs.toLowerCase()))
+        );
+        return {
+          jobId: job.id,
+          jobTitle: job.title,
+          companyName: job.companyName,
+          companyAgentHandle: job.companyAgentHandle,
+          score,
+          factors: {
+            skillsOverlap: Math.min(98, 72 + overlapCount * 8),
+            experienceFit: 88,
+            compensationFit: 90,
+            locationCultureFit: job.remoteMode === 'Remote' ? 95 : 88,
+          },
+          explanation: `${matchedNames.length > 0 ? `Strong overlap in ${matchedNames.slice(0, 3).join(', ')}` : `Transferable fit`} for ${job.title} (${job.remoteMode}).`,
+          strengths: [
+            matchedNames.length > 0 ? `Direct match: ${matchedNames.slice(0, 2).join(', ')}` : `Aligned with ${job.companyName} hiring rubric`,
+            `${job.remoteMode} · Verified Poppy employer desk`,
+          ],
+          gaps: [reqSkills.find((r) => !matchedNames.includes(r)) || 'Role-specific toolset briefing'],
+          interviewPitch: `Hi ${job.companyName} Hiring Agent — representing ${inferredDisplayName} (https://${normalizedLinkedinUrl}) for ${job.title}. Available for a 20-minute screening interview this week.`,
+        };
+      })
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+      .slice(0, 10);
+
+    return res.json({
+      engine: 'switchboard-quickstart-engine',
+      profile: {
+        displayName: inferredDisplayName,
+        handle: normalizedHandle,
+        normalizedLinkedinUrl,
+        roleTitle: focusNote.trim() || 'Job Search Agent · Product, Growth & Tech',
+        headline: `${inferredDisplayName} — Standard Human Job Agent`,
+        summary: `Free standard Switchboard job agent created from ${normalizedLinkedinUrl}. Scanning open roles & booking screening interviews automatically.`,
+        organization: 'Independent Talent',
+        yearsExp: 6,
+        skills: skillHints,
+        preferredRoles: [focusNote.trim() || 'Senior Growth & Product Lead', 'AI Operations & Strategy', 'Digital Systems Lead'],
+        salaryMinZAR: 85000,
+        agentEmail: `engage@${normalizedHandle}`,
+      },
+      matches: fallbackMatches,
+    });
+  });
+
+  // 12. 1-Click Employer Agent for Businesses from Job/Careers URL -> Post Vacancies & Instant Candidate Auto-Matching
+  router.post('/api/recruitment/employer-quickstart', async (req, res) => {
+    const {
+      jobUrl = '',
+      companyName: clientCompanyName = '',
+      department: clientDepartment = '',
+      candidates: clientCandidates,
+    } = req.body || {};
+
+    const rawUrl = String(jobUrl || '').trim();
+    if (!rawUrl) {
+      return res.status(400).json({ error: 'Please enter a job posting or careers page URL.' });
+    }
+
+    // Clean URL and extract domain / path
+    let cleanedPath = rawUrl
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\?.*$/, '')
+      .replace(/#.*$/, '');
+
+    const domainPart = cleanedPath.split('/')[0] || 'company.co.za';
+    const pathPart = cleanedPath.split('/').slice(1).join('/');
+
+    // Derive base brand name
+    const domainHost = domainPart.split(':')[0];
+    const hostParts = domainHost.split('.');
+    let brandRaw = hostParts.length >= 3 && hostParts[0] === 'careers' ? hostParts[1] : hostParts[0];
+    if (brandRaw === 'jobs' || brandRaw === 'apply' || brandRaw === 'workable' || brandRaw === 'bamboohr' || brandRaw === 'lever' || brandRaw === 'greenhouse') {
+      const matchSub = cleanedPath.match(/(?:jobs\.lever\.co|boards\.greenhouse\.io|workable\.com|bamboohr\.com)\/([^/]+)/i);
+      if (matchSub) brandRaw = matchSub[1];
+    }
+    const brandSlug = brandRaw.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'enterprise';
+    const toTitle = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
+    const inferredCompanyName = clientCompanyName.trim() || toTitle(brandSlug);
+
+    const candidatePool = Array.isArray(clientCandidates) && clientCandidates.length > 0
+      ? clientCandidates
+      : SEED_AGENTS.filter((a) => a.type === 'persona' && a.handle !== '911.emergency.agent');
+
+    const ai = getGeminiClient();
+
+    if (ai) {
+      try {
+        const prompt = `Analyze this job posting / company careers listing URL: "${rawUrl}".
+Company hint: "${inferredCompanyName}" (Department hint: "${clientDepartment}").
+Synthesize a verified Switchboard employer hiring agent profile and 1 to 2 concrete job vacancies.
+Return structured JSON matching the schema.`;
+
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+              thinkingConfig: { thinkingBudget: 0 },
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  company: {
+                    type: Type.OBJECT,
+                    properties: {
+                      name: { type: Type.STRING },
+                      handle: { type: Type.STRING },
+                      tagline: { type: Type.STRING },
+                      summary: { type: Type.STRING },
+                      brandLogoCode: { type: Type.STRING },
+                      brandColor: { type: Type.STRING },
+                      websiteUrl: { type: Type.STRING },
+                    },
+                    required: ['name', 'handle', 'tagline', 'summary', 'brandLogoCode', 'brandColor'],
+                  },
+                  jobs: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        title: { type: Type.STRING },
+                        department: { type: Type.STRING },
+                        location: { type: Type.STRING },
+                        remoteMode: { type: Type.STRING },
+                        salaryMinZAR: { type: Type.NUMBER },
+                        salaryMaxZAR: { type: Type.NUMBER },
+                        requiredSkills: {
+                          type: Type.ARRAY,
+                          items: { type: Type.STRING },
+                        },
+                        minYearsExp: { type: Type.NUMBER },
+                        description: { type: Type.STRING },
+                      },
+                      required: ['title', 'department', 'remoteMode', 'salaryMinZAR', 'salaryMaxZAR', 'requiredSkills', 'minYearsExp'],
+                    },
+                  },
+                },
+                required: ['company', 'jobs'],
+              },
+            },
+          }),
+          9500
+        );
+
+        const text = response.text?.trim();
+        if (text) {
+          const parsed = JSON.parse(text);
+          if (parsed?.company?.name && Array.isArray(parsed?.jobs) && parsed.jobs.length > 0) {
+            let compHandle = String(parsed.company.handle || `${brandSlug}.agent`).toLowerCase();
+            if (!compHandle.endsWith('.agent')) compHandle = `${compHandle}.agent`;
+            const now = new Date().toISOString();
+            const brandColor = parsed.company.brandColor || '#0284c7';
+            const logoCode = String(parsed.company.brandLogoCode || brandSlug.slice(0, 3)).toUpperCase().slice(0, 3);
+
+            const employerAgent = {
+              id: `agent_emp_${Date.now()}`,
+              handle: compHandle,
+              displayName: parsed.company.name,
+              organization: parsed.company.name,
+              type: 'business',
+              agentRoleCategory: 'hiring',
+              roleTitle: 'Hiring Desk & Talent Operations',
+              poppySubdomain: `${brandSlug}.poppy.switchboard.agent`,
+              poppyScopes: [
+                'profile:read',
+                'cv:read',
+                'apply',
+                'calendar',
+                'poppy:browser-sign-in',
+                'hiring:post-jobs',
+                'hiring:review-candidates',
+              ],
+              verified: true,
+              popiaConsentActive: true,
+              voiceNumber: `+27 87 243 ${Math.floor(500 + Math.random() * 499)}`,
+              shortcode: String(Math.floor(500 + Math.random() * 499)),
+              agentEmail: `talent@${compHandle}`,
+              websiteUrl: parsed.company.websiteUrl || domainPart,
+              brandColor,
+              brandLogoCode: logoCode,
+              avatarVariant: 'business',
+              cardStyle: {
+                bannerStyle: 'circuit',
+                bannerBgColor: brandColor,
+                bannerHeight: 'normal',
+                bannerBadgeStyle: 'glass',
+                backgroundPattern: 'subtle-grid',
+                backgroundTheme: 'default',
+                edgeRadius: 'rounded-2xl',
+                borderStyle: 'hairline',
+                borderAccentColor: brandColor,
+              },
+              did: `did:web:${parsed.company.websiteUrl || domainPart}:agent-v1`,
+              protocol: 'Poppy v1.0 / A2A / MCP',
+              interactEndpoint: `https://agent.${brandSlug}.io/v1/interact`,
+              tagline: parsed.company.tagline || `${parsed.company.name} verified employer hiring desk.`,
+              summary: parsed.company.summary || `Autonomous Poppy hiring agent managing open vacancies & video interview screening for ${parsed.company.name}.`,
+              skills: ['Candidate Evaluation', 'Autonomous Screening', 'Calendar Scheduling', 'POPIA Minimized Offers'],
+              guardrails: {
+                maxAutoSpendZAR: 250000,
+                minDiscountPct: 10,
+                blockedCategories: ['unverified-spam'],
+                workingHoursSAST: '08:00-17:00',
+              },
+              walletAddresses: {},
+              geoLocation: {
+                lat: -26.1076,
+                lng: 28.0567,
+                radiusMeters: 500,
+                label: `${parsed.company.name} HQ`,
+              },
+              discoverableByPassersby: true,
+              passerbyIncentive: 'Open Roles · 1-Click Fast-Track Interview',
+              calendarSyncEnabled: true,
+              gmailBridgeEnabled: true,
+              createdAt: now,
+            };
+
+            const createdJobs = (parsed.jobs as Array<Record<string, unknown>>).slice(0, 3).map((j: Record<string, unknown>, idx: number) => {
+              const remoteMode = (j.remoteMode === 'Remote' || j.remoteMode === 'Hybrid') ? j.remoteMode : 'Hybrid';
+              const sMin = Number(j.salaryMinZAR) || 85000;
+              const sMax = Math.max(sMin + 15000, Number(j.salaryMaxZAR) || 135000);
+              return {
+                id: `job_quick_${Date.now()}_${idx}`,
+                companyAgentHandle: compHandle,
+                companyName: parsed.company.name,
+                title: String(j.title || 'Technical Systems Lead'),
+                location: String(j.location || 'Johannesburg / Remote'),
+                remoteMode,
+                salaryRangeZAR: [sMin, sMax],
+                requiredSkills: Array.isArray(j.requiredSkills) && j.requiredSkills.length > 0 ? j.requiredSkills : ['System Architecture', 'TypeScript', 'SQL'],
+                minYearsExp: Number(j.minYearsExp) || 4,
+                status: 'OPEN',
+                autonomyLevel: 'shortlist_auto_offer_approve',
+                careersUrl: rawUrl,
+                poppyDiscoveryPath: employerAgent.poppySubdomain,
+                weights: { skills: 0.45, experience: 0.25, compensation: 0.15, location: 0.15 },
+                createdAt: now,
+              };
+            });
+
+            // Auto-match candidates against the created jobs
+            const candidateMatches = createdJobs.flatMap((job: (typeof createdJobs)[0]) => {
+              return candidatePool.map((candidate) => {
+                const candSkills = [...(candidate.skills || []), ...(candidate.cvSummary?.parsedSkills || [])];
+                const overlap = job.requiredSkills.filter((rs: string) =>
+                  candSkills.some((cs) => cs.toLowerCase().includes(rs.toLowerCase()) || rs.toLowerCase().includes(cs.toLowerCase()))
+                );
+                const score = Math.min(97, Math.max(70, 74 + overlap.length * 8));
+                return {
+                  id: `match_${job.id}_${candidate.id}`,
+                  jobId: job.id,
+                  jobTitle: job.title,
+                  companyAgentHandle: compHandle,
+                  seekerHandle: candidate.handle,
+                  seekerName: candidate.displayName,
+                  score,
+                  factors: {
+                    skillsOverlap: Math.min(98, 70 + overlap.length * 9),
+                    experienceFit: 90,
+                    compensationFit: 92,
+                    locationCultureFit: job.remoteMode === 'Remote' ? 96 : 88,
+                  },
+                  explanation: `Verified candidate profile with ${overlap.length} overlapping core competencies for ${job.title}.`,
+                  strengths: overlap.length > 0 ? overlap : job.requiredSkills.slice(0, 2),
+                  gaps: job.requiredSkills.filter((s: string) => !overlap.includes(s)).slice(0, 2),
+                  blindMode: Boolean(candidate.cvSummary?.blindScreening),
+                  status: 'suggested',
+                  interviewPitch: `Hi ${candidate.displayName} — ${parsed.company.name} reviewed your verified .agent profile for "${job.title}" (${score}% fit). We invite you to confirm a 30-minute screening video interview.`,
+                  updatedAt: now,
+                };
+              });
+            }).sort((a: { score: number }, b: { score: number }) => b.score - a.score).slice(0, 10);
+
+            return res.json({
+              engine: 'gemini-employer-quickstart',
+              employerAgent,
+              jobs: createdJobs,
+              candidateMatches,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Employer quickstart Gemini fallback:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    // High-speed deterministic fallback
+    const now = new Date().toISOString();
+    const compHandle = `hiring.${brandSlug}.agent`;
+    const brandColor = '#0284c7';
+    const logoCode = brandSlug.slice(0, 3).toUpperCase();
+
+    const lowerPath = `${pathPart} ${clientDepartment}`.toLowerCase();
+    let jobTitle = 'Senior Systems & AI Integration Lead';
+    let skills = ['TypeScript', 'AI Agents', 'SQL', 'System Architecture', 'Product Strategy'];
+    if (/(product|pm|growth|lead)/.test(lowerPath)) {
+      jobTitle = 'Senior Product Manager — Agentic Commerce';
+      skills = ['Product Strategy', 'B2B Growth', 'A/B Testing', 'AI Funnels', 'SQL'];
+    } else if (/(cloud|sec|devops|infra|k8s)/.test(lowerPath)) {
+      jobTitle = 'Principal Cloud & Zero-Trust Infrastructure Architect';
+      skills = ['Kubernetes', 'GCP', 'Zero-Trust Security', 'POPIA Architecture', 'Terraform'];
+    } else if (/(data|ml|science|analytics)/.test(lowerPath)) {
+      jobTitle = 'Lead Data Scientist & Predictive AI Systems';
+      skills = ['Python', 'SQL', 'Predictive Modeling', 'Machine Learning', 'Data Pipelines'];
+    }
+
+    const fallbackAgent = {
+      id: `agent_emp_${Date.now()}`,
+      handle: compHandle,
+      displayName: inferredCompanyName,
+      organization: inferredCompanyName,
+      type: 'business',
+      agentRoleCategory: 'hiring',
+      roleTitle: 'Hiring Desk & Talent Operations',
+      poppySubdomain: `${brandSlug}.poppy.switchboard.agent`,
+      poppyScopes: [
+        'profile:read',
+        'cv:read',
+        'apply',
+        'calendar',
+        'poppy:browser-sign-in',
+        'hiring:post-jobs',
+        'hiring:review-candidates',
+      ],
+      verified: true,
+      popiaConsentActive: true,
+      voiceNumber: `+27 87 243 ${Math.floor(500 + Math.random() * 499)}`,
+      shortcode: String(Math.floor(500 + Math.random() * 499)),
+      agentEmail: `talent@${compHandle}`,
+      websiteUrl: domainPart,
+      brandColor,
+      brandLogoCode: logoCode,
+      avatarVariant: 'business',
+      cardStyle: {
+        bannerStyle: 'circuit',
+        bannerBgColor: brandColor,
+        bannerHeight: 'normal',
+        bannerBadgeStyle: 'glass',
+        backgroundPattern: 'subtle-grid',
+        backgroundTheme: 'default',
+        edgeRadius: 'rounded-2xl',
+        borderStyle: 'hairline',
+        borderAccentColor: brandColor,
+      },
+      did: `did:web:${domainPart}:agent-v1`,
+      protocol: 'Poppy v1.0 / A2A / MCP',
+      interactEndpoint: `https://agent.${brandSlug}.io/v1/interact`,
+      tagline: `${inferredCompanyName} verified employer hiring desk.`,
+      summary: `Autonomous Poppy hiring agent managing open vacancies & candidate auto-screening for ${inferredCompanyName}.`,
+      skills: ['Candidate Evaluation', 'Autonomous Screening', 'Calendar Scheduling', 'POPIA Minimized Offers'],
+      guardrails: {
+        maxAutoSpendZAR: 250000,
+        minDiscountPct: 10,
+        blockedCategories: ['unverified-spam'],
+        workingHoursSAST: '08:00-17:00',
+      },
+      walletAddresses: {},
+      geoLocation: {
+        lat: -26.1076,
+        lng: 28.0567,
+        radiusMeters: 500,
+        label: `${inferredCompanyName} Office`,
+      },
+      discoverableByPassersby: true,
+      passerbyIncentive: 'Open Roles · 1-Click Fast-Track Interview',
+      calendarSyncEnabled: true,
+      gmailBridgeEnabled: true,
+      createdAt: now,
+    };
+
+    const fallbackJob = {
+      id: `job_quick_${Date.now()}_0`,
+      companyAgentHandle: compHandle,
+      companyName: inferredCompanyName,
+      title: jobTitle,
+      location: 'Cape Town / Johannesburg / Remote',
+      remoteMode: 'Remote',
+      salaryRangeZAR: [85000, 135000],
+      requiredSkills: skills,
+      minYearsExp: 5,
+      status: 'OPEN',
+      autonomyLevel: 'shortlist_auto_offer_approve',
+      careersUrl: rawUrl,
+      poppyDiscoveryPath: fallbackAgent.poppySubdomain,
+      weights: { skills: 0.45, experience: 0.25, compensation: 0.15, location: 0.15 },
+      createdAt: now,
+    };
+
+    const fallbackCandidateMatches = candidatePool.map((candidate) => {
+      const candSkills = [...(candidate.skills || []), ...(candidate.cvSummary?.parsedSkills || [])];
+      const overlap = fallbackJob.requiredSkills.filter((rs) =>
+        candSkills.some((cs) => cs.toLowerCase().includes(rs.toLowerCase()) || rs.toLowerCase().includes(cs.toLowerCase()))
+      );
+      const score = Math.min(97, Math.max(72, 76 + overlap.length * 8));
+      return {
+        id: `match_${fallbackJob.id}_${candidate.id}`,
+        jobId: fallbackJob.id,
+        jobTitle: fallbackJob.title,
+        companyAgentHandle: compHandle,
+        seekerHandle: candidate.handle,
+        seekerName: candidate.displayName,
+        score,
+        factors: {
+          skillsOverlap: Math.min(98, 72 + overlap.length * 8),
+          experienceFit: 90,
+          compensationFit: 92,
+          locationCultureFit: 96,
+        },
+        explanation: `Strong match in ${overlap.length > 0 ? overlap.join(', ') : 'core transferable competencies'} for ${fallbackJob.title}.`,
+        strengths: overlap.length > 0 ? overlap : fallbackJob.requiredSkills.slice(0, 2),
+        gaps: fallbackJob.requiredSkills.filter((s) => !overlap.includes(s)).slice(0, 2),
+        blindMode: Boolean(candidate.cvSummary?.blindScreening),
+        status: 'suggested',
+        interviewPitch: `Hi ${candidate.displayName} — ${inferredCompanyName} reviewed your verified profile for "${fallbackJob.title}" (${score}% fit). We invite you to confirm a 30-minute screening video interview.`,
+        updatedAt: now,
+      };
+    }).sort((a, b) => b.score - a.score).slice(0, 10);
+
+    return res.json({
+      engine: 'switchboard-employer-fallback',
+      employerAgent: fallbackAgent,
+      jobs: [fallbackJob],
+      candidateMatches: fallbackCandidateMatches,
+    });
+  });
+
   return router;
 }

@@ -33,8 +33,23 @@ import {
   SurfaceMode,
   CurrencyMode,
   PaymentRail,
-  ZAR_PER_USD,
+  PersonalContactDoc,
+  ContactSource,
+  ProximityPeerDoc,
+  AiOpportunitySuggestion,
+  zarToUsd,
 } from '../types/firestore';
+import {
+  DEFAULT_RATES_PER_USD,
+  LocalCurrencyCode,
+  detectCurrencyFromBrowser,
+  detectCurrencyFromCoords,
+  isSupportedCurrency,
+  setLiveFxRates,
+} from '../lib/fx';
+import { matchCandidateToAllJobs, matchJobToAllCandidates } from '../services/recruitmentMatcher';
+import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
+import { emitToast } from '../lib/toast';
 import {
   SEED_AGENTS,
   SEED_RFPS,
@@ -51,6 +66,7 @@ import {
   SEED_POPPY_OPERATIONS,
   SEED_POPPY_CONSENTS,
   SEED_POPPY_AUDIT_LOGS,
+  SEED_CONTACTS,
   JOHANNESBURG_CENTER,
 } from '../data/seedData';
 import {
@@ -82,6 +98,8 @@ interface PersistedSlice {
   poppyOperations?: PoppyOperation[];
   poppyConsents?: PoppyConsentGrant[];
   poppyAuditLogs?: PoppyAuditLogEntry[];
+  contacts?: PersonalContactDoc[];
+  seededContactOwners?: string[];
 }
 
 function loadInitialSlice(): Required<PersistedSlice> {
@@ -97,6 +115,12 @@ function loadInitialSlice(): Required<PersistedSlice> {
         }
         return a;
       });
+      const loadedJobs = parsed.jobs?.length ? parsed.jobs : SEED_JOBS;
+      const mergedJobsMap = new Map<string, JobPostingDoc>();
+      loadedJobs.forEach((j) => mergedJobsMap.set(j.id, j));
+      SEED_JOBS.forEach((j) => {
+        if (!mergedJobsMap.has(j.id)) mergedJobsMap.set(j.id, j);
+      });
       return {
         agents: mergedAgents,
         rfps: parsed.rfps?.length ? parsed.rfps : SEED_RFPS,
@@ -108,11 +132,15 @@ function loadInitialSlice(): Required<PersistedSlice> {
         bookings: parsed.bookings?.length ? parsed.bookings : SEED_BOOKINGS,
         emails: parsed.emails?.length ? parsed.emails : SEED_EMAILS,
         voiceSessions: parsed.voiceSessions?.length ? parsed.voiceSessions : SEED_VOICE_SESSIONS,
-        jobs: parsed.jobs?.length ? parsed.jobs : SEED_JOBS,
+        jobs: Array.from(mergedJobsMap.values()),
         matches: parsed.matches?.length ? parsed.matches : SEED_MATCHES,
         poppyOperations: parsed.poppyOperations?.length ? parsed.poppyOperations : SEED_POPPY_OPERATIONS,
         poppyConsents: parsed.poppyConsents?.length ? parsed.poppyConsents : SEED_POPPY_CONSENTS,
         poppyAuditLogs: parsed.poppyAuditLogs?.length ? parsed.poppyAuditLogs : SEED_POPPY_AUDIT_LOGS,
+        contacts: parsed.contacts?.length ? parsed.contacts : SEED_CONTACTS,
+        seededContactOwners: parsed.seededContactOwners?.length
+          ? parsed.seededContactOwners
+          : ['seed-persona-alex'],
       };
     }
   } catch {
@@ -134,6 +162,8 @@ function loadInitialSlice(): Required<PersistedSlice> {
     poppyOperations: SEED_POPPY_OPERATIONS,
     poppyConsents: SEED_POPPY_CONSENTS,
     poppyAuditLogs: SEED_POPPY_AUDIT_LOGS,
+    contacts: SEED_CONTACTS,
+    seededContactOwners: ['seed-persona-alex'],
   };
 }
 
@@ -161,20 +191,112 @@ export function useSwitchboardStore() {
   const [poppyOperations, setPoppyOperations] = useState<PoppyOperation[]>(initial.poppyOperations);
   const [poppyConsents, setPoppyConsents] = useState<PoppyConsentGrant[]>(initial.poppyConsents);
   const [poppyAuditLogs, setPoppyAuditLogs] = useState<PoppyAuditLogEntry[]>(initial.poppyAuditLogs);
+  const [contacts, setContacts] = useState<PersonalContactDoc[]>(initial.contacts);
+  const [seededContactOwners, setSeededContactOwners] = useState<string[]>(initial.seededContactOwners);
+
+  const [aiOpportunities, setAiOpportunities] = useState<AiOpportunitySuggestion[]>([]);
+  const [aiOpportunitiesMeta, setAiOpportunitiesMeta] = useState<{
+    engine?: string;
+    generatedAt?: string;
+    summary?: string;
+  } | null>(null);
+  const [aiOpportunitiesLoading, setAiOpportunitiesLoading] = useState(false);
+  const [aiOpportunitiesError, setAiOpportunitiesError] = useState<string | null>(null);
 
   const [surface, setSurface] = useState<SurfaceMode>('desktop');
-  const [currency, setCurrency] = useState<CurrencyMode>('ZAR');
+  const [currency, setCurrencyState] = useState<CurrencyMode>('USD');
+  const initialBrowserGeo = detectCurrencyFromBrowser();
+  const [localCurrency, setLocalCurrency] = useState<LocalCurrencyCode>(initialBrowserGeo.currency);
+  const [locationLabel, setLocationLabel] = useState<string>(initialBrowserGeo.locationLabel);
+  const [fxRates, setFxRates] = useState<Record<LocalCurrencyCode, number>>({ ...DEFAULT_RATES_PER_USD });
+  const [fxSource, setFxSource] = useState<'live' | 'reference'>('reference');
+  const [detectingLocation, setDetectingLocation] = useState<boolean>(false);
+
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [workspaceToken, setWorkspaceToken] = useState<string | null>(null);
   const [passkeyUser, setPasskeyUser] = useState<AuthSessionUser | null>(null);
   const [firestoreOnline, setFirestoreOnline] = useState(false);
 
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(JOHANNESBURG_CENTER);
+  const [userLocation, setUserLocationRaw] = useState<{ lat: number; lng: number }>(JOHANNESBURG_CENTER);
   const [passerbyEvents, setPasserbyEvents] = useState<PasserbyHandshakeEvent[]>([]);
   const [dispatchedUnits, setDispatchedUnits] = useState<DispatchedUnit[]>([]);
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
   );
+  const [mapboxAccessToken, setMapboxAccessToken] = useState<string>(
+    import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || import.meta.env.VITE_MAPBOX_API_KEY || ''
+  );
+
+  const setCurrency = useCallback((next: CurrencyMode) => {
+    setCurrencyState(next);
+    if (next !== 'USD' && isSupportedCurrency(next)) {
+      setLocalCurrency(next);
+    }
+  }, []);
+
+  const setUserLocation = useCallback(
+    (loc: { lat: number; lng: number }) => {
+      setUserLocationRaw(loc);
+      const hit = detectCurrencyFromCoords(loc.lat, loc.lng);
+      if (hit) {
+        setLocalCurrency(hit.currency);
+        setLocationLabel(hit.locationLabel);
+      }
+    },
+    []
+  );
+
+  const detectLocationAndCurrency = useCallback(async () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      emitToast('Browser geolocation unavailable — using regional locale', 'info');
+      return;
+    }
+    setDetectingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const coords = {
+          lat: Number(pos.coords.latitude.toFixed(4)),
+          lng: Number(pos.coords.longitude.toFixed(4)),
+        };
+        setUserLocationRaw(coords);
+        const localHit = detectCurrencyFromCoords(coords.lat, coords.lng);
+        if (localHit) {
+          setLocalCurrency(localHit.currency);
+          setLocationLabel(localHit.locationLabel);
+        }
+        try {
+          const res = await fetch(`/api/fx/rates?lat=${coords.lat}&lng=${coords.lng}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.rates) {
+              setLiveFxRates(data.rates);
+              setFxRates((prev) => ({ ...prev, ...data.rates }));
+              setFxSource(data.source === 'live' ? 'live' : 'reference');
+            }
+            if (isSupportedCurrency(data?.suggestedCurrency)) {
+              setLocalCurrency(data.suggestedCurrency);
+              setLocationLabel(data.suggestedLocationLabel || localHit?.locationLabel || 'Detected GPS');
+              emitToast(
+                `Location detected: ${data.suggestedLocationLabel || localHit?.locationLabel} (${data.suggestedCurrency})`,
+                'success'
+              );
+            }
+          }
+        } catch {
+          if (localHit) {
+            emitToast(`Location detected: ${localHit.locationLabel} (${localHit.currency})`, 'success');
+          }
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      () => {
+        setDetectingLocation(false);
+        emitToast('Location permission declined — select local currency manually', 'info');
+      },
+      { enableHighAccuracy: false, timeout: 7000 }
+    );
+  }, []);
 
   // Persist to localStorage automatically
   useEffect(() => {
@@ -195,6 +317,8 @@ export function useSwitchboardStore() {
         poppyOperations,
         poppyConsents,
         poppyAuditLogs,
+        contacts,
+        seededContactOwners,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -216,9 +340,11 @@ export function useSwitchboardStore() {
     poppyOperations,
     poppyConsents,
     poppyAuditLogs,
+    contacts,
+    seededContactOwners,
   ]);
 
-  // Boot connection check & public config
+  // Boot connection check, public config & live FX rates
   useEffect(() => {
     testFirestoreConnection().then(setFirestoreOnline);
     fetch('/api/config/public')
@@ -227,9 +353,31 @@ export function useSwitchboardStore() {
         if (cfg?.googleMapsApiKey && !googleMapsApiKey) {
           setGoogleMapsApiKey(cfg.googleMapsApiKey);
         }
+        if (cfg?.mapboxAccessToken && !mapboxAccessToken) {
+          setMapboxAccessToken(cfg.mapboxAccessToken);
+        }
       })
       .catch(() => {});
-  }, [googleMapsApiKey]);
+
+    fetch('/api/fx/rates')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.rates) {
+          setLiveFxRates(data.rates);
+          setFxRates((prev) => ({ ...prev, ...data.rates }));
+          setFxSource(data.source === 'live' ? 'live' : 'reference');
+        }
+        if (
+          isSupportedCurrency(data.suggestedCurrency) &&
+          (data.geoMatched || initialBrowserGeo.isFallback)
+        ) {
+          setLocalCurrency(data.suggestedCurrency);
+          setLocationLabel(data.suggestedLocationLabel || initialBrowserGeo.locationLabel);
+        }
+      })
+      .catch(() => {});
+  }, [googleMapsApiKey, mapboxAccessToken, initialBrowserGeo.isFallback, initialBrowserGeo.locationLabel]);
 
   // Auth listener
   useEffect(() => {
@@ -286,6 +434,23 @@ export function useSwitchboardStore() {
           () => {}
         )
       );
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, 'contacts'), where('ownerUid', '==', firebaseUser.uid)),
+          (snap) => {
+            if (!snap.empty) {
+              const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as PersonalContactDoc));
+              setContacts((prev) => {
+                const map = new Map<string, PersonalContactDoc>();
+                prev.forEach((p) => map.set(p.id, p));
+                docs.forEach((d) => map.set(d.id, d));
+                return Array.from(map.values());
+              });
+            }
+          },
+          () => {}
+        )
+      );
     } catch {
       // keep local fallback
     }
@@ -306,6 +471,22 @@ export function useSwitchboardStore() {
         email: 'alex@veldcompute.co.za',
         mode: 'guest',
       };
+
+  // Ensure every signed-in or passkey user gets an isolated, ready-to-use personal contact book
+  useEffect(() => {
+    const uid = currentUser.uid;
+    if (!uid || seededContactOwners.includes(uid)) return;
+    setSeededContactOwners((prev) => (prev.includes(uid) ? prev : [...prev, uid]));
+    setContacts((prev) => {
+      if (prev.some((c) => c.ownerUid === uid)) return prev;
+      const cloned = SEED_CONTACTS.map((c) => ({
+        ...c,
+        id: `${c.id}_${uid.slice(0, 8)}`,
+        ownerUid: uid,
+      }));
+      return [...cloned, ...prev];
+    });
+  }, [currentUser.uid, seededContactOwners]);
 
   const loginGoogle = useCallback(async () => {
     const res = await signInWithGoogleWorkspace();
@@ -439,7 +620,7 @@ export function useSwitchboardStore() {
         channel: params.channel,
         stickerPriceZAR: params.stickerPriceZAR,
         amountZAR: params.agreedPriceZAR,
-        amountUSD: Number((params.agreedPriceZAR / ZAR_PER_USD).toFixed(2)),
+        amountUSD: zarToUsd(params.agreedPriceZAR),
         savedZAR,
         savedPct,
         rail: params.rail,
@@ -595,15 +776,58 @@ export function useSwitchboardStore() {
 
   const createJob = useCallback((job: JobPostingDoc) => {
     setJobs((prev) => [job, ...prev]);
+    const newMatches = matchJobToAllCandidates(job, agents, matches);
+    if (newMatches.length > 0) {
+      setMatches((prev) => {
+        const map = new Map<string, RecruitmentMatchDoc>();
+        prev.forEach((m) => map.set(m.id, m));
+        newMatches.forEach((m: RecruitmentMatchDoc) => map.set(m.id, m));
+        return Array.from(map.values());
+      });
+      emitToast(`Auto-matched ${newMatches.length} candidates for ${job.title}!`, 'info');
+    }
     logPoppyAudit({
       actorHandle: job.companyAgentHandle,
       targetHandle: job.poppyDiscoveryPath,
       action: 'JOB_AGENT_SPAWNED',
       protocol: 'Poppy v1.0',
-      details: `Published Hiring Agent for "${job.title}" (${job.remoteMode}).`,
+      details: `Published Hiring Agent for ${job.title} (${job.remoteMode}).`,
       popiaMinimized: true,
     });
-  }, [logPoppyAudit]);
+  }, [agents, matches, logPoppyAudit]);
+
+  const createJobsBulk = useCallback((newJobs: JobPostingDoc[]) => {
+    if (!newJobs.length) return;
+    setJobs((prev) => {
+      const map = new Map<string, JobPostingDoc>();
+      prev.forEach((j) => map.set(j.id, j));
+      newJobs.forEach((j) => map.set(j.id, j));
+      return Array.from(map.values());
+    });
+    const allNewMatches: RecruitmentMatchDoc[] = [];
+    newJobs.forEach((job) => {
+      const matched = matchJobToAllCandidates(job, agents, matches);
+      allNewMatches.push(...matched);
+      logPoppyAudit({
+        actorHandle: job.companyAgentHandle,
+        targetHandle: job.poppyDiscoveryPath,
+        action: 'JOB_AGENT_SPAWNED',
+        protocol: 'Poppy v1.0',
+        details: `Published Hiring Agent for ${job.title} (${job.remoteMode}).`,
+        popiaMinimized: true,
+      });
+    });
+    if (allNewMatches.length > 0) {
+      setMatches((prev) => {
+        const map = new Map<string, RecruitmentMatchDoc>();
+        prev.forEach((m) => map.set(m.id, m));
+        allNewMatches.forEach((m: RecruitmentMatchDoc) => map.set(m.id, m));
+        return Array.from(map.values());
+      });
+    }
+  }, [agents, matches, logPoppyAudit]);
+
+
 
   const updateSeekerCv = useCallback((agentId: string, cvSummary: SeekerCvProfile) => {
     setAgents((prev) =>
@@ -629,6 +853,16 @@ export function useSwitchboardStore() {
         return copy;
       }
       return [match, ...prev];
+    });
+  }, []);
+
+  const upsertRecruitmentMatchesBulk = useCallback((incoming: RecruitmentMatchDoc[]) => {
+    if (!incoming.length) return;
+    setMatches((prev) => {
+      const map = new Map<string, RecruitmentMatchDoc>();
+      prev.forEach((m) => map.set(m.id, m));
+      incoming.forEach((m) => map.set(m.id, m));
+      return Array.from(map.values());
     });
   }, []);
 
@@ -784,6 +1018,177 @@ export function useSwitchboardStore() {
     [agents, logPoppyAudit]
   );
 
+  const userContacts = contacts.filter((c) => c.ownerUid === currentUser.uid);
+
+  const saveContact = useCallback(
+    async (
+      card: Partial<AgentDoc> & Partial<ProximityPeerDoc> & { handle: string; displayName: string },
+      meta: {
+        source: ContactSource;
+        sharedAtLocation?: string;
+        eventName?: string;
+        sharedByHandle?: string;
+        notes?: string;
+        tags?: string[];
+      }
+    ) => {
+      const existing = contacts.find(
+        (c) => c.ownerUid === currentUser.uid && c.handle.toLowerCase() === card.handle.toLowerCase()
+      );
+      const now = new Date().toISOString();
+      const record: PersonalContactDoc = existing
+        ? {
+            ...existing,
+            displayName: card.displayName || existing.displayName,
+            roleTitle: card.roleTitle || existing.roleTitle,
+            organization: card.organization || existing.organization,
+            skills: card.skills?.length ? card.skills : existing.skills,
+            summary: card.summary || existing.summary,
+            imageUrl: card.imageUrl || existing.imageUrl,
+            cardStyle: card.cardStyle || existing.cardStyle,
+            source: meta.source || existing.source,
+            sharedAtLocation: meta.sharedAtLocation || existing.sharedAtLocation,
+            eventName: meta.eventName || existing.eventName,
+            notes: meta.notes ? `${existing.notes ? existing.notes + '\n' : ''}${meta.notes}` : existing.notes,
+            tags: meta.tags ? Array.from(new Set([...existing.tags, ...meta.tags])) : existing.tags,
+            sharedAt: existing.sharedAt,
+          }
+        : {
+            id: `contact_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            ownerUid: currentUser.uid,
+            agentId: card.id,
+            handle: card.handle,
+            displayName: card.displayName,
+            roleTitle: card.roleTitle || 'Verified Agent',
+            organization: card.organization || card.displayName,
+            type: card.type === 'business' ? 'business' : 'persona',
+            agentRoleCategory: card.agentRoleCategory,
+            verified: card.verified !== false,
+            voiceNumber: card.voiceNumber || '+27-87-AGENT-000',
+            agentEmail: card.agentEmail || `engage@${card.handle}`,
+            linkedinUrl: card.linkedinUrl,
+            websiteUrl: card.websiteUrl,
+            skills: card.skills || [],
+            summary: card.summary,
+            imageUrl: card.imageUrl,
+            brandColor: card.brandColor,
+            brandLogoCode: card.brandLogoCode,
+            cardStyle: card.cardStyle,
+            guardrails: card.guardrails,
+            source: meta.source,
+            sharedAtLocation: meta.sharedAtLocation,
+            eventName: meta.eventName,
+            sharedByHandle: meta.sharedByHandle || card.handle,
+            favorite: false,
+            tags: meta.tags || (card.skills ? card.skills.slice(0, 2) : []),
+            notes: meta.notes || '',
+            sharedAt: now,
+          };
+
+      setContacts((prev) => {
+        const idx = prev.findIndex((c) => c.id === record.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = record;
+          return copy;
+        }
+        return [record, ...prev];
+      });
+
+      if (db && firebaseUser && firestoreOnline) {
+        try {
+          await setDoc(doc(db, 'contacts', record.id), { ...record, ownerUid: firebaseUser.uid });
+        } catch {
+          // keep local persistence
+        }
+      }
+
+      emitToast(
+        existing ? `Updated ${record.handle} in Contacts` : `Saved ${record.displayName} to Contacts`,
+        'success'
+      );
+      return record;
+    },
+    [contacts, currentUser.uid, firebaseUser, firestoreOnline]
+  );
+
+  const updateContact = useCallback(
+    async (contactId: string, patch: Partial<PersonalContactDoc>) => {
+      let updated: PersonalContactDoc | null = null;
+      setContacts((prev) =>
+        prev.map((c) => {
+          if (c.id !== contactId) return c;
+          updated = { ...c, ...patch };
+          return updated;
+        })
+      );
+      if (updated && db && firebaseUser && firestoreOnline) {
+        try {
+          await setDoc(doc(db, 'contacts', contactId), updated);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [firebaseUser, firestoreOnline]
+  );
+
+  const toggleContactFavorite = useCallback(
+    async (contactId: string) => {
+      const target = contacts.find((c) => c.id === contactId);
+      if (!target) return;
+      await updateContact(contactId, { favorite: !target.favorite });
+    },
+    [contacts, updateContact]
+  );
+
+  const deleteContact = useCallback((contactId: string) => {
+    setContacts((prev) => prev.filter((c) => c.id !== contactId));
+    emitToast('Removed contact from personal list', 'info');
+  }, []);
+
+  const scanOpportunitiesWithAi = useCallback(
+    async (activeAgent: AgentDoc, recentPeers: ProximityPeerDoc[] = []) => {
+      setAiOpportunitiesLoading(true);
+      setAiOpportunitiesError(null);
+      try {
+        const res = await fetch('/api/ai/opportunities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userAgent: activeAgent,
+            contacts: contacts.filter((c) => c.ownerUid === currentUser.uid),
+            jobs,
+            rfps,
+            recentPeers,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const message = data?.error || `AI Opportunity Scout failed (${res.status})`;
+          setAiOpportunitiesError(message);
+          emitToast(message, 'warning');
+          return null;
+        }
+        setAiOpportunities(Array.isArray(data.opportunities) ? data.opportunities : []);
+        setAiOpportunitiesMeta({
+          engine: data.engine,
+          generatedAt: data.generatedAt,
+          summary: data.summary,
+        });
+        emitToast(`Found ${data.opportunities?.length || 0} opportunities via Gemini`, 'success');
+        return data;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Network error calling AI Opportunity Scout.';
+        setAiOpportunitiesError(message);
+        return null;
+      } finally {
+        setAiOpportunitiesLoading(false);
+      }
+    },
+    [contacts, currentUser.uid, jobs, rfps]
+  );
+
   const resetDemoData = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setAgents(SEED_AGENTS);
@@ -801,6 +1206,11 @@ export function useSwitchboardStore() {
     setPoppyOperations(SEED_POPPY_OPERATIONS);
     setPoppyConsents(SEED_POPPY_CONSENTS);
     setPoppyAuditLogs(SEED_POPPY_AUDIT_LOGS);
+    setContacts(SEED_CONTACTS);
+    setSeededContactOwners(['seed-persona-alex']);
+    setAiOpportunities([]);
+    setAiOpportunitiesMeta(null);
+    setAiOpportunitiesError(null);
     setPasserbyEvents([]);
     setDispatchedUnits([]);
   }, []);
@@ -821,6 +1231,11 @@ export function useSwitchboardStore() {
     poppyOperations,
     poppyConsents,
     poppyAuditLogs,
+    contacts: userContacts,
+    aiOpportunities,
+    aiOpportunitiesMeta,
+    aiOpportunitiesLoading,
+    aiOpportunitiesError,
     passerbyEvents,
     dispatchedUnits,
     userLocation,
@@ -829,11 +1244,20 @@ export function useSwitchboardStore() {
     setSurface,
     currency,
     setCurrency,
+    localCurrency,
+    setLocalCurrency,
+    locationLabel,
+    fxRates,
+    fxSource,
+    detectingLocation,
+    detectLocationAndCurrency,
     currentUser,
     workspaceToken,
     firestoreOnline,
     googleMapsApiKey,
     setGoogleMapsApiKey,
+    mapboxAccessToken,
+    setMapboxAccessToken,
     loginGoogle,
     loginPasskeySim,
     logout,
@@ -850,8 +1274,11 @@ export function useSwitchboardStore() {
     saveVoiceSession,
     addPasserbyEvent,
     createJob,
+    createJobsBulk,
     updateSeekerCv,
     upsertRecruitmentMatch,
+
+    upsertRecruitmentMatchesBulk,
     proposePoppyOperation,
     executePoppyOperation,
     declinePoppyOperation,
@@ -861,6 +1288,11 @@ export function useSwitchboardStore() {
     updateCandidateVideo,
     addPreScreenReview,
     logPoppyAudit,
+    saveContact,
+    updateContact,
+    toggleContactFavorite,
+    deleteContact,
+    scanOpportunitiesWithAi,
     resetDemoData,
   };
 }

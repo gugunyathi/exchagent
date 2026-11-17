@@ -17,9 +17,11 @@ import {
   CurrencyMode,
   PaymentRail,
   BroadcastChannel,
-  ZAR_PER_USD,
+  usdToZar,
+  zarToUsd,
   formatMoney,
 } from '../types/firestore';
+import { LocalCurrencyCode, formatCurrencyFromUsd } from '../lib/fx';
 import { createX402Challenge } from '../services/paymentRails';
 import { evaluateCalendarGuardrails } from '../services/calendarAgentTool';
 import { SwipeScrollArea } from './SwipeScrollArea';
@@ -30,7 +32,14 @@ interface NegotiationArenaModuleProps {
   rfps: RfpDoc[];
   negotiations: NegotiationDoc[];
   selectedTargetAgent: AgentDoc | null;
+  initialProposal?: {
+    title?: string;
+    stickerPriceZAR?: number;
+    nonce?: number;
+  } | null;
   currency: CurrencyMode;
+  localCurrency?: LocalCurrencyCode;
+  fxRates?: Record<LocalCurrencyCode, number>;
   ownerUid: string;
   onSaveNegotiation: (neg: NegotiationDoc) => Promise<void>;
   onSettleDeal: (params: {
@@ -51,14 +60,28 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
   rfps,
   negotiations,
   selectedTargetAgent,
+  initialProposal,
   currency,
+  localCurrency = 'ZAR',
+  fxRates,
   ownerUid,
   onSaveNegotiation,
   onSettleDeal,
   onPublishRfp,
   onAddBooking,
 }) => {
-  const nonEmergencyAgents = agents.filter((a) => a.handle !== '911.emergency.agent');
+  const effectiveLocal: LocalCurrencyCode = localCurrency === 'USD' ? 'ZAR' : localCurrency;
+  const nonEmergencyAgents = React.useMemo(() => {
+    const base = agents.filter((a) => a.handle !== '911.emergency.agent');
+    if (
+      selectedTargetAgent &&
+      selectedTargetAgent.handle !== '911.emergency.agent' &&
+      !base.some((a) => a.handle.toLowerCase() === selectedTargetAgent.handle.toLowerCase())
+    ) {
+      return [selectedTargetAgent, ...base];
+    }
+    return base;
+  }, [agents, selectedTargetAgent]);
   const [subTab, setSubTab] = useState<'arena' | 'rfp'>('arena');
 
   // A2A Arena State
@@ -97,7 +120,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
   ]);
   const [broadcasting, setBroadcasting] = useState(false);
   const [rfpProposals, setRfpProposals] = useState<
-    Array<{ vendorHandle: string; bidZAR: number; matchScore: number; pitchSummary: string }>
+    Array<{ vendorHandle: string; bidZAR: number; matchScore: number; engageSummary: string }>
   >([]);
 
   React.useEffect(() => {
@@ -107,11 +130,27 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
     }
   }, [selectedTargetAgent]);
 
+  React.useEffect(() => {
+    if (!initialProposal) return;
+    if (initialProposal.title) {
+      setProposalTitle(initialProposal.title);
+    }
+    if (
+      typeof initialProposal.stickerPriceZAR === 'number' &&
+      initialProposal.stickerPriceZAR > 0
+    ) {
+      setStickerPriceZAR(initialProposal.stickerPriceZAR);
+    }
+    setSubTab('arena');
+  }, [initialProposal]);
+
   const activeNeg = negotiations.find((n) => n.id === activeNegId) || negotiations[0] || null;
 
   const handleRunNegotiation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const target = agents.find((a) => a.handle === targetHandle);
+    const target =
+      nonEmergencyAgents.find((a) => a.handle === targetHandle) ||
+      (selectedTargetAgent?.handle === targetHandle ? selectedTargetAgent : undefined);
     const initiator = agents.find((a) => a.handle === initiatorHandle);
     if (!target || !initiator) return;
 
@@ -190,7 +229,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
     if (selectedRail.startsWith('x402_')) {
       const challenge = createX402Challenge(activeNeg.agreedPriceZAR, selectedRail);
       setX402StatusBanner(
-        `402 Challenge ${challenge.nonce} -> ${challenge.payToAddress} ($${challenge.amountUSD} USDC)`
+        `402 Challenge ${challenge.nonce} -> ${challenge.payToAddress} (US$${challenge.amountUSD} USDC)`
       );
       await new Promise((r) => setTimeout(r, 400));
     }
@@ -222,7 +261,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
         title: rfpTitle,
         description: rfpDesc,
         budgetZAR: Number(rfpBudgetZAR),
-        budgetUSD: Number((Number(rfpBudgetZAR) / ZAR_PER_USD).toFixed(2)),
+        budgetUSD: zarToUsd(Number(rfpBudgetZAR)),
         category: rfpCategory,
         broadcastChannels: rfpChannels,
         location: {
@@ -315,9 +354,9 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
 
       {subTab === 'arena' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          {/* Left Pane: Compact Pitch Composer & Recent Threads */}
+          {/* Left Pane: Compact Engage Composer & Recent Threads */}
           <form onSubmit={handleRunNegotiation} className="lg:col-span-4 glass-panel rounded-2xl p-4 space-y-3">
-            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">New A2A Pitch</h3>
+            <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">New A2A Engage</h3>
 
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
               From
@@ -361,19 +400,19 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
 
             <div className="grid grid-cols-2 gap-2.5">
               <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                Sticker (ZAR)
+                Sticker (US$)
                 <input
                   type="number"
-                  min={500}
-                  value={stickerPriceZAR}
-                  onChange={(e) => setStickerPriceZAR(Number(e.target.value))}
+                  min={25}
+                  value={Math.round(zarToUsd(stickerPriceZAR))}
+                  onChange={(e) => setStickerPriceZAR(usdToZar(Number(e.target.value) || 0))}
                   className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
               </label>
               <div className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                <span>USD Equiv</span>
+                <span>Local ({effectiveLocal})</span>
                 <div className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-100 dark:bg-zinc-950/60 border border-zinc-300 dark:border-white/10 px-3 flex items-center text-xs font-mono tabular-nums text-zinc-800 dark:text-zinc-300">
-                  ${(stickerPriceZAR / ZAR_PER_USD).toFixed(2)}
+                  {formatCurrencyFromUsd(zarToUsd(stickerPriceZAR), effectiveLocal, fxRates)}
                 </div>
               </div>
             </div>
@@ -384,7 +423,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               className="w-full min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-4 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-50 transition-colors"
             >
               <Zap className="w-3.5 h-3.5" />
-              {runningNeg ? 'Negotiating...' : 'Run A2A Pitch'}
+              {runningNeg ? 'Negotiating...' : 'Run A2A Engage'}
             </button>
 
             <div className="pt-3 border-t border-zinc-200 dark:border-white/10">
@@ -560,7 +599,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               </>
             ) : (
               <p className="text-xs text-zinc-600 dark:text-zinc-400 py-8 text-center">
-                Launch a pitch to stream live A2A negotiation turns.
+                Start an engage session to stream live A2A negotiation turns.
               </p>
             )}
           </div>
@@ -594,11 +633,14 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
 
             <div className="grid grid-cols-2 gap-2.5">
               <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                Budget (ZAR)
+                Budget (US$) ·{' '}
+                <span className="font-mono text-zinc-500">
+                  ≈ {formatCurrencyFromUsd(zarToUsd(rfpBudgetZAR), effectiveLocal, fxRates)}
+                </span>
                 <input
                   type="number"
-                  value={rfpBudgetZAR}
-                  onChange={(e) => setRfpBudgetZAR(Number(e.target.value))}
+                  value={Math.round(zarToUsd(rfpBudgetZAR))}
+                  onChange={(e) => setRfpBudgetZAR(usdToZar(Number(e.target.value) || 0))}
                   className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono tabular-nums text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
                 />
               </label>
@@ -664,7 +706,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
                         <p className="text-xs font-mono text-zinc-900 dark:text-zinc-200">
                           {p.vendorHandle} · <span className="text-emerald-700 dark:text-emerald-300 font-semibold">{p.matchScore}% match</span>
                         </p>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{p.pitchSummary}</p>
+                        <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{p.engageSummary}</p>
                       </div>
                       <span className="font-mono tabular-nums text-xs font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
                         {formatMoney(p.bidZAR, currency)}

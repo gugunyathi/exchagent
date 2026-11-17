@@ -18,8 +18,14 @@ import {
   LogOut,
   RotateCcw,
   Briefcase,
+  ArrowLeft,
+  LocateFixed,
+  Users,
+  Linkedin,
+  Building2,
 } from 'lucide-react';
 import { CurrencyMode, SurfaceMode, formatMoney } from '../types/firestore';
+import { CURRENCY_LIST, LocalCurrencyCode, formatLocalRateBanner } from '../lib/fx';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { PWAInstallButton } from './PWAInstallButton';
 import { emitToast } from '../lib/toast';
@@ -30,18 +36,22 @@ export type DrawerRouteTarget =
   | { tab: 'arena' }
   | { tab: 'hiring' }
   | { tab: 'registry' }
-  | { tab: 'spatial'; sub: 'maps' | 'comms' | 'agentmail' }
+  | { tab: 'spatial'; sub: 'maps' | 'contacts' | 'comms' | 'agentmail' }
   | { tab: 'toolkit'; sub: 'skills' | 'extension' | 'ledger' };
 
 interface BurgerMenuDrawerProps {
   open: boolean;
   onClose: () => void;
   activeTab: string;
-  spatialSubView: 'maps' | 'comms' | 'agentmail';
+  spatialSubView: 'maps' | 'contacts' | 'comms' | 'agentmail';
   toolkitSubView: 'skills' | 'extension' | 'ledger';
   surface: SurfaceMode;
   currency: CurrencyMode;
+  localCurrency: LocalCurrencyCode;
+  locationLabel: string;
+  fxRates: Record<LocalCurrencyCode, number>;
   agentsCount: number;
+  contactsCount?: number;
   openRfpCount: number;
   totalSavedZAR: number;
   settlementsCount: number;
@@ -50,10 +60,14 @@ interface BurgerMenuDrawerProps {
   onNavigate: (target: DrawerRouteTarget) => void;
   onSetSurface: (surface: SurfaceMode) => void;
   onSetCurrency: (currency: CurrencyMode) => void;
+  onSetLocalCurrency: (currency: LocalCurrencyCode) => void;
+  onDetectLocation: () => void;
   onLoginGoogle: () => Promise<unknown>;
   onLoginPasskey: () => void;
   onLogout: () => Promise<unknown>;
   onResetDemo: () => void;
+  onOpenQuickJobAgent?: () => void;
+  onOpenQuickEmployerAgent?: () => void;
 }
 
 export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
@@ -64,7 +78,11 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   toolkitSubView,
   surface,
   currency,
+  localCurrency,
+  locationLabel,
+  fxRates,
   agentsCount,
+  contactsCount = 0,
   openRfpCount,
   totalSavedZAR,
   settlementsCount,
@@ -73,10 +91,14 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   onNavigate,
   onSetSurface,
   onSetCurrency,
+  onSetLocalCurrency,
+  onDetectLocation,
   onLoginGoogle,
   onLoginPasskey,
   onLogout,
   onResetDemo,
+  onOpenQuickJobAgent,
+  onOpenQuickEmployerAgent,
 }) => {
   if (!open) return null;
 
@@ -117,10 +139,17 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
     },
     {
       id: 'maps',
-      label: 'Maps Radar',
+      label: 'Maps & Events',
       icon: MapPin,
       target: { tab: 'spatial', sub: 'maps' },
       active: surface === 'desktop' && activeTab === 'spatial' && spatialSubView === 'maps',
+    },
+    {
+      id: 'contacts',
+      label: `Contacts (${contactsCount})`,
+      icon: Users,
+      target: { tab: 'spatial', sub: 'contacts' },
+      active: surface === 'desktop' && activeTab === 'spatial' && spatialSubView === 'contacts',
     },
     {
       id: 'comms',
@@ -174,6 +203,15 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
       <aside className="relative z-10 w-[308px] max-w-[88vw] h-full bg-white dark:bg-[#0c0c0f] border-r border-zinc-200 dark:border-white/[0.08] flex flex-col shadow-2xl">
         <div className="h-14 px-4 border-b border-zinc-200 dark:border-white/[0.08] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition-colors"
+              aria-label="Back"
+              title="Back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
             <img
               src="/icon.svg"
               alt="Switchboard"
@@ -188,6 +226,7 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
             onClick={onClose}
             className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white"
             aria-label="Close menu"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -250,6 +289,38 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
                 );
               })}
             </div>
+            {onOpenQuickJobAgent && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenQuickJobAgent();
+                }}
+                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center justify-between gap-2 transition-colors shadow-2xs"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Linkedin className="w-3.5 h-3.5 shrink-0" />
+                  <span>LinkedIn Job Agent</span>
+                </span>
+                <span className="text-[10px] font-mono opacity-90">10 Free</span>
+              </button>
+            )}
+            {onOpenQuickEmployerAgent && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenQuickEmployerAgent();
+                }}
+                className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-between gap-2 transition-colors shadow-2xs"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Hire: Post Job URL</span>
+                </span>
+                <span className="text-[10px] font-mono opacity-90">Auto-Match</span>
+              </button>
+            )}
           </div>
 
           {/* 5-Surface Device Switcher */}
@@ -290,33 +361,69 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
             <ThemeToggle variant="segmented" />
           </div>
 
-          {/* Currency & Install */}
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-0.5 text-xs font-mono">
+          {/* Currency & Local FX + Install */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 px-1 uppercase tracking-wide">
+                Currency ({locationLabel})
+              </p>
               <button
                 type="button"
-                onClick={() => onSetCurrency('ZAR')}
-                className={`px-3 py-1.5 rounded-lg transition-colors ${
-                  currency === 'ZAR'
-                    ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
-                    : 'text-zinc-600 dark:text-zinc-400'
-                }`}
+                onClick={onDetectLocation}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-400 hover:underline"
               >
-                ZAR
-              </button>
-              <button
-                type="button"
-                onClick={() => onSetCurrency('USD')}
-                className={`px-3 py-1.5 rounded-lg transition-colors ${
-                  currency === 'USD'
-                    ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
-                    : 'text-zinc-600 dark:text-zinc-400'
-                }`}
-              >
-                USD
+                <LocateFixed className="w-3 h-3" />
+                Detect GPS
               </button>
             </div>
-            <PWAInstallButton />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-0.5 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={() => onSetCurrency('USD')}
+                  className={`px-3 py-1.5 rounded-lg transition-colors ${
+                    currency === 'USD'
+                      ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}
+                >
+                  US$
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetCurrency(localCurrency === 'USD' ? 'ZAR' : localCurrency)}
+                  className={`px-3 py-1.5 rounded-lg transition-colors ${
+                    currency !== 'USD'
+                      ? 'bg-white text-zinc-950 font-semibold shadow-2xs dark:bg-zinc-800 dark:text-white'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}
+                >
+                  {localCurrency === 'USD' ? 'ZAR' : localCurrency}
+                </button>
+              </div>
+              <PWAInstallButton />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <select
+                aria-label="Select local exchange currency"
+                value={currency === 'USD' ? localCurrency : currency}
+                onChange={(e) => {
+                  const next = e.target.value as LocalCurrencyCode;
+                  onSetLocalCurrency(next);
+                  if (currency !== 'USD') onSetCurrency(next);
+                }}
+                className="flex-1 min-h-[34px] rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-mono text-zinc-800 dark:text-zinc-200"
+              >
+                {CURRENCY_LIST.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} · {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-[10.5px] font-mono text-zinc-500 dark:text-zinc-400 px-1 tabular-nums">
+              {formatLocalRateBanner(localCurrency === 'USD' ? 'ZAR' : localCurrency, fxRates)}
+            </p>
           </div>
 
           {/* Auth & Reset */}
