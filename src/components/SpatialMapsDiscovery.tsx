@@ -26,6 +26,8 @@ import {
   Zap,
   Search,
   Users,
+  Sparkles,
+  LocateFixed,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -37,6 +39,7 @@ import {
   ProximityIntent,
   ProximityTransport,
   ContactSource,
+  PersonalContactDoc,
   CurrencyMode,
   formatMoney,
 } from '../types/firestore';
@@ -74,6 +77,15 @@ interface SpatialMapsDiscoveryProps {
       notes?: string;
     }
   ) => Promise<unknown>;
+  onAutoAddPeers?: (
+    peers: ProximityPeerDoc[],
+    opts: {
+      scanRadiusMeters: number;
+      myTopics: string[];
+      requireTopicOverlap: boolean;
+      roomCode: string;
+    }
+  ) => PersonalContactDoc[];
   onApplyJobFromRadar?: (job: JobPostingDoc) => void;
 }
 
@@ -99,6 +111,26 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
   return Math.round(2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)));
+}
+
+function compassLabel(deg: number): string {
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+}
+
+function angularDiff(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+function bearingBetweenCoords(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => ((r * 180) / Math.PI + 360) % 360;
+  const phi1 = toRad(a.lat);
+  const phi2 = toRad(b.lat);
+  const dLam = toRad(b.lng - a.lng);
+  const y = Math.sin(dLam) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLam);
+  return Math.round(toDeg(Math.atan2(y, x)));
 }
 
 function scoreJobMatch(
@@ -529,6 +561,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
   onEngageAgent,
   onEngageProposal,
   onSaveContact,
+  onAutoAddPeers,
   onApplyJobFromRadar,
 }) => {
   const { isDark } = useTheme();
@@ -547,7 +580,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
   const [jobQuery, setJobQuery] = useState('');
   const [jobRemoteFilter, setJobRemoteFilter] = useState<JobRemoteFilter>('All');
 
-  // Event Wi-Fi & BLE Proximity Mesh State
+  // Event Wi-Fi & Bluetooth Proximity Mesh State + Bi-Directional Compass/Gyro + Radius
   const nonEmergencyAgents = useMemo(
     () => agents.filter((a) => a.handle !== '911.emergency.agent'),
     [agents]
@@ -562,11 +595,32 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
   const [scanningMesh, setScanningMesh] = useState(false);
   const [discoveredPeers, setDiscoveredPeers] = useState<ProximityPeerDoc[]>([]);
   const [meshStatusLabel, setMeshStatusLabel] = useState<string>('Ready to scan Wi-Fi & BLE mesh');
+  const [wsConnected, setWsConnected] = useState(false);
   const [bleSupported] = useState<boolean>(
     typeof navigator !== 'undefined' && 'bluetooth' in navigator
   );
 
+  // Compass / Gyroscope / Live GPS / Radius Controls
+  const [headingDeg, setHeadingDeg] = useState<number>(35);
+  const [pitchDeg, setPitchDeg] = useState<number>(12);
+  const [rollDeg, setRollDeg] = useState<number>(0);
+  const [gyroEnabled, setGyroEnabled] = useState<boolean>(false);
+  const [gpsLiveEnabled, setGpsLiveEnabled] = useState<boolean>(false);
+  const [broadcastRadiusMeters, setBroadcastRadiusMeters] = useState<number>(
+    activeUserAgent?.geoLocation?.radiusMeters || 120
+  );
+  const [scanRadiusMeters, setScanRadiusMeters] = useState<number>(
+    activeUserAgent?.impliedIntent?.maxDistanceMeters || 150
+  );
+  const [autoAddWithinRadius, setAutoAddWithinRadius] = useState<boolean>(
+    activeUserAgent?.impliedIntent?.autoAddProximityContacts ?? false
+  );
+  const [requireIntentMatch, setRequireIntentMatch] = useState<boolean>(
+    activeUserAgent?.impliedIntent?.requireTopicOverlapForAutoAdd ?? false
+  );
+
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const activeMapEngine: 'google' | 'mapbox' | 'vector' = useMemo(() => {
     if (dispatchedUnits.length > 0) return 'vector';
@@ -636,15 +690,71 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
       .sort((a, b) => b.matchScore - a.matchScore);
   }, [jobs, jobQuery, jobRemoteFilter, agents, activeUserAgent, userLocation]);
 
+  const broadcastIntentTopics = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(broadcastAgent?.skills || []),
+          ...(broadcastAgent?.impliedIntent?.topics || []),
+        ])
+      ),
+    [broadcastAgent]
+  );
+
+  // Enrich discovered peers with real-time bi-directional compass bearing lock & intent topic overlap
+  const telemetryPeers = useMemo(() => {
+    const myTopicsLower = broadcastIntentTopics.map((t) => t.toLowerCase());
+    return discoveredPeers.map((peer) => {
+      const hasCoords =
+        typeof peer.lat === 'number' &&
+        typeof peer.lng === 'number' &&
+        (Math.abs(userLocation.lat - peer.lat) > 0.00001 || Math.abs(userLocation.lng - peer.lng) > 0.00001);
+      const relBearing = hasCoords
+        ? bearingBetweenCoords(userLocation, { lat: peer.lat!, lng: peer.lng! })
+        : peer.relativeBearingDeg ?? ((headingDeg + 180) % 360);
+      const reverseBearing = hasCoords
+        ? bearingBetweenCoords({ lat: peer.lat!, lng: peer.lng! }, userLocation)
+        : (relBearing + 180) % 360;
+      const peerHeading = peer.headingDeg;
+      const mutualLock =
+        typeof peerHeading === 'number'
+          ? angularDiff(headingDeg, relBearing) <= 48 &&
+            angularDiff(peerHeading, reverseBearing) <= 48 &&
+            peer.distanceMeters <= Math.max(scanRadiusMeters, broadcastRadiusMeters)
+          : false;
+
+      const peerText = [
+        peer.roleTitle,
+        peer.summary || '',
+        ...(peer.skills || []),
+        ...(peer.impliedTopics || []),
+      ]
+        .join(' ')
+        .toLowerCase();
+      const topicHits = myTopicsLower.filter((t) => t.length >= 2 && peerText.includes(t));
+
+      return {
+        ...peer,
+        relativeBearingDeg: relBearing,
+        mutualBearingLock: mutualLock,
+        matchedScore: Math.min(99, (peer.matchedScore || 88) + (mutualLock ? 5 : 0) + topicHits.length * 2),
+      };
+    });
+  }, [discoveredPeers, userLocation, headingDeg, scanRadiusMeters, broadcastRadiusMeters, broadcastIntentTopics]);
+
   // Fetch nearby peers from Wi-Fi / Event Mesh server
   const fetchEventPeers = useCallback(async () => {
     setScanningMesh(true);
     try {
-      const res = await fetch(
-        `/api/proximity/peers?room=${encodeURIComponent(eventRoom)}&selfHandle=${encodeURIComponent(
-          broadcastAgentHandle
-        )}&includeBeacons=true`
-      );
+      const params = new URLSearchParams({
+        room: eventRoom,
+        selfHandle: broadcastAgentHandle,
+        includeBeacons: 'true',
+        lat: String(userLocation.lat),
+        lng: String(userLocation.lng),
+        heading: String(headingDeg),
+      });
+      const res = await fetch(`/api/proximity/peers?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         const serverPeers: ProximityPeerDoc[] = Array.isArray(data.peers) ? data.peers : [];
@@ -663,11 +773,211 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
     } finally {
       setScanningMesh(false);
     }
-  }, [eventRoom, broadcastAgentHandle]);
+  }, [eventRoom, broadcastAgentHandle, userLocation.lat, userLocation.lng, headingDeg]);
 
   useEffect(() => {
     fetchEventPeers();
   }, [fetchEventPeers]);
+
+  // Real-time WebSocket /ws/mesh sync
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${proto}//${window.location.host}/ws/mesh?room=${encodeURIComponent(eventRoom)}`;
+    let closed = false;
+    try {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        if (!closed) setWsConnected(true);
+      };
+      ws.onclose = () => {
+        if (!closed) setWsConnected(false);
+      };
+      ws.onerror = () => {
+        if (!closed) setWsConnected(false);
+      };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data) as {
+            type?: string;
+            peers?: ProximityPeerDoc[];
+            peer?: ProximityPeerDoc;
+            handle?: string;
+          };
+          if (msg.type === 'room_snapshot' && Array.isArray(msg.peers)) {
+            setDiscoveredPeers((prev) => {
+              const map = new Map<string, ProximityPeerDoc>();
+              prev.forEach((p) => map.set(p.handle.toLowerCase(), p));
+              msg.peers!.forEach((p) => {
+                if (p.handle.toLowerCase() !== broadcastAgentHandle.toLowerCase()) {
+                  map.set(p.handle.toLowerCase(), p);
+                }
+              });
+              return Array.from(map.values());
+            });
+          } else if (msg.type === 'peer_upsert' && msg.peer) {
+            const incoming = msg.peer;
+            if (incoming.handle.toLowerCase() === broadcastAgentHandle.toLowerCase()) return;
+            setDiscoveredPeers((prev) => {
+              const others = prev.filter((p) => p.handle.toLowerCase() !== incoming.handle.toLowerCase());
+              return [incoming, ...others];
+            });
+          } else if (msg.type === 'peer_removed' && msg.handle) {
+            setDiscoveredPeers((prev) =>
+              prev.filter((p) => p.handle.toLowerCase() !== msg.handle!.toLowerCase())
+            );
+          }
+        } catch {
+          // ignore invalid frame
+        }
+      };
+    } catch {
+      setWsConnected(false);
+    }
+
+    return () => {
+      closed = true;
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [eventRoom, broadcastAgentHandle]);
+
+  // Live DeviceOrientationEvent Compass & Gyroscope Sensor Listener
+  useEffect(() => {
+    if (!gyroEnabled || typeof window === 'undefined') return;
+    const handleOrientation = (evt: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
+      const nextHeading =
+        typeof evt.webkitCompassHeading === 'number'
+          ? Math.round(evt.webkitCompassHeading)
+          : typeof evt.alpha === 'number'
+          ? Math.round((360 - evt.alpha) % 360)
+          : null;
+      if (nextHeading !== null && Number.isFinite(nextHeading)) {
+        setHeadingDeg(((nextHeading % 360) + 360) % 360);
+      }
+      if (typeof evt.beta === 'number' && Number.isFinite(evt.beta)) {
+        setPitchDeg(Math.max(-90, Math.min(90, Math.round(evt.beta))));
+      }
+      if (typeof evt.gamma === 'number' && Number.isFinite(evt.gamma)) {
+        setRollDeg(Math.max(-90, Math.min(90, Math.round(evt.gamma))));
+      }
+    };
+    window.addEventListener('deviceorientation', handleOrientation as EventListener, true);
+    return () => {
+      window.removeEventListener('deviceorientation', handleOrientation as EventListener, true);
+    };
+  }, [gyroEnabled]);
+
+  const handleToggleGyro = async () => {
+    if (gyroEnabled) {
+      setGyroEnabled(false);
+      return;
+    }
+    const DevOrient = window.DeviceOrientationEvent as
+      | (typeof DeviceOrientationEvent & { requestPermission?: () => Promise<'granted' | 'denied'> })
+      | undefined;
+    if (DevOrient && typeof DevOrient.requestPermission === 'function') {
+      try {
+        const perm = await DevOrient.requestPermission();
+        if (perm !== 'granted') {
+          emitToast('Compass/Gyro sensor permission denied — use manual azimuth dial.', 'warning');
+          return;
+        }
+      } catch {
+        emitToast('Using desktop interactive compass & gyro simulator.', 'info');
+      }
+    }
+    setGyroEnabled(true);
+    emitToast('Compass & Gyroscope sensor stream active', 'success');
+  };
+
+  // Real-time GPS watchPosition when Live GPS toggled ON
+  useEffect(() => {
+    if (!gpsLiveEnabled || typeof navigator === 'undefined' || !navigator.geolocation) return;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        onUpdateUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        if (typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)) {
+          setHeadingDeg(Math.round(pos.coords.heading));
+        }
+      },
+      () => {
+        emitToast('GPS unavailable in browser — using room coordinates.', 'info');
+        setGpsLiveEnabled(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [gpsLiveEnabled, onUpdateUserLocation]);
+
+  // Broadcast orientation & radius updates live over WebSocket while broadcasting
+  useEffect(() => {
+    if (!isBroadcasting || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(
+      JSON.stringify({
+        type: 'orientation_update',
+        roomCode: eventRoom,
+        handle: broadcastAgentHandle,
+        headingDeg,
+        pitchDeg,
+        rollDeg,
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        broadcastRadiusMeters,
+        scanRadiusMeters,
+        impliedTopics: broadcastIntentTopics,
+      })
+    );
+  }, [
+    isBroadcasting,
+    eventRoom,
+    broadcastAgentHandle,
+    headingDeg,
+    pitchDeg,
+    rollDeg,
+    userLocation.lat,
+    userLocation.lng,
+    broadcastRadiusMeters,
+    scanRadiusMeters,
+    broadcastIntentTopics,
+  ]);
+
+  // Autonomous Auto-Add Contacts within Scan Radius
+  useEffect(() => {
+    if (!autoAddWithinRadius || !onAutoAddPeers || telemetryPeers.length === 0) return;
+    const added = onAutoAddPeers(telemetryPeers, {
+      scanRadiusMeters,
+      myTopics: broadcastIntentTopics,
+      requireTopicOverlap: requireIntentMatch,
+      roomCode: eventRoom,
+    });
+    if (added.length > 0) {
+      added.forEach((c) => {
+        onAddPasserbyEvent({
+          id: `evt_autoadd_${c.id}`,
+          agentHandle: broadcastAgentHandle,
+          targetHandle: c.handle,
+          locationLabel: c.sharedAtLocation || eventRoom,
+          distanceMeters: 8,
+          matchScore: 95,
+          summary: `Auto-added ${c.displayName} within ${scanRadiusMeters}m scan radius.`,
+          kind: 'event_peer',
+          timestamp: new Date().toISOString(),
+        });
+      });
+    }
+  }, [
+    autoAddWithinRadius,
+    onAutoAddPeers,
+    telemetryPeers,
+    scanRadiusMeters,
+    broadcastIntentTopics,
+    requireIntentMatch,
+    eventRoom,
+    broadcastAgentHandle,
+    onAddPasserbyEvent,
+  ]);
 
   // Cross-tab BroadcastChannel for instant zero-latency local card broadcasting
   useEffect(() => {
@@ -712,6 +1022,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
           verified: broadcastAgent.verified,
           intent: eventIntent,
           skills: broadcastAgent.skills,
+          impliedTopics: broadcastIntentTopics,
           summary: broadcastAgent.summary,
           imageUrl: broadcastAgent.imageUrl,
           brandLogoCode: broadcastAgent.brandLogoCode,
@@ -725,13 +1036,18 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
           roomCode: eventRoom,
           lat: userLocation.lat,
           lng: userLocation.lng,
+          headingDeg,
+          pitchDeg,
+          rollDeg,
+          broadcastRadiusMeters,
+          scanRadiusMeters,
           incentive: broadcastAgent.passerbyIncentive || `Open for ${eventIntent}`,
         }),
       });
       const data = await res.json();
       if (nextActive && data?.peer) {
         broadcastChannelRef.current?.postMessage({ type: 'PEER_ANNOUNCE', peer: data.peer });
-        emitToast(`Broadcasting ${broadcastAgent.handle} on ${eventRoom}`, 'success');
+        emitToast(`Broadcasting ${broadcastAgent.handle} (${broadcastRadiusMeters}m radius) on ${eventRoom}`, 'success');
       } else {
         emitToast(`Stopped broadcasting ${broadcastAgent.handle}`, 'info');
       }
@@ -925,8 +1241,14 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <SwipeScrollArea
+            direction="horizontal"
+            showArrows={true}
+            arrowSize="sm"
+            className="w-full sm:w-auto"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+          >
             {(
               [
                 { id: 'all', label: 'All Radar' },
@@ -941,7 +1263,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                   key={m.id}
                   type="button"
                   onClick={() => setRadarMode(m.id)}
-                  className={`min-h-[32px] px-2.5 rounded-lg text-[11.5px] inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                  className={`min-h-[32px] px-2.5 rounded-lg text-[11.5px] inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                     active
                       ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                       : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
@@ -952,12 +1274,12 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                 </button>
               );
             })}
-          </div>
+          </SwipeScrollArea>
 
           <select
             value={selectedCityId}
             onChange={(e) => handleCityChange(e.target.value)}
-            className="min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+            className="w-full sm:w-auto max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
           >
             {CITY_PRESETS.map((c) => (
               <option key={c.id} value={c.id}>
@@ -967,7 +1289,13 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
           </select>
 
           {dispatchedUnits.length === 0 && (googleMapsApiKey || mapboxAccessToken) && (
-            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+            <SwipeScrollArea
+              direction="horizontal"
+              showArrows={true}
+              arrowSize="sm"
+              className="w-full sm:w-auto"
+              innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+            >
               {googleMapsApiKey && (
                 <button
                   type="button"
@@ -977,7 +1305,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                     setPreferredProvider('google');
                   }}
                   title={googleFailed ? 'Google Maps failed — click to retry' : 'Use Google Maps'}
-                  className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                  className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
                     activeMapEngine === 'google'
                       ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                       : googleFailed
@@ -996,7 +1324,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                     setPreferredProvider('mapbox');
                   }}
                   title="Use Mapbox backup map"
-                  className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                  className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
                     activeMapEngine === 'mapbox'
                       ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                       : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100'
@@ -1008,7 +1336,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               <button
                 type="button"
                 onClick={() => setPreferredProvider('vector')}
-                className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
                   activeMapEngine === 'vector'
                     ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                     : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100'
@@ -1016,7 +1344,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               >
                 Radar
               </button>
-            </div>
+            </SwipeScrollArea>
           )}
 
           <button
@@ -1038,7 +1366,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
 
       {/* Main Radar Canvas + Right Handshake & Proximity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <div className="lg:col-span-8 glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
+        <div className="lg:col-span-8 min-w-0 glass-panel rounded-2xl p-3 sm:p-4 space-y-3">
           {activeMapEngine === 'google' ? (
             <APIProvider apiKey={googleMapsApiKey} language="en" region="ZA">
               <LiveGoogleMapCanvas
@@ -1122,22 +1450,46 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                       strokeWidth="1"
                     />
                   </pattern>
+                  <linearGradient id="fovGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(14,165,233,0.28)" />
+                    <stop offset="100%" stopColor="rgba(14,165,233,0.02)" />
+                  </linearGradient>
                 </defs>
                 <rect width="800" height="460" fill="url(#radarGrid)" />
+                {/* Compass Directional FOV Cone anchored at center (400, 230) */}
+                <g transform={`rotate(${headingDeg} 400 230)`}>
+                  <path
+                    d={`M 400 230 L 325 ${Math.max(25, 230 - Math.round((scanRadiusMeters / 500) * 185))} A 200 200 0 0 1 475 ${Math.max(25, 230 - Math.round((scanRadiusMeters / 500) * 185))} Z`}
+                    fill="url(#fovGrad)"
+                  />
+                  <line
+                    x1="400"
+                    y1="230"
+                    x2="400"
+                    y2={Math.max(35, 230 - Math.round((scanRadiusMeters / 500) * 190))}
+                    stroke="rgba(14,165,233,0.65)"
+                    strokeWidth="2"
+                    strokeDasharray="3 3"
+                  />
+                </g>
+                {/* Live Broadcast Radius Ring */}
                 <circle
                   cx="400"
                   cy="230"
-                  r="85"
+                  r={Math.max(36, Math.round((broadcastRadiusMeters / 500) * 195))}
                   fill="none"
-                  stroke={isDark ? 'rgba(56,189,248,0.22)' : 'rgba(2,132,199,0.25)'}
+                  stroke={isBroadcasting ? 'rgba(16,185,129,0.55)' : isDark ? 'rgba(56,189,248,0.25)' : 'rgba(2,132,199,0.28)'}
+                  strokeWidth="1.5"
                   strokeDasharray="4 4"
                 />
+                {/* Live Scan Radius Ring */}
                 <circle
                   cx="400"
                   cy="230"
-                  r="165"
+                  r={Math.max(48, Math.round((scanRadiusMeters / 500) * 225))}
                   fill="none"
-                  stroke={isDark ? 'rgba(52,211,153,0.18)' : 'rgba(5,150,105,0.22)'}
+                  stroke={isDark ? 'rgba(52,211,153,0.32)' : 'rgba(5,150,105,0.34)'}
+                  strokeWidth="1.5"
                   strokeDasharray="6 6"
                 />
                 <circle
@@ -1161,9 +1513,15 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                 />
               </svg>
 
-              <div className="absolute top-3 left-3 max-w-[calc(100%-24px)] rounded-lg bg-white/95 dark:bg-zinc-950/90 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 shadow-sm">
-                <Compass className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span className="truncate tabular-nums">
+              <div className="absolute top-3 left-3 max-w-[calc(100%-24px)] rounded-lg bg-white/95 dark:bg-zinc-950/90 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 flex flex-wrap items-center gap-2 shadow-sm">
+                <span className="inline-flex items-center gap-1 font-semibold">
+                  <Compass className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                  <span className="tabular-nums">{compassLabel(headingDeg)} {headingDeg}°</span>
+                </span>
+                <span className="text-zinc-400">·</span>
+                <span className="tabular-nums text-[10.5px]">Gyro {pitchDeg}°/{rollDeg}°</span>
+                <span className="text-zinc-400 hidden sm:inline">·</span>
+                <span className="truncate tabular-nums hidden sm:inline">
                   {mapCenter.name} ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
                 </span>
               </div>
@@ -1175,8 +1533,8 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                 <div className="relative flex items-center justify-center">
                   <span className="w-8 h-8 rounded-full bg-sky-500/20 dark:bg-sky-400/15 border border-sky-600/50 dark:border-sky-400/40 absolute" />
                   <span className="w-3.5 h-3.5 rounded-full bg-sky-600 dark:bg-sky-400 border-2 border-white dark:border-zinc-950" />
-                  <span className="absolute top-5 whitespace-nowrap rounded bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-950 dark:text-zinc-100 shadow-sm">
-                    {isBroadcasting ? 'Broadcasting' : 'You'}
+                  <span className="absolute top-5 whitespace-nowrap rounded bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-950 dark:text-zinc-100 shadow-sm tabular-nums">
+                    {isBroadcasting ? `TX ${broadcastRadiusMeters}m` : `RX ${scanRadiusMeters}m`}
                   </span>
                 </div>
               </div>
@@ -1221,10 +1579,11 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                   );
                 })}
 
-              {discoveredPeers
+              {telemetryPeers
                 .filter((p) => p.lat !== undefined && p.lng !== undefined)
                 .map((peer) => {
                   const pos = toRadarPct(peer.lat! + 0.004, peer.lng! - 0.005);
+                  const inScan = peer.distanceMeters <= scanRadiusMeters;
                   return (
                     <button
                       key={`vec_peer_${peer.id}`}
@@ -1232,11 +1591,20 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                       onClick={() => handleShareAndNegotiatePeer(peer, 'card_share')}
                       style={pos}
                       className="absolute -translate-x-1/2 -translate-y-1/2 z-15"
-                      title={`Save ${peer.displayName} (${peer.transport})`}
+                      title={`${peer.displayName} (${peer.distanceMeters}m${peer.mutualBearingLock ? ' · Mutual Bearing Lock' : ''})`}
                     >
-                      <div className="px-1.5 py-0.5 rounded bg-sky-600 text-white text-[10px] font-mono font-semibold whitespace-nowrap shadow-sm flex items-center gap-1">
+                      <div
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold whitespace-nowrap shadow-sm flex items-center gap-1 ${
+                          peer.mutualBearingLock
+                            ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/70'
+                            : inScan
+                            ? 'bg-sky-600 text-white'
+                            : 'bg-zinc-700 text-zinc-200 opacity-75'
+                        }`}
+                      >
                         {peer.sameWifi ? <Wifi className="w-2.5 h-2.5" /> : <Bluetooth className="w-2.5 h-2.5" />}
                         <span>{peer.handle.replace('.agent', '')}</span>
+                        {peer.mutualBearingLock && <Compass className="w-2.5 h-2.5" />}
                       </div>
                     </button>
                   );
@@ -1312,7 +1680,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
         </div>
 
         {/* Right Column: Passerby Handshakes (Commerce + Job Matches + Event Exchanges) */}
-        <div className="lg:col-span-4 glass-panel rounded-2xl p-4 space-y-3">
+        <div className="lg:col-span-4 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
               <Radio className="w-4 h-4 text-sky-600 dark:text-sky-400" />
@@ -1331,7 +1699,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               </p>
             </div>
           ) : (
-            <SwipeScrollArea direction="vertical" className="max-h-[340px] sm:max-h-[410px]" innerClassName="space-y-2 pr-1">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-[340px] sm:max-h-[410px]" innerClassName="space-y-2 pr-1">
               {passerbyEvents.map((evt) => (
                 <div
                   key={evt.id}
@@ -1372,25 +1740,31 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <div className="relative flex-1 sm:flex-initial min-w-0">
                 <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={jobQuery}
                   onChange={(e) => setJobQuery(e.target.value)}
                   placeholder="Filter jobs, company, skills..."
-                  className="min-h-[34px] w-48 sm:w-56 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-8 pr-2.5 text-xs text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none"
+                  className="min-h-[34px] w-full sm:w-56 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-8 pr-2.5 text-xs text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none"
                 />
               </div>
 
-              <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+              <SwipeScrollArea
+                direction="horizontal"
+                showArrows={true}
+                arrowSize="sm"
+                className="w-full sm:w-auto"
+                innerClassName="inline-flex items-center gap-1 p-0.5 pr-7 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+              >
                 {(['All', 'Remote', 'Hybrid', 'On-Site'] as JobRemoteFilter[]).map((rm) => (
                   <button
                     key={rm}
                     type="button"
                     onClick={() => setJobRemoteFilter(rm)}
-                    className={`min-h-[28px] px-2 rounded-md text-[11px] transition-colors ${
+                    className={`min-h-[28px] px-2 rounded-md text-[11px] whitespace-nowrap shrink-0 transition-colors ${
                       jobRemoteFilter === rm
                         ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-2xs'
                         : 'text-zinc-600 dark:text-zinc-400 font-medium'
@@ -1399,7 +1773,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                     {rm}
                   </button>
                 ))}
-              </div>
+              </SwipeScrollArea>
             </div>
           </div>
 
@@ -1491,32 +1865,159 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
         </div>
       )}
 
-      {/* Event Wi-Fi & Bluetooth Proximity Card Exchange Mesh */}
+      {/* Event Wi-Fi, Bluetooth/BLE, Bi-Directional Compass/Gyro & Autonomous Radius Mesh */}
       {(radarMode === 'all' || radarMode === 'events') && (
         <div className="glass-panel rounded-2xl p-4 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-zinc-200 dark:border-white/10">
             <div>
               <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                Event Proximity Mesh — Same Wi-Fi &amp; Bluetooth Card Exchange
+                Real-Time Proximity Mesh — Wi-Fi, BLE Beacon, Bi-Directional Compass &amp; Gyroscope
               </h3>
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
-                Broadcast your personal or company agent card to nearby attendees on the same Wi-Fi LAN or BLE beacon — share cards and negotiate deals without paper business cards.
+                Configure independent Broadcast &amp; Scan radii, fuse compass/gyro orientation &amp; live GPS, and auto-add matching contacts at events or in public.
               </p>
             </div>
-            <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400 shrink-0">
-              {meshStatusLabel}
-            </span>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <span
+                className={`text-[10.5px] font-mono px-2 py-0.5 rounded-md border ${
+                  wsConnected
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400'
+                }`}
+              >
+                {wsConnected ? 'WS LIVE SYNC' : 'HTTP POLL'}
+              </span>
+              <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                {meshStatusLabel}
+              </span>
+            </div>
+          </div>
+
+          {/* Bi-Directional Compass / Gyroscope / GPS / Radius Strip */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-3.5">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+                <span className="inline-flex items-center gap-1">
+                  <Compass className="w-3.5 h-3.5 text-sky-500" />
+                  Compass Azimuth
+                </span>
+                <span className="font-mono tabular-nums text-sky-600 dark:text-sky-400">
+                  {compassLabel(headingDeg)} {headingDeg}°
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={359}
+                value={headingDeg}
+                onChange={(e) => setHeadingDeg(Number(e.target.value))}
+                className="w-full accent-sky-600"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleGyro}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[10.5px] font-semibold border transition-colors ${
+                    gyroEnabled
+                      ? 'bg-sky-600 text-white border-sky-600'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
+                  }`}
+                >
+                  {gyroEnabled ? `Gyro Live (${pitchDeg}°/${rollDeg}°)` : 'Enable Compass & Gyro'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGpsLiveEnabled((g) => !g)}
+                  className={`py-1 px-2 rounded-lg text-[10.5px] font-semibold border inline-flex items-center gap-1 ${
+                    gpsLiveEnabled
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
+                  }`}
+                >
+                  <LocateFixed className="w-3 h-3" />
+                  {gpsLiveEnabled ? 'GPS Live' : 'GPS'}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+                <span>Broadcast Radius (TX)</span>
+                <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {broadcastRadiusMeters}m
+                </span>
+              </div>
+              <input
+                type="range"
+                min={15}
+                max={500}
+                step={5}
+                value={broadcastRadiusMeters}
+                onChange={(e) => setBroadcastRadiusMeters(Number(e.target.value))}
+                className="w-full accent-emerald-600"
+              />
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                Controls how far your card beacon &amp; intent are advertised
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+                <span>Scan &amp; Auto-Add Radius (RX)</span>
+                <span className="font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
+                  {scanRadiusMeters}m
+                </span>
+              </div>
+              <input
+                type="range"
+                min={15}
+                max={500}
+                step={5}
+                value={scanRadiusMeters}
+                onChange={(e) => setScanRadiusMeters(Number(e.target.value))}
+                className="w-full accent-indigo-600"
+              />
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                Matches {telemetryPeers.filter((p) => p.distanceMeters <= scanRadiusMeters).length}/{telemetryPeers.length} detected peers in range
+              </p>
+            </div>
+
+            <div className="space-y-2 flex flex-col justify-between">
+              <label className="flex items-center justify-between gap-2 text-[11px] font-semibold text-zinc-800 dark:text-zinc-200 cursor-pointer">
+                <span>Auto-Add Contacts in Radius</span>
+                <input
+                  type="checkbox"
+                  checked={autoAddWithinRadius}
+                  onChange={(e) => setAutoAddWithinRadius(e.target.checked)}
+                  className="w-4 h-4 accent-emerald-600"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 text-[11px] text-zinc-600 dark:text-zinc-400 cursor-pointer">
+                <span>Only Matching Intent Topics</span>
+                <input
+                  type="checkbox"
+                  checked={requireIntentMatch}
+                  onChange={(e) => setRequireIntentMatch(e.target.checked)}
+                  className="w-4 h-4 accent-indigo-600"
+                />
+              </label>
+              {broadcastIntentTopics.length > 0 && (
+                <div className="text-[10px] font-mono text-zinc-500 truncate">
+                  Topics: {broadcastIntentTopics.slice(0, 3).join(', ')}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Broadcast Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
-            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
               Card to Broadcast
               <select
                 value={broadcastAgentHandle}
                 onChange={(e) => setBroadcastAgentHandle(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-mono text-zinc-950 dark:text-zinc-100"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs font-mono text-zinc-950 dark:text-zinc-100"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -1526,7 +2027,7 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               </select>
             </label>
 
-            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
               Event Room / Wi-Fi Mesh
               <input
                 type="text"
@@ -1537,12 +2038,12 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               />
             </label>
 
-            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
               Intent at Event
               <select
                 value={eventIntent}
                 onChange={(e) => setEventIntent(e.target.value as ProximityIntent)}
-                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-zinc-100"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-zinc-100"
               >
                 <option value="networking">Networking</option>
                 <option value="job_seeking">Looking for Work</option>
@@ -1552,12 +2053,12 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
               </select>
             </label>
 
-            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 min-w-0">
               Transport
               <select
                 value={transportMode}
                 onChange={(e) => setTransportMode(e.target.value as ProximityTransport)}
-                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-zinc-100"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-zinc-100"
               >
                 <option value="same_wifi">Same Wi-Fi Network</option>
                 <option value="ble_beacon">Bluetooth BLE Beacon</option>
@@ -1592,18 +2093,23 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
           </div>
 
           {/* Discovered Nearby Event Peers */}
-          {discoveredPeers.length === 0 ? (
+          {telemetryPeers.length === 0 ? (
             <p className="text-xs text-zinc-600 dark:text-zinc-400 py-4 text-center">
               No active peers detected in room <span className="font-mono">{eventRoom}</span> yet. Click Scan or Broadcast Card.
             </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {discoveredPeers.map((peer) => {
+              {telemetryPeers.map((peer) => {
                 const isSaved = savedContactHandles.has(peer.handle.toLowerCase());
+                const withinRadius = peer.distanceMeters <= scanRadiusMeters;
                 return (
                   <div
                     key={peer.id}
-                    className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-3.5 flex flex-col justify-between gap-2.5"
+                    className={`rounded-xl bg-zinc-50 dark:bg-zinc-950 border p-3.5 flex flex-col justify-between gap-2.5 ${
+                      peer.mutualBearingLock
+                        ? 'border-emerald-500/60 dark:border-emerald-400/50 ring-1 ring-emerald-500/20'
+                        : 'border-zinc-200 dark:border-white/10'
+                    }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
@@ -1621,8 +2127,33 @@ export const SpatialMapsDiscovery: React.FC<SpatialMapsDiscoveryProps> = ({
                           ) : (
                             <Bluetooth className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           )}
-                          {peer.sameWifi ? 'Same Wi-Fi' : 'BLE'} · {peer.distanceMeters}m
+                          {peer.sameWifi ? 'Wi-Fi' : 'BLE'} · {peer.distanceMeters}m
+                          {typeof peer.relativeBearingDeg === 'number' && (
+                            <> · {compassLabel(peer.relativeBearingDeg)} {peer.relativeBearingDeg}°</>
+                          )}
                         </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {peer.mutualBearingLock && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 text-white inline-flex items-center gap-1">
+                            <Compass className="w-3 h-3" /> Mutual Bearing Lock
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                            withinRadius
+                              ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                              : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          {withinRadius ? `In ${scanRadiusMeters}m Scan Radius` : 'Outside Scan Radius'}
+                        </span>
+                        {peer.matchedScore && (
+                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5" /> {peer.matchedScore}% Intent Fit
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-[11px] text-zinc-700 dark:text-zinc-300 leading-snug">

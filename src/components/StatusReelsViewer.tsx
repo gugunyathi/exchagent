@@ -476,7 +476,7 @@ export const StatusReelsViewer: React.FC<StatusReelsViewerProps> = ({
 
               return (
                 <div
-                  className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-white/25 text-white flex flex-col justify-between h-[372px] sm:h-[416px] p-4 sm:p-5 relative"
+                  className="w-full max-w-[376px] sm:max-w-[360px] mx-auto rounded-2xl overflow-hidden shadow-2xl border border-white/25 text-white flex flex-col justify-between h-[396px] sm:h-[432px] p-4 sm:p-5 relative"
                   style={{ backgroundColor: cardThemeBg }}
                 >
                   {showPhoto && (

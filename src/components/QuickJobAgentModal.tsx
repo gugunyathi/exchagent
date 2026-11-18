@@ -28,6 +28,7 @@ import {
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 import { LegalDocTab, AI_OUTREACH_DISCLAIMER_TEXT } from '../data/legalDocuments';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface QuickJobAgentModalProps {
@@ -134,7 +135,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
     e?.preventDefault();
     const trimmedUrl = linkedinUrl.trim();
     if (!trimmedUrl) {
-      setErrorMsg('Paste your LinkedIn profile URL to create your job search agent.');
+      setErrorMsg('Paste any Personal URL (LinkedIn, GitHub, portfolio, or site) to create your agent.');
       return;
     }
     if (!acceptedCandidatePrivacy) {
@@ -157,7 +158,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
       });
       const data = await quickRes.json();
       if (!quickRes.ok || !data?.profile) {
-        throw new Error(data?.error || 'Could not generate your job search agent.');
+        throw new Error(data?.error || 'Could not generate your personal agent.');
       }
 
       const profile = data.profile as {
@@ -172,6 +173,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
         skills: string[];
         preferredRoles: string[];
         salaryMinZAR: number;
+        impliedIntent?: AgentDoc['impliedIntent'];
       };
 
       // Provision a live @agentmail.to inbox for the new Job Search Agent
@@ -249,9 +251,22 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
         protocol: 'Poppy v1.0 / A2A / MCP',
         interactEndpoint: `https://agent.${baseSlug || 'switchboard'}.io/v1/interact`,
         authMethods: 'OAuth2 / Bearer / Public-Key',
-        tagline: 'Free Standard Job Agent · Auto-matching & interview desk.',
+        tagline: 'Free Personal Agent · Auto-matching jobs, RFPs & event deals.',
         summary: profile.summary,
         skills: (profile.skills || []).slice(0, 4),
+        impliedIntent: profile.impliedIntent || {
+          categories: ['career_role', 'commercial_deal', 'event_networking'],
+          headline: focusNote.trim() || profile.headline,
+          desiredOutcomes: profile.preferredRoles || [profile.roleTitle],
+          topics: profile.skills || [],
+          targetBudgetMinZAR: profile.salaryMinZAR || 85000,
+          preferredRemoteModes: ['Remote', 'Hybrid'],
+          maxDistanceMeters: 150,
+          autoMatchEnabled: true,
+          autoAddProximityContacts: true,
+          requireTopicOverlapForAutoAdd: false,
+          updatedAt: now,
+        },
         guardrails: {
           maxAutoSpendZAR: 0,
           minDiscountPct: 0,
@@ -448,12 +463,12 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl p-4 sm:p-5 space-y-4 max-h-[92dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl max-h-[92dvh] overflow-hidden flex flex-col"
       >
-        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1 mb-1" />
+        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
 
         {/* Header with Back + Close buttons */}
-        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-zinc-200 dark:border-white/10">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 pt-3 pb-2.5 border-b border-zinc-200 dark:border-white/10 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -466,12 +481,12 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
             </button>
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
-                {createdAgent ? 'Your Job Agent & 10 Free Matches' : '1-Click LinkedIn Job Agent'}
+                {createdAgent ? 'Your Personal Agent & 10 Free Matches' : '1-Click URL → Personal Agent'}
               </h2>
               <p className="text-[11px] text-zinc-600 dark:text-zinc-400 truncate">
                 {createdAgent
-                  ? `${createdAgent.handle} · ${deliveredMatches.length} free matches ready for interviews`
-                  : 'Paste your LinkedIn URL to launch a free standard human agent with 10 job matches'}
+                  ? `${createdAgent.handle} · ${deliveredMatches.length} free matches ready for interviews & deals`
+                  : 'Paste any LinkedIn, GitHub, or portfolio URL to launch a free personal agent card'}
               </p>
             </div>
           </div>
@@ -487,12 +502,20 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
           </button>
         </div>
 
+        <SwipeScrollArea
+          direction="vertical"
+          arrowSize="sm"
+          showArrows={true}
+          className="flex-1 min-h-0"
+          innerClassName="px-4 sm:px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-4"
+        >
+
         {!createdAgent ? (
           <form onSubmit={handleQuickCreate} className="space-y-4">
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 block mb-1.5">
-                  LinkedIn Profile URL
+                  Personal URL (LinkedIn, Portfolio, GitHub, or Personal Site)
                 </label>
                 <div className="flex items-center rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 h-11 focus-within:border-sky-600 dark:focus-within:border-sky-400 transition-colors">
                   <Linkedin className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mr-2" />
@@ -502,7 +525,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                     autoFocus
                     value={linkedinUrl}
                     onChange={(e) => setLinkedinUrl(e.target.value)}
-                    placeholder="https://www.linkedin.com/in/your-name"
+                    placeholder="https://linkedin.com/in/you or https://yourname.dev"
                     className="w-full bg-transparent text-xs sm:text-sm text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none"
                   />
                 </div>
@@ -601,7 +624,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">{errorMsg}</p>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={onClose}
@@ -612,7 +635,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               <button
                 type="submit"
                 disabled={creating || !acceptedCandidatePrivacy}
-                className="min-h-[42px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-2 disabled:opacity-60"
+                className="min-h-[42px] w-full sm:w-auto px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {creating ? (
                   <>
@@ -690,7 +713,13 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                 </span>
               </div>
 
-              <div className="space-y-2 max-h-[42dvh] overflow-y-auto pr-0.5">
+              <SwipeScrollArea
+                direction="vertical"
+                arrowSize="sm"
+                showArrows={true}
+                className="max-h-[40dvh]"
+                innerClassName="space-y-2 pr-1"
+              >
                 {deliveredMatches.map((m, idx) => {
                   const job = jobs.find((j) => j.id === m.jobId);
                   const booked = Boolean(requestedJobIds[m.jobId]);
@@ -791,7 +820,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                     </div>
                   );
                 })}
-              </div>
+              </SwipeScrollArea>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-200 dark:border-white/10">
@@ -809,7 +838,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
                   onClose();
                   onOpenHiringDesk(id);
                 }}
-                className="min-h-[40px] px-4 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-1.5"
+                className="min-h-[40px] w-full sm:w-auto px-4 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center justify-center gap-1.5"
               >
                 <Video className="w-3.5 h-3.5" />
                 Open Full Hiring &amp; Interview Desk
@@ -818,6 +847,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
             </div>
           </div>
         )}
+        </SwipeScrollArea>
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   Check,
 } from 'lucide-react';
 import { AgentDoc, CurrencyMode, formatMoney } from '../types/firestore';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface AgentMailInboxSummary {
@@ -383,7 +384,7 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
               <select
                 value={activeInboxEmail}
                 onChange={(e) => setActiveInboxEmail(e.target.value)}
-                className="rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-xs font-mono font-semibold text-sky-700 dark:text-sky-400 focus:outline-none focus:border-sky-600"
+                className="w-full sm:w-auto max-w-full min-w-0 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-xs font-mono font-semibold text-sky-700 dark:text-sky-400 focus:outline-none focus:border-sky-600"
               >
                 {inboxes.map((ib) => (
                   <option key={ib.email} value={ib.email}>
@@ -535,8 +536,8 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
       {/* Main Mailbox Split View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Left: Message List */}
-        <div className="lg:col-span-5 glass-panel rounded-2xl overflow-hidden flex flex-col h-[500px]">
-          <div className="px-4 py-3 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between bg-zinc-50/75 dark:bg-zinc-900/40">
+        <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl overflow-hidden flex flex-col h-[380px] lg:h-[500px]">
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between bg-zinc-50/75 dark:bg-zinc-900/40 shrink-0">
             <span className="font-display font-bold text-xs text-zinc-950 dark:text-white inline-flex items-center gap-1.5 truncate">
               <Inbox className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
               <span className="truncate">{activeInboxEmail} ({messages.length})</span>
@@ -546,7 +547,13 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-white/[0.06] no-scrollbar">
+          <SwipeScrollArea
+            direction="vertical"
+            showArrows={true}
+            arrowSize="sm"
+            className="flex-1 min-h-0"
+            innerClassName="divide-y divide-zinc-200 dark:divide-white/[0.06]"
+          >
             {messages.length === 0 ? (
               <div className="p-8 text-center text-xs text-zinc-600 dark:text-zinc-400 space-y-2">
                 <p>
@@ -600,11 +607,11 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
                 );
               })
             )}
-          </div>
+          </SwipeScrollArea>
         </div>
 
         {/* Right: Selected Message Reader & AI Triage */}
-        <div className="lg:col-span-7 glass-panel rounded-2xl p-4 sm:p-5 flex flex-col justify-between h-[500px] overflow-y-auto">
+        <div className="lg:col-span-7 min-w-0 glass-panel rounded-2xl p-4 sm:p-5 flex flex-col justify-between h-[440px] lg:h-[500px] overflow-hidden">
           {selectedMsg ? (
             <div className="space-y-4 flex-1 flex flex-col min-h-0">
               {/* Message Header */}
@@ -673,11 +680,17 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
               </div>
 
               {/* Message Body Content */}
-              <div className="flex-1 overflow-y-auto p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-white/10 font-mono text-xs text-zinc-900 dark:text-zinc-100 whitespace-pre-wrap leading-relaxed">
+              <SwipeScrollArea
+                direction="vertical"
+                showArrows={true}
+                arrowSize="sm"
+                className="flex-1 min-h-0 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-white/10"
+                innerClassName="p-3.5 font-mono text-xs text-zinc-900 dark:text-zinc-100 whitespace-pre-wrap leading-relaxed"
+              >
                 {loadingMsgDetail
                   ? 'Loading full message...'
                   : selectedMsg.text || selectedMsg.snippet || 'No plain text body.'}
-              </div>
+              </SwipeScrollArea>
 
               {/* AI Triage Result Box (if run) */}
               {triageResults[selectedMsg.id] && (
@@ -720,15 +733,16 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
       {/* Compose / Reply Modal */}
       {composeOpen && (
         <div
-          className="fixed inset-0 z-50 bg-zinc-950/60 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-zinc-950/60 dark:bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setComposeOpen(false)}
         >
           <form
             onSubmit={handleSendEmail}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg glass-panel rounded-2xl p-5 space-y-4 shadow-2xl"
+            className="w-full max-w-lg glass-panel rounded-t-3xl sm:rounded-2xl max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl"
           >
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+            <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
+            <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 border-b border-zinc-200 dark:border-white/10 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
@@ -757,7 +771,13 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <SwipeScrollArea
+              direction="vertical"
+              showArrows={true}
+              arrowSize="sm"
+              className="flex-1 min-h-0"
+              innerClassName="p-4 sm:p-5 space-y-3 text-xs"
+            >
               <div>
                 <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Recipient To:</label>
                 <input
@@ -793,9 +813,9 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
                   className="w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 p-3 text-zinc-950 dark:text-white font-mono leading-relaxed"
                 />
               </div>
-            </div>
+            </SwipeScrollArea>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-white/10">
+            <div className="flex items-center justify-end gap-2 px-4 sm:px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-zinc-200 dark:border-white/10 shrink-0">
               <button
                 type="button"
                 onClick={() => setComposeOpen(false)}

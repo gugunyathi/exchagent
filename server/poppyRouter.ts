@@ -1189,17 +1189,24 @@ export function createPoppyRouter(): express.Router {
 
     const rawUrl = String(linkedinUrl || '').trim();
     if (!rawUrl) {
-      return res.status(400).json({ error: 'Please paste a LinkedIn profile URL (e.g. linkedin.com/in/your-name).' });
+      return res.status(400).json({ error: 'Please paste a LinkedIn, GitHub, or personal portfolio URL.' });
     }
 
-    // Parse LinkedIn slug cleanly (no external scraping — compliant URL-reference normalization)
-    let cleanedPath = rawUrl
+    // Parse any profile URL cleanly (LinkedIn, GitHub, portfolio domain, Linktree, personal site — zero scraping)
+    const cleanedPath = rawUrl
       .replace(/^https?:\/\//i, '')
       .replace(/^www\./i, '')
       .replace(/\?.*$/, '')
       .replace(/#.*$/, '');
+    const isLinkedIn = /linkedin\.com\/(?:in|pub)\//i.test(cleanedPath);
     const inMatch = cleanedPath.match(/linkedin\.com\/(?:in|pub)\/([^/]+)/i);
-    const slugRaw = inMatch ? inMatch[1] : cleanedPath.split('/').filter(Boolean).pop() || cleanedPath;
+    const domainPart = cleanedPath.split('/')[0] || '';
+    const pathSegments = cleanedPath.split('/').slice(1).filter(Boolean);
+    const slugRaw = inMatch
+      ? inMatch[1]
+      : pathSegments.length > 0
+      ? pathSegments[pathSegments.length - 1]
+      : domainPart.split('.')[0] || cleanedPath;
     // Strip trailing LinkedIn hex hash suffix like -84a21b30 if present
     const cleanSlug = slugRaw
       .replace(/-[0-9a-f]{6,10}$/i, '')
@@ -1226,7 +1233,9 @@ export function createPoppyRouter(): express.Router {
       baseHandle = `${baseHandle || 'talent'}.jobagent`;
     }
     const normalizedHandle = `${baseHandle}.agent`;
-    const normalizedLinkedinUrl = `linkedin.com/in/${slugRaw.replace(/[^a-z0-9._-]/gi, '') || cleanSlug}`;
+    const normalizedLinkedinUrl = isLinkedIn
+      ? `linkedin.com/in/${slugRaw.replace(/[^a-z0-9._-]/gi, '') || cleanSlug}`
+      : cleanedPath;
 
     const jobPool = (Array.isArray(clientJobs) && clientJobs.length >= 10 ? clientJobs : SEED_JOBS).slice(0, 14);
     const targetCount = Math.min(10, jobPool.length);
@@ -1250,10 +1259,10 @@ export function createPoppyRouter(): express.Router {
           ai.models.generateContent({
             model: 'gemini-4-hydrogen',
             contents: [
-              `You are onboarding a human job seeker into Switchboard via a 1-click LinkedIn URL quickstart (Zero LinkedIn scraping — infer a clean, realistic professional starter profile from their LinkedIn handle/slug and optional note).`,
-              `LinkedIn URL: https://${normalizedLinkedinUrl}`,
+              `You are onboarding a human professional into SWITCHZ via a 1-click URL quickstart (Zero external scraping — infer a clean, realistic professional starter profile from their URL handle/domain and optional note).`,
+              `Profile URL: https://${normalizedLinkedinUrl}`,
               `Derived Display Name: ${inferredDisplayName}`,
-              focusNote ? `User Target Role / Skills Note: ${focusNote}` : `No extra note provided — infer versatile high-demand digital/product/growth/tech skills aligned with the handle "${cleanSlug}" and match across open roles.`,
+              focusNote ? `User Target Role / Intent / Skills Note: ${focusNote}` : `No extra note provided — infer versatile high-demand digital/product/growth/tech skills aligned with "${cleanSlug}" and match across open roles.`,
               `Available Open Jobs (${compactJobs.length}):\n${JSON.stringify(compactJobs)}`,
               `Tasks:`,
               `1. Build the candidate's starter profile: displayName, roleTitle, headline, summary (1-2 sentences), organization ("Independent Talent" or inferred), yearsExp (number 3-10), 5 concise skills, 3 preferredRoles, salaryMinZAR (number 65000-120000).`,
@@ -1387,6 +1396,15 @@ export function createPoppyRouter(): express.Router {
             }
           }
 
+          const resolvedSkills =
+            Array.isArray(parsed.profile.skills) && parsed.profile.skills.length > 0
+              ? parsed.profile.skills.slice(0, 6).map(String)
+              : ['B2B Lead Generation', 'SQL', 'Product Strategy', 'Growth Automation', 'TypeScript'];
+          const resolvedRoles =
+            Array.isArray(parsed.profile.preferredRoles) && parsed.profile.preferredRoles.length > 0
+              ? parsed.profile.preferredRoles.slice(0, 3).map(String)
+              : ['Senior Product / Growth Lead', 'AI Operations Specialist'];
+
           return res.json({
             engine: 'gemini-4-hydrogen',
             profile: {
@@ -1394,21 +1412,30 @@ export function createPoppyRouter(): express.Router {
               handle: normalizedHandle,
               normalizedLinkedinUrl,
               roleTitle: String(parsed.profile.roleTitle || 'Product, Growth & AI Systems Specialist'),
-              headline: String(parsed.profile.headline || 'Standard Job Search Agent · Verified Human'),
+              headline: String(parsed.profile.headline || 'Standard Personal Agent · Verified Human'),
               summary: String(
                 parsed.profile.summary ||
-                  `Autonomous Switchboard job search agent synced with ${normalizedLinkedinUrl} for direct A2A interview scheduling.`
+                  `Autonomous SWITCHZ personal agent synced with ${normalizedLinkedinUrl} for direct A2A interview scheduling & deal matching.`
               ),
               organization: String(parsed.profile.organization || 'Independent Talent'),
               yearsExp: Math.max(2, Math.min(18, Math.round(Number(parsed.profile.yearsExp) || 5))),
-              skills: Array.isArray(parsed.profile.skills) && parsed.profile.skills.length > 0
-                ? parsed.profile.skills.slice(0, 6).map(String)
-                : ['B2B Lead Generation', 'SQL', 'Product Strategy', 'Growth Automation', 'TypeScript'],
-              preferredRoles: Array.isArray(parsed.profile.preferredRoles) && parsed.profile.preferredRoles.length > 0
-                ? parsed.profile.preferredRoles.slice(0, 3).map(String)
-                : ['Senior Product / Growth Lead', 'AI Operations Specialist'],
+              skills: resolvedSkills,
+              preferredRoles: resolvedRoles,
               salaryMinZAR: Number(parsed.profile.salaryMinZAR) || 85000,
               agentEmail: `engage@${normalizedHandle}`,
+              impliedIntent: {
+                categories: ['career_role', 'commercial_deal', 'event_networking'],
+                headline: focusNote.trim() || String(parsed.profile.headline || `Seeking ${resolvedRoles[0] || 'senior roles'} & high-signal B2B deals.`),
+                desiredOutcomes: resolvedRoles,
+                topics: resolvedSkills,
+                targetBudgetMinZAR: Number(parsed.profile.salaryMinZAR) || 85000,
+                preferredRemoteModes: ['Remote', 'Hybrid'],
+                maxDistanceMeters: 150,
+                autoMatchEnabled: true,
+                autoAddProximityContacts: true,
+                requireTopicOverlapForAutoAdd: false,
+                updatedAt: new Date().toISOString(),
+              },
             },
             matches: normalizedMatches.sort((a, b) => b!.score - a!.score),
           });
@@ -1465,21 +1492,35 @@ export function createPoppyRouter(): express.Router {
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
       .slice(0, 10);
 
+    const fallbackRoles = [focusNote.trim() || 'Senior Growth & Product Lead', 'AI Operations & Strategy', 'Digital Systems Lead'];
     return res.json({
-      engine: 'switchboard-quickstart-engine',
+      engine: 'switchz-quickstart-engine',
       profile: {
         displayName: inferredDisplayName,
         handle: normalizedHandle,
         normalizedLinkedinUrl,
-        roleTitle: focusNote.trim() || 'Job Search Agent · Product, Growth & Tech',
-        headline: `${inferredDisplayName} — Standard Human Job Agent`,
-        summary: `Free standard Switchboard job agent created from ${normalizedLinkedinUrl}. Scanning open roles & booking screening interviews automatically.`,
+        roleTitle: focusNote.trim() || 'Personal Agent · Product, Growth & Tech',
+        headline: `${inferredDisplayName} — Standard Personal Job & Deal Agent`,
+        summary: `Free standard SWITCHZ personal agent created from ${normalizedLinkedinUrl}. Scanning open vacancies, RFPs & event peers automatically.`,
         organization: 'Independent Talent',
         yearsExp: 6,
         skills: skillHints,
-        preferredRoles: [focusNote.trim() || 'Senior Growth & Product Lead', 'AI Operations & Strategy', 'Digital Systems Lead'],
+        preferredRoles: fallbackRoles,
         salaryMinZAR: 85000,
         agentEmail: `engage@${normalizedHandle}`,
+        impliedIntent: {
+          categories: ['career_role', 'commercial_deal', 'event_networking'],
+          headline: focusNote.trim() || `Seeking ${fallbackRoles[0]} roles & qualified commercial matches.`,
+          desiredOutcomes: fallbackRoles,
+          topics: skillHints,
+          targetBudgetMinZAR: 85000,
+          preferredRemoteModes: ['Remote', 'Hybrid'],
+          maxDistanceMeters: 150,
+          autoMatchEnabled: true,
+          autoAddProximityContacts: true,
+          requireTopicOverlapForAutoAdd: false,
+          updatedAt: new Date().toISOString(),
+        },
       },
       matches: fallbackMatches,
     });
@@ -1536,10 +1577,10 @@ Return structured JSON matching the schema.`;
 
         const response = await withTimeout(
           ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-4-hydrogen',
             contents: prompt,
             config: {
-              thinkingConfig: { thinkingBudget: 0 },
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,

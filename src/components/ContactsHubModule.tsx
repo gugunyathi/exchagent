@@ -364,7 +364,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left & Center: Searchable Contacts List + Contact Inspector */}
-        <div className="lg:col-span-7 space-y-3">
+        <div className="lg:col-span-7 min-w-0 space-y-3">
           <div className="glass-panel rounded-2xl p-3.5 sm:p-4 space-y-3">
             {/* Search & Source Filters */}
             <div className="flex flex-col sm:flex-row gap-2">
@@ -393,7 +393,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
                 value={sourceFilter}
                 onChange={(e) => setSourceFilter(e.target.value as 'all' | ContactSource)}
                 aria-label="Filter contacts by share source"
-                className="min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-900 dark:text-zinc-200 focus:outline-none"
+                className="w-full sm:w-auto max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-medium text-zinc-900 dark:text-zinc-200 focus:outline-none"
               >
                 <option value="all">All Sources</option>
                 <option value="event_wifi">Event Wi-Fi Mesh</option>
@@ -408,8 +408,9 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
             {/* Category Tabs */}
             <SwipeScrollArea
               direction="horizontal"
-              showArrows={false}
-              innerClassName="flex items-center gap-1"
+              showArrows={true}
+              arrowSize="sm"
+              innerClassName="flex items-center gap-1 pr-7"
             >
               {(
                 [
@@ -459,7 +460,9 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
                 {/* Scrollable Contacts List */}
                 <SwipeScrollArea
                   direction="vertical"
-                  className="md:col-span-6 max-h-[430px] rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-950/80"
+                  showArrows={true}
+                  arrowSize="sm"
+                  className="md:col-span-6 min-w-0 max-h-[430px] rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-950/80"
                   innerClassName="divide-y divide-zinc-200 dark:divide-white/[0.08]"
                 >
                   {filteredContacts.map((contact) => {
@@ -525,7 +528,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
 
                 {/* Selected Contact Inspector */}
                 {selectedContact && (
-                  <div className="md:col-span-6 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/70 dark:bg-zinc-950 p-3.5 space-y-3">
+                  <div className="md:col-span-6 min-w-0 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50/70 dark:bg-zinc-950 p-3.5 space-y-3">
                     <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-zinc-200 dark:border-white/10">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -679,7 +682,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
                     </div>
 
                     {/* Direct Card Actions */}
-                    <div className="grid grid-cols-3 gap-1.5 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
                       <button
                         type="button"
                         onClick={() =>
@@ -691,7 +694,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
                               : 45000,
                           })
                         }
-                        className="min-h-[36px] rounded-lg bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 text-xs font-semibold inline-flex items-center justify-center gap-1 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap"
+                        className="col-span-2 sm:col-span-1 min-h-[36px] rounded-lg bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 text-xs font-semibold inline-flex items-center justify-center gap-1 hover:bg-zinc-800 dark:hover:bg-white whitespace-nowrap"
                       >
                         <Zap className="w-3.5 h-3.5" />
                         Negotiate
@@ -721,7 +724,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
         </div>
 
         {/* Right Column: Smart AI Opportunity Scout & Autonomous Negotiation */}
-        <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3.5">
+        <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl p-4 space-y-3.5">
           <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-zinc-200 dark:border-white/10">
             <div>
               <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
@@ -746,7 +749,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
               <select
                 value={scoutingAgentHandle}
                 onChange={(e) => setScoutingAgentHandle(e.target.value)}
-                className="mt-1 w-full min-h-[36px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[36px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -822,7 +825,7 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
                 </p>
               )}
 
-              <SwipeScrollArea direction="vertical" className="max-h-[430px]" innerClassName="space-y-2.5 pr-1">
+              <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-[430px]" innerClassName="space-y-2.5 pr-1">
                 {aiOpportunities.map((opp) => {
                   const outcome = oppOutcomeMap[opp.id];
                   const isBusy = negotiatingOppId === opp.id;
@@ -920,14 +923,15 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
       {/* Add Contact From Directory Modal */}
       {importModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-50 bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setImportModalOpen(false)}
         >
           <div
-            className="w-full max-w-md glass-panel rounded-2xl p-4 space-y-3"
+            className="w-full max-w-md glass-panel rounded-t-3xl sm:rounded-2xl max-h-[90dvh] flex flex-col overflow-hidden pb-[calc(1rem+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10">
+            <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-white/10 shrink-0">
               <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-white">
                 Save Directory Agent Card
               </h3>
@@ -942,11 +946,17 @@ export const ContactsHubModule: React.FC<ContactsHubModuleProps> = ({
             </div>
 
             {importableAgents.length === 0 ? (
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 py-4 text-center">
+              <p className="text-xs text-zinc-600 dark:text-zinc-400 py-6 px-4 text-center">
                 All directory agent cards are already saved in your Contacts list.
               </p>
             ) : (
-              <SwipeScrollArea direction="vertical" className="max-h-72" innerClassName="space-y-1.5">
+              <SwipeScrollArea
+                direction="vertical"
+                showArrows={true}
+                arrowSize="sm"
+                className="flex-1 min-h-0 px-4 pt-3"
+                innerClassName="space-y-1.5"
+              >
                 {importableAgents.map((agent) => (
                   <div
                     key={agent.id}

@@ -750,10 +750,13 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <SwipeScrollArea
             direction="horizontal"
-            innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+            showArrows={true}
+            arrowSize="sm"
+            className="max-w-full"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
           >
             {(
               [
@@ -891,7 +894,13 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
       {activeTab === 'matches' && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <SwipeScrollArea direction="horizontal" innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10">
+            <SwipeScrollArea
+              direction="horizontal"
+              showArrows={true}
+              arrowSize="sm"
+              className="max-w-full"
+              innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10"
+            >
               {(
                 [
                   { id: 'seeker', label: 'Job Seeker', icon: UserCheck },
@@ -934,8 +943,8 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
           {roleFilter === 'seeker' && selectedSeeker && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
               {/* Left: Concise Candidate Profile Card + Collapsible CV Editor */}
-              <div className="lg:col-span-4 glass-panel rounded-2xl p-4 space-y-3.5">
-                <div className="flex items-center justify-between gap-2">
+              <div className="lg:col-span-4 min-w-0 glass-panel rounded-2xl p-4 space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-display text-xs font-bold text-zinc-900 dark:text-zinc-200">
                     Candidate Profile
                   </span>
@@ -946,7 +955,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                       setSelectedSeekerId(e.target.value);
                       if (found?.linkedinUrl) setLinkedinInput(found.linkedinUrl);
                     }}
-                    className="rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-200 max-w-[180px]"
+                    className="rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-200 w-full sm:w-auto max-w-full sm:max-w-[180px] min-w-0"
                   >
                     {personas.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1098,7 +1107,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
               </div>
 
               {/* Right: Job Roles with Visual Fit Rings */}
-              <div className="lg:col-span-8 space-y-3">
+              <div className="lg:col-span-8 min-w-0 space-y-3">
                 {/* Quick Action Summary Strip */}
                 <div className="glass-panel rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -1161,7 +1170,13 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                 </div>
 
                 {/* Region / Zone & OpenAI Shortcut Filter Strip */}
-                <div className="flex flex-wrap items-center gap-1.5">
+                <SwipeScrollArea
+                  direction="horizontal"
+                  showArrows={true}
+                  arrowSize="sm"
+                  className="w-full"
+                  innerClassName="inline-flex items-center gap-1.5 pr-7 py-0.5"
+                >
                   {[
                     { id: 'all' as const, label: `All Roles (${jobs.length})` },
                     { id: 'openai' as const, label: 'OpenAI (10 Regions)' },
@@ -1174,7 +1189,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                       key={chip.id}
                       type="button"
                       onClick={() => setRegionFilter(chip.id)}
-                      className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
+                      className={`min-h-[30px] px-2.5 rounded-lg text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
                         regionFilter === chip.id
                           ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
                           : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:border-zinc-500'
@@ -1183,7 +1198,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                       {chip.label}
                     </button>
                   ))}
-                </div>
+                </SwipeScrollArea>
 
                 {[...jobs]
                   .filter((job) => {
@@ -1334,7 +1349,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                               {match.interviewPitch}
                             </p>
                           )}
-                          <div className="grid grid-cols-4 gap-2 text-[11px] font-mono tabular-nums">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono tabular-nums">
                             <div className="bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/10 rounded-lg px-2.5 py-1.5">
                               <span className="text-zinc-600 dark:text-zinc-500 block text-[10px]">Skills</span>
                               <span className="text-emerald-700 dark:text-emerald-300 font-semibold">{match.factors.skillsOverlap}%</span>
@@ -1375,11 +1390,11 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                       Inspect candidate tailored CVs &amp; Cover Letters, download PDF/DOCX, manage HR team access, and view full company action history.
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">
                     <select
                       value={selectedHrCompanyHandle}
                       onChange={(e) => setSelectedHrCompanyHandle(e.target.value)}
-                      className="min-h-[36px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100"
+                      className="min-h-[36px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100 w-full sm:w-auto max-w-full min-w-0"
                     >
                       {businesses.map((b) => (
                         <option key={b.id} value={b.handle}>
@@ -1727,7 +1742,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                 setSelectedSeekerId(e.target.value);
                 if (found?.linkedinUrl) setLinkedinInput(found.linkedinUrl);
               }}
-              className="rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-900 dark:text-zinc-200"
+              className="rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-900 dark:text-zinc-200 w-full sm:w-auto max-w-full min-w-0"
             >
               {personas.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1766,7 +1781,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
       {activeTab === 'consent' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           {/* Left: POPIA Consent Scopes */}
-          <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-3">
+          <div className="lg:col-span-7 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50">
@@ -1842,7 +1857,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
           </div>
 
           {/* Right: Compliance Audit Trail */}
-          <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
+          <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50">
                 Compliance Audit Trail
@@ -1851,7 +1866,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                 {poppyAuditLogs.length} events
               </span>
             </div>
-            <SwipeScrollArea direction="vertical" className="max-h-[360px]" innerClassName="space-y-2">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-[360px]" innerClassName="space-y-2 pr-1">
               {poppyAuditLogs.map((log) => (
                 <div key={log.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-2.5 text-xs">
                   <div className="flex items-center justify-between font-mono text-[11px]">
@@ -1912,7 +1927,13 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
               </button>
             </div>
 
-            <div className="px-4 py-2 border-b border-zinc-200 dark:border-white/10 flex items-center gap-1.5 shrink-0 overflow-x-auto no-scrollbar">
+            <SwipeScrollArea
+              direction="horizontal"
+              showArrows={true}
+              arrowSize="sm"
+              className="border-b border-zinc-200 dark:border-white/10 shrink-0"
+              innerClassName="px-4 py-2 pr-8 flex items-center gap-1.5"
+            >
               {(
                 [
                   { id: 'conversations', label: 'Conversations', icon: MessageSquare },
@@ -1926,7 +1947,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                     key={t.id}
                     type="button"
                     onClick={() => setProtocolDrawerTab(t.id)}
-                    className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap ${
+                    className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                       protocolDrawerTab === t.id
                         ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                         : 'text-zinc-700 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-100'
@@ -1937,18 +1958,18 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                   </button>
                 );
               })}
-            </div>
+            </SwipeScrollArea>
 
-            <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="p-4 space-y-4">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0" innerClassName="p-4 space-y-4">
               {protocolDrawerTab === 'conversations' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="block text-xs text-zinc-700 dark:text-zinc-400 font-medium">
+                    <label className="block text-xs text-zinc-700 dark:text-zinc-400 font-medium min-w-0">
                       Target Agent
                       <select
                         value={convTarget}
                         onChange={(e) => setConvTarget(e.target.value)}
-                        className="mt-1 w-full rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white"
+                        className="mt-1 w-full max-w-full min-w-0 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white"
                       >
                         {agents
                           .filter((a) => a.handle !== '911.emergency.agent')
@@ -2043,7 +2064,7 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                         </div>
                       </div>
 
-                      <div className="space-y-2 max-h-[260px] overflow-y-auto no-scrollbar">
+                      <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-[260px]" innerClassName="space-y-2 pr-1">
                         {activeConv.events.map((evt) => (
                           <div key={evt.id} className="rounded-lg bg-white dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/10 p-2.5 space-y-1.5">
                             <div className="flex items-center justify-between text-[10px] font-mono text-zinc-600 dark:text-zinc-400">
@@ -2082,15 +2103,15 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                             )}
                           </div>
                         ))}
-                      </div>
+                      </SwipeScrollArea>
 
                       {activeConv.status !== 'closed' && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap sm:flex-nowrap gap-2">
                           <input
                             type="text"
                             value={convMsg}
                             onChange={(e) => setConvMsg(e.target.value)}
-                            className="flex-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white"
+                            className="flex-1 min-w-0 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white"
                           />
                           <button
                             type="button"
@@ -2170,17 +2191,25 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                     </div>
                   )}
 
-                  <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-900 dark:text-emerald-300 overflow-x-auto max-h-[320px]">
-                    {loadingManifest
-                      ? 'Fetching manifest...'
-                      : manifestRaw || 'Select an endpoint above to validate.'}
-                  </pre>
+                  <SwipeScrollArea
+                    direction="both"
+                    showArrows={true}
+                    arrowSize="sm"
+                    className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 max-h-[320px]"
+                    innerClassName="p-3"
+                  >
+                    <pre className="text-[11px] font-mono text-zinc-900 dark:text-emerald-300">
+                      {loadingManifest
+                        ? 'Fetching manifest...'
+                        : manifestRaw || 'Select an endpoint above to validate.'}
+                    </pre>
+                  </SwipeScrollArea>
                 </div>
               )}
 
               {protocolDrawerTab === 'tasks' && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-semibold text-zinc-950 dark:text-zinc-100">
                       Excluded Tasks &amp; Feedback (§9)
                     </span>
@@ -2193,9 +2222,17 @@ export const PoppyRecruitmentModule: React.FC<PoppyRecruitmentModuleProps> = ({
                     </button>
                   </div>
                   {tasksData && (
-                    <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-900 dark:text-emerald-300 overflow-x-auto max-h-[220px]">
-                      {tasksData}
-                    </pre>
+                    <SwipeScrollArea
+                      direction="both"
+                      showArrows={true}
+                      arrowSize="sm"
+                      className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 max-h-[220px]"
+                      innerClassName="p-3"
+                    >
+                      <pre className="text-[11px] font-mono text-zinc-900 dark:text-emerald-300">
+                        {tasksData}
+                      </pre>
+                    </SwipeScrollArea>
                   )}
                   <div className="flex gap-2">
                     <input

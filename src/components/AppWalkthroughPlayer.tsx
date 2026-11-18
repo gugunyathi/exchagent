@@ -762,18 +762,18 @@ export const AppWalkthroughPlayer: React.FC<AppWalkthroughPlayerProps> = ({
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            className="fixed inset-0 z-[85] bg-black/95 backdrop-blur-md flex flex-col p-3 sm:p-6"
+            className="fixed inset-0 z-[85] bg-black/95 backdrop-blur-md flex flex-col p-3 sm:p-6 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
             onClick={() => setFullscreen(false)}
           >
             <div
-              className="flex items-center justify-between gap-3 mb-3 text-white"
+              className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 mb-3 text-white shrink-0"
               onClick={(e) => e.stopPropagation()}
             >
-              <div>
-                <h3 className="font-display font-bold text-base sm:text-lg">{scenario.title}</h3>
-                <p className="text-xs text-zinc-400">{activeChapter.label} — {activeChapter.detail}</p>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display font-bold text-sm sm:text-lg truncate">{scenario.title}</h3>
+                <p className="text-xs text-zinc-400 line-clamp-1">{activeChapter.label} — {activeChapter.detail}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setMuted((m) => !m)}

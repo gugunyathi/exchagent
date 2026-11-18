@@ -122,42 +122,62 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ variant = 'header' }) 
     );
   }
 
+  const isDark = theme === 'dark';
+
   return (
-    <div
-      role="group"
-      aria-label="Theme selector"
-      className="h-9 inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-0.5 gap-0.5 shrink-0"
-    >
+    <>
+      {/* Compact single-tap toggle on narrow phones so header icons never clip */}
       <button
         type="button"
-        onClick={() => setTheme('light')}
-        aria-label="Light mode"
-        aria-pressed={theme === 'light'}
-        title="Light Mode"
-        className={`h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[11px] font-medium transition-colors ${
-          theme === 'light'
-            ? 'bg-white text-zinc-950 font-semibold shadow-xs border border-zinc-200/80'
-            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
-        }`}
+        onClick={() => setTheme(isDark ? 'light' : 'dark')}
+        aria-label={isDark ? 'Switch to Light mode' : 'Switch to Dark mode'}
+        title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        className="sm:hidden w-8 h-8 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 inline-flex items-center justify-center shrink-0 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors"
       >
-        <Sun className={`w-3.5 h-3.5 shrink-0 ${theme === 'light' ? 'text-amber-500' : ''}`} />
-        <span className="hidden xl:inline">Light</span>
+        {isDark ? (
+          <Moon className="w-3.5 h-3.5 text-sky-400" />
+        ) : (
+          <Sun className="w-3.5 h-3.5 text-amber-500" />
+        )}
       </button>
-      <button
-        type="button"
-        onClick={() => setTheme('dark')}
-        aria-label="Dark mode"
-        aria-pressed={theme === 'dark'}
-        title="Dark Mode"
-        className={`h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[11px] font-medium transition-colors ${
-          theme === 'dark'
-            ? 'bg-zinc-800 text-zinc-50 font-semibold shadow-xs border border-white/15'
-            : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
-        }`}
+
+      {/* Dual segmented selector on >= 640px */}
+      <div
+        role="group"
+        aria-label="Theme selector"
+        className="hidden sm:inline-flex h-9 items-center rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 p-0.5 gap-0.5 shrink-0"
       >
-        <Moon className={`w-3.5 h-3.5 shrink-0 ${theme === 'dark' ? 'text-sky-400' : ''}`} />
-        <span className="hidden xl:inline">Dark</span>
-      </button>
-    </div>
+        <button
+          type="button"
+          onClick={() => setTheme('light')}
+          aria-label="Light mode"
+          aria-pressed={theme === 'light'}
+          title="Light Mode"
+          className={`h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[11px] font-medium transition-colors ${
+            theme === 'light'
+              ? 'bg-white text-zinc-950 font-semibold shadow-xs border border-zinc-200/80'
+              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
+          }`}
+        >
+          <Sun className={`w-3.5 h-3.5 shrink-0 ${theme === 'light' ? 'text-amber-500' : ''}`} />
+          <span className="hidden xl:inline">Light</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setTheme('dark')}
+          aria-label="Dark mode"
+          aria-pressed={theme === 'dark'}
+          title="Dark Mode"
+          className={`h-7 px-2 rounded-lg inline-flex items-center gap-1 text-[11px] font-medium transition-colors ${
+            theme === 'dark'
+              ? 'bg-zinc-800 text-zinc-50 font-semibold shadow-xs border border-white/15'
+              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
+          }`}
+        >
+          <Moon className={`w-3.5 h-3.5 shrink-0 ${theme === 'dark' ? 'text-sky-400' : ''}`} />
+          <span className="hidden xl:inline">Dark</span>
+        </button>
+      </div>
+    </>
   );
 };

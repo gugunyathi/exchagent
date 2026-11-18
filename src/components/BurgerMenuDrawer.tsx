@@ -27,6 +27,7 @@ import {
   Scale,
   ShieldCheck,
   FileText,
+  Target,
 } from 'lucide-react';
 import { CurrencyMode, SurfaceMode, formatMoney } from '../types/firestore';
 import { LegalDocTab, COMPANY_LEGAL_DETAILS } from '../data/legalDocuments';
@@ -40,6 +41,7 @@ export type DrawerRouteTarget =
   | { tab: 'home' }
   | { tab: 'legal'; doc: LegalDocTab }
   | { tab: 'directory' }
+  | { tab: 'intent' }
   | { tab: 'arena' }
   | { tab: 'hiring' }
   | { tab: 'registry' }
@@ -129,6 +131,13 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
       icon: Compass,
       target: { tab: 'directory' },
       active: surface === 'desktop' && activeTab === 'directory',
+    },
+    {
+      id: 'intent',
+      label: 'Intent & Match',
+      icon: Target,
+      target: { tab: 'intent' },
+      active: surface === 'desktop' && activeTab === 'intent',
     },
     {
       id: 'arena',
@@ -246,7 +255,7 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
           </button>
         </div>
 
-        <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="p-4 space-y-5">
+        <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0" innerClassName="p-4 space-y-5">
           {/* Compact 4-Metric Strip */}
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-zinc-200 dark:border-white/[0.08] p-2.5">
@@ -353,14 +362,14 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
                       onSetSurface(s.id);
                       onClose();
                     }}
-                    className={`min-h-[42px] rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors border ${
+                    className={`min-h-[42px] min-w-0 px-0.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors border ${
                       surface === s.id
                         ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white font-semibold'
                         : 'bg-zinc-50 dark:bg-zinc-900/80 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white border-zinc-200 dark:border-white/[0.08]'
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{s.label}</span>
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-full">{s.label}</span>
                   </button>
                 );
               })}
@@ -426,7 +435,7 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
                   onSetLocalCurrency(next);
                   if (currency !== 'USD') onSetCurrency(next);
                 }}
-                className="flex-1 min-h-[34px] rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-mono text-zinc-800 dark:text-zinc-200"
+                className="flex-1 min-w-0 max-w-full min-h-[34px] rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-mono text-zinc-800 dark:text-zinc-200"
               >
                 {CURRENCY_LIST.map((c) => (
                   <option key={c.code} value={c.code}>

@@ -18,6 +18,9 @@ import {
   ExternalLink,
   Award,
   Clock,
+  Target,
+  Plus,
+  Briefcase,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -25,9 +28,11 @@ import {
   AgentActionHistoryEntry,
   HrTeamMember,
   JobPostingDoc,
+  RfpDoc,
   RecruitmentMatchDoc,
   CurrencyMode,
   formatMoney,
+  zarToUsd,
 } from '../types/firestore';
 import {
   downloadCvAsPdf,
@@ -36,6 +41,7 @@ import {
   downloadCoverLetterAsDocx,
 } from '../lib/docExport';
 import { emitToast } from '../lib/toast';
+import { SwipeScrollArea } from './SwipeScrollArea';
 
 interface CompanyHrPortalModalProps {
   open: boolean;
@@ -58,6 +64,10 @@ interface CompanyHrPortalModalProps {
   ) => void;
   onAddHrTeamMember: (companyAgentId: string, member: Omit<HrTeamMember, 'id' | 'addedAt'>) => HrTeamMember | void;
   onLogHistory: (entry: Omit<AgentActionHistoryEntry, 'id' | 'timestamp'>) => void;
+  rfps?: RfpDoc[];
+  onPublishRfp?: (rfp: RfpDoc) => Promise<void>;
+  onCreateJob?: (job: JobPostingDoc) => void;
+  onOpenIntentHub?: () => void;
 }
 
 export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
@@ -77,14 +87,24 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
   onUpdateApplicationStatus,
   onAddHrTeamMember,
   onLogHistory,
+  rfps = [],
+  onPublishRfp,
+  onCreateJob,
+  onOpenIntentHub,
 }) => {
-  const [activeTab, setActiveTab] = useState<'appliers' | 'docs' | 'history' | 'access'>('appliers');
+  const [activeTab, setActiveTab] = useState<'appliers' | 'docs' | 'history' | 'access' | 'intent'>('appliers');
   const [selectedJobId, setSelectedJobId] = useState<string>('all');
   const [selectedRegion, setSelectedRegion] = useState<string>('all');
   const [blindReview, setBlindReview] = useState(false);
   const [selectedPkgId, setSelectedPkgId] = useState<string | null>(null);
   const [docViewMode, setDocViewMode] = useState<'cv' | 'cover_letter'>('cv');
   const [noteDraft, setNoteDraft] = useState('');
+  const [quickRfpTitle, setQuickRfpTitle] = useState('');
+  const [quickRfpBudget, setQuickRfpBudget] = useState(180000);
+  const [quickRfpDesc, setQuickRfpDesc] = useState('');
+  const [quickJobTitle, setQuickJobTitle] = useState('');
+  const [quickJobSkills, setQuickJobSkills] = useState('TypeScript, AI Agents, Growth');
+  const [quickJobMaxSalary, setQuickJobMaxSalary] = useState(140000);
 
   // Active HR Reviewer Identity
   const hrRoster: HrTeamMember[] = useMemo(() => {
@@ -332,7 +352,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">
             {allBusinessAgents.length > 1 && (
               <select
                 value={companyAgent.id}
@@ -345,7 +365,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                     setSelectedPkgId(null);
                   }
                 }}
-                className="min-h-[34px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100 max-w-[165px]"
+                className="min-h-[34px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100 w-full sm:w-auto max-w-full sm:max-w-[165px] min-w-0"
                 title="Switch Company Agent"
               >
                 {allBusinessAgents.map((b) => (
@@ -360,7 +380,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
               <select
                 value={activeReviewer?.id || ''}
                 onChange={(e) => setActiveReviewerId(e.target.value)}
-                className="min-h-[34px] rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/30 px-2.5 text-xs font-medium text-emerald-900 dark:text-emerald-200 max-w-[190px]"
+                className="min-h-[34px] rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-500/30 px-2.5 text-xs font-medium text-emerald-900 dark:text-emerald-200 w-full sm:w-auto max-w-full sm:max-w-[190px] min-w-0"
                 title="Active Authorized HR Staff"
               >
                 {hrRoster.map((hr) => (
@@ -384,11 +404,18 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
         </div>
 
         {/* Portal Tabs + Role / Region Filters */}
-        <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10">
+        <div className="flex flex-col gap-2 shrink-0">
+          <SwipeScrollArea
+            direction="horizontal"
+            showArrows={true}
+            arrowSize="sm"
+            className="w-full"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10"
+          >
             {[
               { id: 'appliers' as const, label: `Top Appliers (${topAppliers.length})`, icon: Trophy },
               { id: 'docs' as const, label: `Candidate Docs (${companyPackages.length})`, icon: FileText },
+              { id: 'intent' as const, label: `Company Intent: RFPs & Vacancies`, icon: Target },
               { id: 'history' as const, label: `Company & HR History (${companyHistory.length})`, icon: History },
               { id: 'access' as const, label: `HR Staff Roster (${hrRoster.length})`, icon: Users },
             ].map((t) => {
@@ -398,7 +425,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id)}
-                  className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                  className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                     activeTab === t.id
                       ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                       : 'text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
@@ -409,14 +436,14 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                 </button>
               );
             })}
-          </div>
+          </SwipeScrollArea>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {regionOptions.length > 0 && (
               <select
                 value={selectedRegion}
                 onChange={(e) => setSelectedRegion(e.target.value)}
-                className="min-h-[32px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-800 dark:text-zinc-200 max-w-[180px]"
+                className="min-h-[32px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-800 dark:text-zinc-200 w-full sm:w-auto max-w-full sm:max-w-[180px] min-w-0"
               >
                 <option value="all">All Regions ({regionOptions.length})</option>
                 {regionOptions.map((rz) => (
@@ -430,7 +457,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
             <select
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
-              className="min-h-[32px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-800 dark:text-zinc-200 max-w-[200px]"
+              className="min-h-[32px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-800 dark:text-zinc-200 w-full sm:w-auto max-w-full sm:max-w-[200px] min-w-0"
             >
               <option value="all">All Open Roles ({companyJobs.length})</option>
               {companyJobs.map((j) => (
@@ -443,7 +470,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
             <button
               type="button"
               onClick={() => setBlindReview((v) => !v)}
-              className={`min-h-[32px] px-2.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1 ${
+              className={`min-h-[32px] px-2.5 rounded-lg border text-xs font-medium inline-flex items-center gap-1 whitespace-nowrap ${
                 blindReview
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-500/15 dark:border-emerald-400/30 dark:text-emerald-300'
                   : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300'
@@ -457,7 +484,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 space-y-4">
+        <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0" innerClassName="pr-1 space-y-4">
           {/* TAB 1: TOP APPLIERS RANKING */}
           {activeTab === 'appliers' && (
             <div className="space-y-3">
@@ -589,7 +616,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
           {/* TAB 2: CANDIDATE SUBMITTED DOCS + HR NOTES + PDF/DOCX DOWNLOAD */}
           {activeTab === 'docs' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              <div className="lg:col-span-4 space-y-2">
+              <div className="lg:col-span-4 min-w-0 space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                   Submitted Dossiers ({companyPackages.length})
                 </p>
@@ -623,7 +650,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                 })}
               </div>
 
-              <div className="lg:col-span-8">
+              <div className="lg:col-span-8 min-w-0">
                 {selectedPkg ? (
                   <div className="rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-200 dark:border-white/10">
@@ -657,11 +684,17 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10">
+                      <SwipeScrollArea
+                        direction="horizontal"
+                        showArrows={true}
+                        arrowSize="sm"
+                        className="max-w-full"
+                        innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10"
+                      >
                         <button
                           type="button"
                           onClick={() => setDocViewMode('cv')}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 ${
                             docViewMode === 'cv'
                               ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold'
                               : 'text-zinc-600 dark:text-zinc-400'
@@ -672,7 +705,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setDocViewMode('cover_letter')}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 ${
                             docViewMode === 'cover_letter'
                               ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold'
                               : 'text-zinc-600 dark:text-zinc-400'
@@ -680,7 +713,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                         >
                           Cover Letter
                         </button>
-                      </div>
+                      </SwipeScrollArea>
 
                       <div className="flex flex-wrap items-center gap-1.5">
                         {(['shortlisted', 'interview', 'offer'] as const).map((st) => (
@@ -753,13 +786,13 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           type="text"
                           value={noteDraft}
                           onChange={(e) => setNoteDraft(e.target.value)}
                           placeholder="Add hiring committee evaluation note..."
-                          className="flex-1 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs text-zinc-950 dark:text-white"
+                          className="flex-1 min-w-0 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 text-xs text-zinc-950 dark:text-white"
                         />
                         <button
                           type="button"
@@ -773,7 +806,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
                             );
                             setNoteDraft('');
                           }}
-                          className="min-h-[36px] px-3 rounded-lg bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 text-xs font-semibold inline-flex items-center gap-1.5"
+                          className="min-h-[36px] px-3 rounded-lg bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 text-xs font-semibold inline-flex items-center justify-center gap-1.5 shrink-0"
                         >
                           <MessageSquarePlus className="w-3.5 h-3.5" />
                           Add Note
@@ -845,7 +878,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
           {/* TAB 4: HR STAFF ACCESS ROSTER */}
           {activeTab === 'access' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              <div className="lg:col-span-7 space-y-2">
+              <div className="lg:col-span-7 min-w-0 space-y-2">
                 <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
                   Authorized HR &amp; Recruiting Staff ({hrRoster.length})
                 </p>
@@ -882,7 +915,7 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
 
               <form
                 onSubmit={handleAddHrSubmit}
-                className="lg:col-span-5 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-3"
+                className="lg:col-span-5 min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-3"
               >
                 <p className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
                   <UserPlus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -935,7 +968,192 @@ export const CompanyHrPortalModal: React.FC<CompanyHrPortalModalProps> = ({
               </form>
             </div>
           )}
-        </div>
+
+          {/* TAB 5: COMPANY INTENT — RFPS & VACANCIES */}
+          {activeTab === 'intent' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                    <Target className="w-4 h-4 text-emerald-500" />
+                    Company Intent Publisher — RFPs &amp; Open Vacancies
+                  </p>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Companies imply commercial and hiring intent by publishing Requests for Proposal (RFPs) and Vacancies.
+                  </p>
+                </div>
+                {onOpenIntentHub && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenIntentHub();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500"
+                  >
+                    Open Full Intent &amp; Matches Hub
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {onPublishRfp && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!quickRfpTitle.trim()) return;
+                      const budgetZAR = Number(quickRfpBudget) || 150000;
+                      await onPublishRfp({
+                        id: `rfp_${Date.now()}`,
+                        publisherAgentId: companyAgent.id,
+                        publisherOwnerUid: companyAgent.ownerUid,
+                        publisherHandle: companyAgent.handle,
+                        title: quickRfpTitle.trim(),
+                        description:
+                          quickRfpDesc.trim() ||
+                          `${companyAgent.displayName} requesting autonomous vendor proposals for ${quickRfpTitle.trim()}.`,
+                        budgetZAR,
+                        budgetUSD: zarToUsd(budgetZAR),
+                        category: 'Enterprise Procurement',
+                        broadcastChannels: ['directory', 'google_maps_billboard', 'ble_beacon'],
+                        status: 'OPEN',
+                        expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
+                        matchedProposalsCount: 0,
+                      });
+                      setQuickRfpTitle('');
+                      setQuickRfpDesc('');
+                    }}
+                    className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-2.5"
+                  >
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5 text-emerald-500" /> Publish Company Request for Proposal
+                    </p>
+                    <input
+                      type="text"
+                      required
+                      value={quickRfpTitle}
+                      onChange={(e) => setQuickRfpTitle(e.target.value)}
+                      placeholder="RFP Title (e.g. Q1 Cloud FinOps & Automation RFP)"
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
+                    />
+                    <input
+                      type="number"
+                      value={quickRfpBudget}
+                      onChange={(e) => setQuickRfpBudget(Number(e.target.value) || 0)}
+                      placeholder="Budget ZAR"
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs font-mono tabular-nums text-zinc-950 dark:text-white"
+                    />
+                    <textarea
+                      rows={2}
+                      value={quickRfpDesc}
+                      onChange={(e) => setQuickRfpDesc(e.target.value)}
+                      placeholder="Requirements & SLA..."
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+                    >
+                      Broadcast Company RFP
+                    </button>
+                  </form>
+                )}
+
+                {onCreateJob && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!quickJobTitle.trim()) return;
+                      const maxSal = Number(quickJobMaxSalary) || 140000;
+                      onCreateJob({
+                        id: `job_${Date.now()}`,
+                        companyAgentHandle: companyAgent.handle,
+                        companyName: companyAgent.organization || companyAgent.displayName,
+                        title: quickJobTitle.trim(),
+                        department: 'Technology & Operations',
+                        location: 'Hybrid / Global Remote',
+                        remoteMode: 'Hybrid',
+                        salaryRangeZAR: [Math.round(maxSal * 0.7), maxSal],
+                        requiredSkills: quickJobSkills
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                        minYearsExp: 3,
+                        description: `${companyAgent.displayName} is hiring ${quickJobTitle.trim()} with autonomous candidate matching.`,
+                        status: 'OPEN',
+                        autonomyLevel: 'shortlist_auto_offer_approve',
+                        careersUrl: companyAgent.careersUrl || `https://${companyAgent.handle}/careers`,
+                        poppyDiscoveryPath: `/companies/${companyAgent.handle.replace('.agent', '')}/.well-known/poppy.json`,
+                        weights: { skills: 40, experience: 25, compensation: 20, location: 15 },
+                        createdAt: new Date().toISOString(),
+                      });
+                      setQuickJobTitle('');
+                    }}
+                    className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-2.5"
+                  >
+                    <p className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <Briefcase className="w-3.5 h-3.5 text-sky-500" /> List Open Vacancy
+                    </p>
+                    <input
+                      type="text"
+                      required
+                      value={quickJobTitle}
+                      onChange={(e) => setQuickJobTitle(e.target.value)}
+                      placeholder="Vacancy Title (e.g. Principal AI Engineer)"
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
+                    />
+                    <input
+                      type="text"
+                      value={quickJobSkills}
+                      onChange={(e) => setQuickJobSkills(e.target.value)}
+                      placeholder="Required skills (comma separated)"
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
+                    />
+                    <input
+                      type="number"
+                      value={quickJobMaxSalary}
+                      onChange={(e) => setQuickJobMaxSalary(Number(e.target.value) || 0)}
+                      placeholder="Max Monthly ZAR"
+                      className="w-full rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-3 py-1.5 text-xs font-mono tabular-nums text-zinc-950 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold"
+                    >
+                      List Vacancy &amp; Auto-Match Talent
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                  Active RFPs ({rfps.filter((r) => r.publisherHandle === companyAgent.handle).length}) &amp; Vacancies ({companyJobs.length})
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {rfps
+                    .filter((r) => r.publisherHandle === companyAgent.handle)
+                    .map((r) => (
+                      <div key={r.id} className="p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-950">
+                        <div className="text-xs font-bold text-zinc-950 dark:text-white">{r.title}</div>
+                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                          RFP · {formatMoney(r.budgetZAR, currency)} · {r.status}
+                        </div>
+                      </div>
+                    ))}
+                  {companyJobs.map((j) => (
+                    <div key={j.id} className="p-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-950">
+                      <div className="text-xs font-bold text-zinc-950 dark:text-white">{j.title}</div>
+                      <div className="text-[11px] text-sky-600 dark:text-sky-400 font-mono tabular-nums">
+                        Vacancy · {j.remoteMode} · {formatMoney(j.salaryRangeZAR[1], currency)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </SwipeScrollArea>
       </div>
     </div>
   );

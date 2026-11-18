@@ -423,7 +423,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
         </div>
 
         {/* Body */}
-        <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="p-3.5 sm:p-4 space-y-3">
+        <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0" innerClassName="p-3.5 sm:p-4 space-y-3">
           {/* Dial Input + Backspace */}
           <div className="relative flex items-center">
             <input
@@ -588,7 +588,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 </div>
               )}
 
-              <SwipeScrollArea direction="vertical" className="max-h-52" innerClassName="space-y-2 pr-1">
+              <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-52" innerClassName="space-y-2 pr-1">
                 {transcript.map((entry, i) => (
                   <div
                     key={i}
@@ -603,14 +603,14 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 ))}
               </SwipeScrollArea>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-1.5 sm:gap-2 pt-1 min-w-0">
                 <button
                   type="button"
                   onClick={() => {
                     if (muted) setMuted(false);
                     toggleMicSpeech();
                   }}
-                  className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
+                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
                     listening
                       ? 'bg-emerald-600 text-white border-emerald-600 dark:bg-emerald-400 dark:text-zinc-950 dark:border-emerald-300'
                       : 'bg-white dark:bg-zinc-900 border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -622,7 +622,7 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSpeakerOn((s) => !s)}
-                  className="w-10 h-10 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0"
                   title="Speaker"
                 >
                   {speakerOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -635,13 +635,13 @@ export const AgentDialerModal: React.FC<AgentDialerModalProps> = ({
                     if (e.key === 'Enter') sendTurn(messageInput);
                   }}
                   placeholder={isEmergency ? 'Silent SOS...' : 'Message...'}
-                  className="flex-1 min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white focus:outline-none focus:border-zinc-950 dark:focus:border-sky-400/60"
+                  className="flex-1 min-w-0 min-h-[38px] sm:min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs text-zinc-950 dark:text-white focus:outline-none focus:border-zinc-950 dark:focus:border-sky-400/60"
                 />
                 <button
                   type="button"
                   disabled={sending}
                   onClick={() => sendTurn(messageInput)}
-                  className="w-10 h-10 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white disabled:opacity-50 flex items-center justify-center shrink-0"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white disabled:opacity-50 flex items-center justify-center shrink-0"
                   aria-label="Send message"
                 >
                   <Send className="w-4 h-4" />

@@ -157,8 +157,10 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
 
           <SwipeScrollArea
             direction="horizontal"
+            showArrows={true}
+            arrowSize="sm"
             className="w-full lg:w-auto"
-            innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
           >
             {(
               [
@@ -240,7 +242,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   onSelectCurrency(chosen);
                 }
               }}
-              className="min-h-[30px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-sky-600"
+              className="w-full sm:w-auto max-w-full min-w-0 min-h-[30px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-sky-600"
             >
               {CURRENCY_LIST.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -445,7 +447,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
             const bidVal = bidAmountById[auc.id] ?? minNextBid;
             const localTop = formatSecondaryEquiv(auc.currentBidUSD);
             return (
-              <div key={auc.id} className="glass-panel rounded-2xl p-4 space-y-3">
+              <div key={auc.id} className="glass-panel rounded-2xl p-4 space-y-3 min-w-0">
                 <div className="flex items-center justify-between gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                   <span className="font-mono font-semibold text-amber-700 dark:text-amber-300">
                     {auc.kind === 'iconic_number' ? 'Shortcode Auction' : 'Brand Auction'}
@@ -455,7 +457,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   </span>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-xl font-mono font-bold text-zinc-950 dark:text-zinc-50 truncate">{auc.handle}</h3>
                   <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">{auc.description}</p>
                 </div>
@@ -520,7 +522,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
           {secondaryListings.map((item) => {
             const localBuyout = formatSecondaryEquiv(item.buyoutPriceUSD);
             return (
-              <div key={item.id} className="glass-panel rounded-2xl p-4 space-y-3">
+              <div key={item.id} className="glass-panel rounded-2xl p-4 space-y-3 min-w-0">
                 <div className="flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
                   <span>{item.category}</span>
                   <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300">{item.status}</span>

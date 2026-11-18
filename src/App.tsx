@@ -29,12 +29,21 @@ import {
   ShieldCheck,
   FileText,
   Home,
+  Target,
+  UserPlus,
 } from 'lucide-react';
-import { AgentDoc, JobPostingDoc } from './types/firestore';
+import {
+  AgentDoc,
+  AutonomousMatchItem,
+  JobPostingDoc,
+  RfpDoc,
+  formatMoney,
+} from './types/firestore';
 import { LegalDocTab } from './data/legalDocuments';
 import { useSwitchboardStore } from './store/useSwitchboardStore';
 import { MinimalLandingPage } from './components/MinimalLandingPage';
 import { LegalDocumentView } from './components/LegalDocumentView';
+import { IntentProfilePage } from './components/IntentProfilePage';
 import {
   DirectoryModule,
   DirectoryFilterType,
@@ -68,6 +77,7 @@ export type MainNavTab =
   | 'home'
   | 'legal'
   | 'directory'
+  | 'intent'
   | 'arena'
   | 'hiring'
   | 'registry'
@@ -84,6 +94,9 @@ function resolvePathRoute(pathname: string): { tab: MainNavTab; legalDoc: LegalD
   }
   if (clean === '/employeragreement' || clean === '/employer-agreement') {
     return { tab: 'legal', legalDoc: 'employer' };
+  }
+  if (clean === '/intent') {
+    return { tab: 'intent', legalDoc: 'terms' };
   }
   if (clean === '/directory' || clean === '/app') {
     return { tab: 'directory', legalDoc: 'terms' };
@@ -103,11 +116,12 @@ const PRIMARY_NAV_TABS: Array<{
   mobileLabel: string;
   icon: React.FC<{ className?: string }>;
 }> = [
-  { id: 'directory', label: 'Directory', mobileLabel: 'Directory', icon: Compass },
-  { id: 'arena', label: 'Negotiate', mobileLabel: 'Negotiate', icon: Zap },
-  { id: 'hiring', label: 'Hiring', mobileLabel: 'Hiring', icon: Briefcase },
-  { id: 'registry', label: 'Registry', mobileLabel: 'Registry', icon: Tag },
-  { id: 'spatial', label: 'Radar & Contacts', mobileLabel: 'Contacts', icon: MapPin },
+  { id: 'directory', label: 'Directory', mobileLabel: 'Dir', icon: Compass },
+  { id: 'intent', label: 'Intent', mobileLabel: 'Intent', icon: Target },
+  { id: 'arena', label: 'Negotiate', mobileLabel: 'Deal', icon: Zap },
+  { id: 'hiring', label: 'Hiring', mobileLabel: 'Hire', icon: Briefcase },
+  { id: 'registry', label: 'Registry', mobileLabel: 'Reg', icon: Tag },
+  { id: 'spatial', label: 'Radar & Contacts', mobileLabel: 'Radar', icon: MapPin },
 ];
 
 export default function App() {
@@ -226,6 +240,7 @@ export default function App() {
       setSpatialSubView('contacts');
     } else if (
       tabParam === 'directory' ||
+      tabParam === 'intent' ||
       tabParam === 'arena' ||
       tabParam === 'registry' ||
       tabParam === 'spatial'
@@ -320,6 +335,8 @@ export default function App() {
     let nextPath = '/';
     if (tab === 'legal') {
       nextPath = getPathnameForLegalDoc(doc);
+    } else if (tab === 'intent') {
+      nextPath = '/intent';
     } else if (tab === 'home') {
       nextPath = '/';
     } else if (window.location.pathname !== '/') {
@@ -567,15 +584,53 @@ export default function App() {
     }
   };
 
+  const commandQ = commandQuery.trim().toLowerCase();
+
   const commandAgents = store.agents.filter((a) => {
-    const q = commandQuery.trim().toLowerCase();
-    if (!q) return true;
+    if (!commandQ) return true;
     return (
-      a.handle.toLowerCase().includes(q) ||
-      a.displayName.toLowerCase().includes(q) ||
-      a.skills.some((s) => s.toLowerCase().includes(q))
+      a.handle.toLowerCase().includes(commandQ) ||
+      a.displayName.toLowerCase().includes(commandQ) ||
+      a.roleTitle.toLowerCase().includes(commandQ) ||
+      a.organization.toLowerCase().includes(commandQ) ||
+      a.skills.some((s) => s.toLowerCase().includes(commandQ)) ||
+      (a.impliedIntent?.headline || '').toLowerCase().includes(commandQ) ||
+      (a.impliedIntent?.topics || []).some((t) => t.toLowerCase().includes(commandQ))
     );
   });
+
+  const commandJobs = commandQ
+    ? store.jobs.filter(
+        (j) =>
+          j.status === 'OPEN' &&
+          (j.title.toLowerCase().includes(commandQ) ||
+            j.companyName.toLowerCase().includes(commandQ) ||
+            j.location.toLowerCase().includes(commandQ) ||
+            j.requiredSkills.some((s) => s.toLowerCase().includes(commandQ)) ||
+            (j.description || '').toLowerCase().includes(commandQ))
+      )
+    : store.jobs.filter((j) => j.status === 'OPEN').slice(0, 3);
+
+  const commandRfps = commandQ
+    ? store.rfps.filter(
+        (r) =>
+          r.title.toLowerCase().includes(commandQ) ||
+          r.publisherHandle.toLowerCase().includes(commandQ) ||
+          r.category.toLowerCase().includes(commandQ) ||
+          r.description.toLowerCase().includes(commandQ)
+      )
+    : store.rfps.filter((r) => r.status === 'OPEN').slice(0, 3);
+
+  const commandContacts = commandQ
+    ? store.contacts.filter(
+        (c) =>
+          c.displayName.toLowerCase().includes(commandQ) ||
+          c.handle.toLowerCase().includes(commandQ) ||
+          c.organization.toLowerCase().includes(commandQ) ||
+          c.skills.some((s) => s.toLowerCase().includes(commandQ)) ||
+          c.tags.some((t) => t.toLowerCase().includes(commandQ))
+      )
+    : [];
 
   const handleFloatingSearchClick = () => {
     setFloatingMenuExpanded(false);
@@ -617,23 +672,23 @@ export default function App() {
       )}
 
       {/* Editorial Single-Row Top Header */}
-      <header className="h-12 sm:h-14 shrink-0 border-b border-zinc-200 dark:border-white/[0.08] bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md z-40">
-        <div className="max-w-7xl mx-auto h-full px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 shrink-0 min-w-0">
+      <header className="h-12 sm:h-14 shrink-0 border-b border-zinc-200 dark:border-white/[0.08] bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md z-40 overflow-hidden">
+        <div className="max-w-7xl mx-auto h-full px-2 sm:px-6 flex items-center justify-between gap-1 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
-              className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
+              className="w-7 h-7 sm:w-9 sm:h-9 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
               aria-label="Open Navigation Drawer"
               title="Menu"
             >
-              <Menu className="w-4 h-4" />
+              <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             {canGoBack && (
               <button
                 type="button"
                 onClick={handleGoBack}
-                className="h-9 px-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center gap-1 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
+                className="h-7 sm:h-9 px-1.5 sm:px-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center gap-1 text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
                 aria-label="Go back to previous page"
                 title="Back"
               >
@@ -644,15 +699,15 @@ export default function App() {
             <button
               type="button"
               onClick={() => navigateRoute({ surface: 'desktop', tab: 'home' })}
-              className="flex items-center gap-2 text-left shrink-0"
+              className="flex items-center gap-1.5 sm:gap-2 text-left min-w-0"
               title="SWITCHZ Overview"
             >
               <img
                 src="/icon.svg"
                 alt="SWITCHZ"
-                className="w-6 h-6 rounded-md border border-zinc-300 dark:border-white/15 shrink-0"
+                className="w-5 h-5 sm:w-6 sm:h-6 rounded-md border border-zinc-300 dark:border-white/15 shrink-0"
               />
-              <span className="font-display font-bold text-sm sm:text-[15px] tracking-tight text-zinc-950 dark:text-zinc-50 whitespace-nowrap">
+              <span className="font-display font-bold text-[12.5px] sm:text-[15px] tracking-tight text-zinc-950 dark:text-zinc-50 whitespace-nowrap truncate">
                 SWITCHZ
               </span>
             </button>
@@ -667,7 +722,7 @@ export default function App() {
                   key={item.id}
                   type="button"
                   onClick={() => navigateRoute({ surface: 'desktop', tab: item.id })}
-                  className={`relative px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                  className={`relative px-2.5 lg:px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-zinc-100 text-zinc-950 border border-zinc-300 font-semibold shadow-2xs dark:bg-zinc-800/90 dark:text-white dark:border-white/15'
                       : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/60 border border-transparent'
@@ -689,13 +744,15 @@ export default function App() {
             })}
           </nav>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <ThemeToggle variant="header" />
-            <PWAInstallButton variant="header" />
+            <span className="hidden min-[420px]:inline-flex">
+              <PWAInstallButton variant="header" />
+            </span>
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
-              className="h-9 px-2.5 sm:px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors"
+              className="w-7 h-7 sm:w-auto sm:h-9 px-0 sm:px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 flex items-center justify-center gap-2 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-white/25 transition-colors shrink-0"
               aria-label="Quick Jump"
               title="Quick Jump (⌘K)"
             >
@@ -712,8 +769,9 @@ export default function App() {
                 setActiveTab('directory');
                 setOpenDeployWizard(true);
               }}
-              className="min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-3 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white transition-colors whitespace-nowrap shrink-0"
+              className="w-7 h-7 sm:w-auto sm:min-h-[36px] px-0 sm:px-3 inline-flex items-center justify-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white transition-colors whitespace-nowrap shrink-0"
               aria-label="Create Agent Card"
+              title="Create Agent Card"
             >
               <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">New Card</span>
@@ -810,6 +868,57 @@ export default function App() {
           />
         ) : (
           <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-24 space-y-4">
+            {activeTab === 'intent' && (
+              <IntentProfilePage
+                agents={store.agents}
+                jobs={store.jobs}
+                rfps={store.rfps}
+                currency={store.currency}
+                autonomousMatches={store.autonomousMatches}
+                autonomousMatchLoading={store.autonomousMatchLoading}
+                autonomousMatchMeta={store.autonomousMatchMeta}
+                onUpdateIntent={store.updateAgentIntent}
+                onRunAutonomousMatch={store.runAutonomousIntentMatch}
+                onPublishRfp={store.publishRfp}
+                onUpdateRfpStatus={store.updateRfpStatus}
+                onCreateJob={store.createJob}
+                onUpdateJobStatus={store.updateJobStatus}
+                onEngageAgent={(targetHandle) => {
+                  const target = resolveAgentByHandle(targetHandle);
+                  handleOpenEngage(target);
+                }}
+                onApplyToJob={async (jobId, candidateAgent) => {
+                  const targetJob = store.jobs.find((j) => j.id === jobId);
+                  if (!targetJob) return;
+                  await store.tailorAndSubmitApplication(candidateAgent, targetJob);
+                  setPoppyInitialSeekerId(candidateAgent.id);
+                  setPoppyInitialRoleTab('seeker');
+                  navigateRoute({ surface: 'desktop', tab: 'hiring' });
+                }}
+                onPitchRfp={(rfp: RfpDoc, pitcherAgent: AgentDoc) => {
+                  handleEngageProposal({
+                    targetHandle: rfp.publisherHandle,
+                    proposalTitle: `${rfp.title} — Pitch by ${pitcherAgent.displayName}`,
+                    stickerPriceZAR: rfp.budgetZAR,
+                  });
+                }}
+                onSaveContact={(item: AutonomousMatchItem) => {
+                  const resolved = resolveAgentByHandle(item.targetHandle);
+                  store.saveContact(resolved, {
+                    source: item.kind === 'proximity_peer' ? 'event_ble' : 'directory',
+                    sharedAtLocation: item.subtitle,
+                    notes: `Matched via Autonomous Intent (${item.score}%): ${item.rationale}`,
+                    tags: item.matchedKeywords.slice(0, 3),
+                  });
+                }}
+                onOpenQuickPersonalUrlModal={() => setQuickJobModalOpen(true)}
+                onOpenQuickCompanyUrlModal={() => setQuickEmployerModalOpen(true)}
+                onOpenSpatialRadar={() =>
+                  navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'maps' })
+                }
+              />
+            )}
+
             {activeTab === 'arena' && (
               <NegotiationArenaModule
                 agents={store.agents}
@@ -888,66 +997,74 @@ export default function App() {
 
             {activeTab === 'spatial' && (
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs overflow-x-auto no-scrollbar max-w-full">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <SwipeScrollArea
+                    direction="horizontal"
+                    arrowSize="sm"
+                    stepPx={160}
+                    showArrows={true}
+                    className="flex-1 min-w-0 sm:flex-initial sm:max-w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs"
+                    innerClassName="inline-flex items-center gap-1 p-1 pl-2 pr-9"
+                  >
                     <button
                       type="button"
                       onClick={() => navigateRoute({ spatialSub: 'maps' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         spatialSubView === 'maps'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <MapPin className="w-3.5 h-3.5" />
+                      <MapPin className="w-3.5 h-3.5 shrink-0" />
                       Maps &amp; BLE Radar
                     </button>
                     <button
                       type="button"
                       onClick={() => navigateRoute({ spatialSub: 'contacts' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         spatialSubView === 'contacts'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Users className="w-3.5 h-3.5" />
+                      <Users className="w-3.5 h-3.5 shrink-0" />
                       Contacts &amp; AI ({store.contacts.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => navigateRoute({ spatialSub: 'agentmail' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         spatialSubView === 'agentmail'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Bot className="w-3.5 h-3.5 text-sky-400" />
+                      <Bot className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                       AgentMail
                     </button>
                     <button
                       type="button"
                       onClick={() => navigateRoute({ spatialSub: 'comms' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         spatialSubView === 'comms'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Mail className="w-3.5 h-3.5" />
+                      <Mail className="w-3.5 h-3.5 shrink-0" />
                       Mail &amp; Calendar
                     </button>
-                  </div>
+                  </SwipeScrollArea>
 
                   <button
                     type="button"
                     onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
-                    className="min-h-[36px] px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5"
+                    className="min-h-[36px] px-2.5 sm:px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5 shrink-0"
                     aria-label="Close Radar & Contacts and return to Directory"
+                    title="Close"
                   >
                     <X className="w-3.5 h-3.5" />
-                    <span>Close</span>
+                    <span className="hidden sm:inline">Close</span>
                   </button>
                 </div>
 
@@ -969,6 +1086,7 @@ export default function App() {
                     onEngageAgent={handleOpenEngage}
                     onEngageProposal={handleEngageProposal}
                     onSaveContact={store.saveContact}
+                    onAutoAddPeers={store.autoAddProximityPeers}
                     onApplyJobFromRadar={handleApplyJobFromRadar}
                   />
                 ) : spatialSubView === 'contacts' ? (
@@ -1021,54 +1139,62 @@ export default function App() {
 
             {activeTab === 'toolkit' && (
               <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <SwipeScrollArea
+                    direction="horizontal"
+                    arrowSize="sm"
+                    showArrows={true}
+                    stepPx={160}
+                    className="flex-1 min-w-0 sm:flex-initial sm:max-w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs"
+                    innerClassName="inline-flex items-center gap-1 p-1 pl-2 pr-9"
+                  >
                     <button
                       type="button"
                       onClick={() => navigateRoute({ toolkitSub: 'skills' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         toolkitSubView === 'skills'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Bot className="w-3.5 h-3.5" />
+                      <Bot className="w-3.5 h-3.5 shrink-0" />
                       Agent Skills
                     </button>
                     <button
                       type="button"
                       onClick={() => navigateRoute({ toolkitSub: 'extension' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         toolkitSubView === 'extension'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Puzzle className="w-3.5 h-3.5" />
+                      <Puzzle className="w-3.5 h-3.5 shrink-0" />
                       Extension
                     </button>
                     <button
                       type="button"
                       onClick={() => navigateRoute({ toolkitSub: 'ledger' })}
-                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3.5 text-xs whitespace-nowrap transition-colors ${
+                      className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-lg px-3 sm:px-3.5 text-xs whitespace-nowrap shrink-0 transition-colors ${
                         toolkitSubView === 'ledger'
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-zinc-100'
                       }`}
                     >
-                      <Terminal className="w-3.5 h-3.5" />
+                      <Terminal className="w-3.5 h-3.5 shrink-0" />
                       Ledger
                     </button>
-                  </div>
+                  </SwipeScrollArea>
 
                   <button
                     type="button"
                     onClick={() => navigateRoute({ surface: 'desktop', tab: 'directory' })}
-                    className="min-h-[36px] px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5"
+                    className="min-h-[36px] px-2.5 sm:px-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5 shrink-0"
                     aria-label="Close page and return to Directory"
+                    title="Close"
                   >
                     <X className="w-3.5 h-3.5" />
-                    <span>Close</span>
+                    <span className="hidden sm:inline">Close</span>
                   </button>
                 </div>
 
@@ -1176,7 +1302,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="w-full sm:w-auto flex items-center justify-end gap-2">
+        <div className="w-full sm:w-auto flex items-center justify-end gap-1.5 sm:gap-2">
           {store.surface === 'desktop' && activeTab === 'directory' && (
             <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1">
               <button
@@ -1185,7 +1311,7 @@ export default function App() {
                   setFloatingMenuExpanded(false);
                   setQuickJobModalOpen(true);
                 }}
-                className="h-9 px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
                 title="Paste LinkedIn URL for a free Job Agent + 10 matches"
               >
                 <Linkedin className="w-3.5 h-3.5 shrink-0" />
@@ -1197,7 +1323,7 @@ export default function App() {
                   setFloatingMenuExpanded(false);
                   setQuickEmployerModalOpen(true);
                 }}
-                className="h-9 px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
                 title="Paste Job URL for a 1-click Employer Agent + auto-match candidates"
               >
                 <Building2 className="w-3.5 h-3.5 shrink-0" />
@@ -1212,7 +1338,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setFloatingMenuExpanded((v) => !v)}
-              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-colors ${
                 floatingMenuExpanded
                   ? 'bg-zinc-900 text-white dark:bg-zinc-800 dark:text-white'
                   : 'text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/70'
@@ -1234,7 +1360,7 @@ export default function App() {
                 setDialerInitialAgent(null);
                 setDialerOpen(true);
               }}
-              className="h-9 px-3.5 rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white flex items-center gap-1.5 text-xs font-semibold transition-transform active:scale-95"
+              className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-full bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white flex items-center gap-1.5 text-xs font-semibold transition-transform active:scale-95"
               aria-label="Open Predictive Dialer"
               title="Predictive Dialer"
             >
@@ -1249,7 +1375,7 @@ export default function App() {
       {/* Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Navigation"
-        className="md:hidden min-h-[56px] pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] shrink-0 z-40 bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-200 dark:border-white/[0.08] grid grid-cols-5 items-center px-1"
+        className="md:hidden min-h-[56px] pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] shrink-0 z-40 bg-white/95 dark:bg-[#09090b]/95 backdrop-blur-md border-t border-zinc-200 dark:border-white/[0.08] grid grid-cols-6 items-center px-0.5"
       >
         {PRIMARY_NAV_TABS.map((item) => {
           const Icon = item.icon;
@@ -1261,24 +1387,24 @@ export default function App() {
               onClick={() => {
                 navigateRoute({ surface: 'desktop', tab: item.id });
               }}
-              className={`relative min-h-[44px] flex flex-col items-center justify-center gap-0.5 text-[10px] transition-colors ${
+              className={`relative min-h-[44px] min-w-0 flex flex-col items-center justify-center gap-0.5 text-[9.5px] transition-colors ${
                 isActive
                   ? 'text-zinc-950 dark:text-white font-semibold'
                   : 'text-zinc-500 dark:text-zinc-400 font-medium hover:text-zinc-900 dark:hover:text-zinc-200'
               }`}
             >
               {isActive && (
-                <span className="absolute top-0 w-6 h-0.5 rounded-full bg-zinc-950 dark:bg-white" aria-hidden="true" />
+                <span className="absolute top-0 w-5 h-0.5 rounded-full bg-zinc-950 dark:bg-white" aria-hidden="true" />
               )}
               <span className="relative">
-                <Icon className="w-[18px] h-[18px]" />
+                <Icon className="w-[17px] h-[17px]" />
                 {item.id === 'hiring' && pendingPoppyCount > 0 && (
                   <span className="absolute -top-1 -right-2 w-3.5 h-3.5 rounded-full bg-amber-400 text-zinc-950 text-[8px] font-mono font-bold inline-flex items-center justify-center">
                     {pendingPoppyCount}
                   </span>
                 )}
               </span>
-              <span className="leading-none">{item.mobileLabel}</span>
+              <span className="leading-none truncate max-w-full px-0.5">{item.mobileLabel}</span>
             </button>
           );
         })}
@@ -1348,7 +1474,7 @@ export default function App() {
                 autoFocus
                 value={commandQuery}
                 onChange={(e) => setCommandQuery(e.target.value)}
-                placeholder="Jump to .agent handle, negotiation, or API skill..."
+                placeholder="Search agents, jobs, RFPs, contacts, or intent topics..."
                 className="flex-1 min-h-[32px] bg-transparent text-sm text-zinc-950 dark:text-white placeholder:text-zinc-500 focus:outline-none"
               />
               <button
@@ -1362,200 +1488,339 @@ export default function App() {
               </button>
             </div>
 
-            <SwipeScrollArea direction="vertical" className="max-h-72" innerClassName="p-2 space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setCommandOpen(false);
-                  setQuickJobModalOpen(true);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-sky-50 dark:hover:bg-sky-950/40 flex items-center justify-between"
-              >
-                <span className="font-semibold text-sky-700 dark:text-sky-300 flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400" /> 1-Click LinkedIn Job Agent
-                </span>
-                <span className="font-mono text-sky-600 dark:text-sky-400">10 Free</span>
-              </button>
+            <SwipeScrollArea direction="vertical" className="max-h-80" innerClassName="p-2 space-y-1">
+              {!commandQ && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateRoute({ surface: 'desktop', tab: 'intent' });
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center justify-between"
+                  >
+                    <span className="font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> Intent Profile &amp; Autonomous AI Matcher
+                    </span>
+                    <span className="font-mono text-indigo-600 dark:text-indigo-400">/intent</span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setCommandOpen(false);
-                  setQuickEmployerModalOpen(true);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-between"
-              >
-                <span className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> 1-Click Employer Agent (Post Job URL)
-                </span>
-                <span className="font-mono text-emerald-600 dark:text-emerald-400">Auto-Match</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommandOpen(false);
+                      setQuickJobModalOpen(true);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-sky-50 dark:hover:bg-sky-950/40 flex items-center justify-between"
+                  >
+                    <span className="font-semibold text-sky-700 dark:text-sky-300 flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400" /> 1-Click URL → Personal Job Agent
+                    </span>
+                    <span className="font-mono text-sky-600 dark:text-sky-400">Auto-Match</span>
+                  </button>
 
-              {openAiCompanyAgent && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCommandOpen(false);
-                    handleOpenCompanyHr(openAiCompanyAgent);
-                  }}
-                  className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-                >
-                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-amber-500" /> OpenAI HR Portal (10 Global Roles &amp; Top Appliers)
-                  </span>
-                  <span className="font-mono text-amber-600 dark:text-amber-400">HR Portal</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommandOpen(false);
+                      setQuickEmployerModalOpen(true);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-between"
+                  >
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> 1-Click Company Agent &amp; Vacancies
+                    </span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400">Auto-Match</span>
+                  </button>
+
+                  {openAiCompanyAgent && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCommandOpen(false);
+                        handleOpenCompanyHr(openAiCompanyAgent);
+                      }}
+                      className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                    >
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-amber-500" /> OpenAI HR Portal (Roles &amp; Top Appliers)
+                      </span>
+                      <span className="font-mono text-amber-600 dark:text-amber-400">HR Portal</span>
+                    </button>
+                  )}
+
+                  {activeUserAgent && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCommandOpen(false);
+                        handleOpenProfileHistory(activeUserAgent);
+                      }}
+                      className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                    >
+                      <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                        <History className="w-4 h-4 text-sky-500" /> Personal Agent History &amp; PDF/DOCX Docs
+                      </span>
+                      <span className="font-mono text-sky-600 dark:text-sky-400">
+                        {store.applicationPackages.length} Docs
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommandOpen(false);
+                      setPostStatusModalOpen(true);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-500" /> Post Status Card
+                    </span>
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                      {store.statusPosts.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'skills' });
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Agent Skills (/skills.md)
+                    </span>
+                    <span className="font-mono text-zinc-500">API</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'contacts' });
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Contacts &amp; AI Scout
+                    </span>
+                    <span className="font-mono text-zinc-500">{store.contacts.length}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'ledger' });
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Audit Ledger &amp; OpenAPI
+                    </span>
+                    <span className="font-mono text-zinc-500">x402</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigateRoute({ surface: 'desktop', tab: 'home' });
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> SWITCHZ Overview (Landing Page)
+                    </span>
+                    <span className="font-mono text-zinc-500">/</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenLegalDoc('terms');
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> Global Platform Terms of Use
+                    </span>
+                    <span className="font-mono text-zinc-500">/term</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenLegalDoc('privacy');
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Privacy Policy &amp; Candidate AI Notice
+                    </span>
+                    <span className="font-mono text-zinc-500">/terms</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenLegalDoc('employer');
+                      setCommandOpen(false);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Employer Recruitment Fee Agreement
+                    </span>
+                    <span className="font-mono text-zinc-500">/employeragreement</span>
+                  </button>
+                </>
               )}
 
-              {activeUserAgent && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCommandOpen(false);
-                    handleOpenProfileHistory(activeUserAgent);
-                  }}
-                  className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-                >
-                  <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                    <History className="w-4 h-4 text-sky-500" /> Personal Agent History &amp; PDF/DOCX Docs
-                  </span>
-                  <span className="font-mono text-sky-600 dark:text-sky-400">
-                    {store.applicationPackages.length} Docs
-                  </span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCommandOpen(false);
-                  setPostStatusModalOpen(true);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-emerald-500" /> Post Status Card (Hired, Deal Approved, Ad, LinkedIn/AI)
-                </span>
-                <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                  {store.statusPosts.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'skills' });
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <Bot className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Agent Skills (/skills.md)
-                </span>
-                <span className="font-mono text-zinc-500">API</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'contacts' });
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Personal Contacts &amp; AI Scout
-                </span>
-                <span className="font-mono text-zinc-500">{store.contacts.length}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigateRoute({ surface: 'desktop', tab: 'toolkit', toolkitSub: 'ledger' });
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Audit Ledger &amp; OpenAPI
-                </span>
-                <span className="font-mono text-zinc-500">x402</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  navigateRoute({ surface: 'desktop', tab: 'home' });
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <Home className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> SWITCHZ Overview (Landing Page)
-                </span>
-                <span className="font-mono text-zinc-500">/</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenLegalDoc('terms');
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <Scale className="w-4 h-4 text-zinc-600 dark:text-zinc-400" /> Global Platform Terms of Use
-                </span>
-                <span className="font-mono text-zinc-500">/term</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenLegalDoc('privacy');
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Privacy Policy &amp; Candidate AI Notice
-                </span>
-                <span className="font-mono text-zinc-500">/terms</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleOpenLegalDoc('employer');
-                  setCommandOpen(false);
-                }}
-                className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between"
-              >
-                <span className="font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Employer Recruitment Fee Agreement
-                </span>
-                <span className="font-mono text-zinc-500">/employeragreement</span>
-              </button>
-
-              {commandAgents.map((agent) => (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => {
-                    handleOpenEngage(agent);
-                    setCommandOpen(false);
-                  }}
-                  className="w-full min-h-[44px] text-left rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-zinc-950 dark:text-white truncate">{agent.displayName}</p>
-                    <p className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 truncate">{agent.handle}</p>
+              {commandJobs.length > 0 && (
+                <div className="pt-1.5">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    Open Vacancies ({commandJobs.length})
                   </div>
-                  <Zap className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
-                </button>
-              ))}
+                  {commandJobs.map((job) => (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => {
+                        setPoppyInitialRoleTab('seeker');
+                        navigateRoute({ surface: 'desktop', tab: 'hiring' });
+                        setCommandOpen(false);
+                      }}
+                      className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-sky-50 dark:hover:bg-sky-950/30 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-zinc-950 dark:text-white truncate">{job.title}</p>
+                        <p className="text-[11px] text-zinc-500 truncate">
+                          {job.companyName} · {job.remoteMode} · {formatMoney(job.salaryRangeZAR[1], store.currency)}
+                        </p>
+                      </div>
+                      <Briefcase className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {commandRfps.length > 0 && (
+                <div className="pt-1.5">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    Requests for Proposal ({commandRfps.length})
+                  </div>
+                  {commandRfps.map((rfp) => (
+                    <button
+                      key={rfp.id}
+                      type="button"
+                      onClick={() => {
+                        handleEngageProposal({
+                          targetHandle: rfp.publisherHandle,
+                          proposalTitle: `Proposal for ${rfp.title}`,
+                          stickerPriceZAR: rfp.budgetZAR,
+                        });
+                        setCommandOpen(false);
+                      }}
+                      className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-zinc-950 dark:text-white truncate">{rfp.title}</p>
+                        <p className="text-[11px] text-zinc-500 font-mono truncate">
+                          {rfp.publisherHandle} · {formatMoney(rfp.budgetZAR, store.currency)} · {rfp.status}
+                        </p>
+                      </div>
+                      <FileText className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {commandContacts.length > 0 && (
+                <div className="pt-1.5">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    Saved Contacts ({commandContacts.length})
+                  </div>
+                  {commandContacts.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'contacts' });
+                        setCommandOpen(false);
+                      }}
+                      className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-zinc-950 dark:text-white truncate">{c.displayName}</p>
+                        <p className="text-[11px] font-mono text-zinc-500 truncate">{c.handle} · {c.organization}</p>
+                      </div>
+                      <Users className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-1.5">
+                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                  Personal &amp; Business Agents ({commandAgents.length})
+                </div>
+                {commandAgents.map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="w-full min-h-[44px] rounded-lg px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800/80 flex items-center justify-between gap-2"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenEngage(agent);
+                        setCommandOpen(false);
+                      }}
+                      className="flex-1 min-w-0 text-left"
+                    >
+                      <p className="font-semibold text-zinc-950 dark:text-white truncate">
+                        {agent.displayName} <span className="text-[10px] font-normal text-zinc-500">· {agent.roleTitle}</span>
+                      </p>
+                      <p className="font-mono text-[11px] text-zinc-600 dark:text-zinc-400 truncate">
+                        {agent.handle}
+                        {agent.impliedIntent?.headline ? ` · ${agent.impliedIntent.headline}` : ''}
+                      </p>
+                    </button>
+                    {agent.handle !== '911.emergency.agent' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          store.saveContact(agent, {
+                            source: 'directory',
+                            sharedAtLocation: 'Global Search',
+                          })
+                        }
+                        title="Add to Contacts"
+                        className="p-1.5 rounded-md border border-zinc-200 dark:border-white/10 text-zinc-500 hover:text-emerald-600 shrink-0"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenEngage(agent);
+                        setCommandOpen(false);
+                      }}
+                      title="Engage Agent"
+                      className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-950 dark:hover:text-white shrink-0"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </SwipeScrollArea>
           </div>
         </div>
@@ -1645,6 +1910,11 @@ export default function App() {
         initialPackageId={profileHistoryState.packageId}
         onTailorAndApply={store.tailorAndSubmitApplication}
         onLogHistory={store.logAgentHistory}
+        onUpdateIntent={store.updateAgentIntent}
+        onOpenIntentHub={() => {
+          setProfileHistoryState((prev) => ({ ...prev, open: false }));
+          navigateRoute({ surface: 'desktop', tab: 'intent' });
+        }}
       />
 
       <CompanyHrPortalModal
@@ -1666,6 +1936,13 @@ export default function App() {
         onUpdateApplicationStatus={store.updateApplicationStatus}
         onAddHrTeamMember={store.addHrTeamMember}
         onLogHistory={store.logAgentHistory}
+        rfps={store.rfps}
+        onPublishRfp={store.publishRfp}
+        onCreateJob={store.createJob}
+        onOpenIntentHub={() => {
+          setHrPortalAgent(null);
+          navigateRoute({ surface: 'desktop', tab: 'intent' });
+        }}
       />
 
       <PostStatusModal

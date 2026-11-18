@@ -86,12 +86,12 @@ const InteractiveFlipCard: React.FC<{
 }> = ({ spec, isFlipped, onToggleFlip, onPrimaryAction }) => {
   return (
     <div
-      className="relative w-full min-h-[410px] cursor-pointer"
+      className="relative w-full min-h-[450px] sm:min-h-[420px] cursor-pointer"
       style={{ perspective: '1200px' }}
       onClick={onToggleFlip}
     >
       <div
-        className="relative w-full h-full min-h-[410px] transition-transform duration-700"
+        className="relative w-full h-full min-h-[450px] sm:min-h-[420px] transition-transform duration-700"
         style={{
           transformStyle: 'preserve-3d',
           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
@@ -113,7 +113,7 @@ const InteractiveFlipCard: React.FC<{
             <span className="text-[11px] font-mono opacity-85">Click to flip</span>
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+          <div className="p-3.5 sm:p-5 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-3">
             <div className="flex items-start gap-3.5">
               <img
                 src={spec.imageUrl}
@@ -198,7 +198,7 @@ const InteractiveFlipCard: React.FC<{
             <span className="text-[11px] font-mono text-zinc-400">{spec.handle}</span>
           </div>
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+          <div className="p-3.5 sm:p-5 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-3">
             <div>
               <h3 className="font-display font-bold text-base text-white">
                 {spec.agentTitle}
@@ -307,7 +307,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
       <section className="space-y-8 pt-10 border-t border-zinc-200 dark:border-white/[0.08]">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
           {/* Left Narrative for Professionals */}
-          <div className="lg:col-span-6 space-y-6">
+          <div className="lg:col-span-6 min-w-0 space-y-6">
             <div className="space-y-3">
               <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
                 01. FOR PROFESSIONALS
@@ -367,7 +367,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
           </div>
 
           {/* Right: Looping Interactive Personal Flip Card */}
-          <div className="lg:col-span-6 space-y-3">
+          <div className="lg:col-span-6 min-w-0 space-y-3">
             <div className="max-w-md mx-auto lg:ml-auto lg:mr-0">
               <InteractiveFlipCard
                 spec={PERSONAL_CARD_SPEC}
@@ -411,7 +411,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
         {/* Business Capabilities Cards + Looping Real Video & Company Flip Card */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Left 4 cols: 3 Core Business Capabilities */}
-          <div className="lg:col-span-4 flex flex-col justify-between gap-3">
+          <div className="lg:col-span-4 min-w-0 flex flex-col justify-between gap-3">
             <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 space-y-1.5 flex-1">
               <div className="flex items-center gap-2 text-zinc-950 dark:text-white font-semibold text-sm">
                 <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
@@ -444,7 +444,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
           </div>
 
           {/* Middle 4 cols: Real Looping Card Flip Video Recording */}
-          <div className="lg:col-span-4 rounded-2xl border border-zinc-200 dark:border-white/10 bg-zinc-950 text-white overflow-hidden flex flex-col justify-between shadow-lg">
+          <div className="lg:col-span-4 min-w-0 rounded-2xl border border-zinc-200 dark:border-white/10 bg-zinc-950 text-white overflow-hidden flex flex-col justify-between shadow-lg">
             <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2">
               <div>
                 <span className="block text-[11px] font-mono text-sky-400">COMPANY CARD LOOP · VIDEO</span>
@@ -475,7 +475,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
           </div>
 
           {/* Right 4 cols: Interactive Auto-Flipping Company Card */}
-          <div className="lg:col-span-4 flex flex-col">
+          <div className="lg:col-span-4 min-w-0 flex flex-col">
             <InteractiveFlipCard
               spec={BUSINESS_CARD_SPEC}
               isFlipped={flippedMap.company}

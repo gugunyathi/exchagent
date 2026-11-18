@@ -198,9 +198,9 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 min-w-0">
           {!workspaceToken ? (
-            <button onClick={() => onConnectGoogle()} className="gsi-material-button">
+            <button onClick={() => onConnectGoogle()} className="gsi-material-button max-w-full">
               <div className="gsi-material-button-state" />
               <div className="gsi-material-button-content-wrapper">
                 <div className="gsi-material-button-icon">
@@ -211,7 +211,7 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
                     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
                   </svg>
                 </div>
-                <span className="gsi-material-button-contents">Connect Google Calendar &amp; Gmail</span>
+                <span className="gsi-material-button-contents truncate">Connect Google Calendar &amp; Gmail</span>
               </div>
             </button>
           ) : (
@@ -223,7 +223,10 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
 
           <SwipeScrollArea
             direction="horizontal"
-            innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+            showArrows={true}
+            arrowSize="sm"
+            className="w-full sm:w-auto"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
           >
             <button
               type="button"
@@ -254,7 +257,7 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
       {subTab === 'mail' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           {/* Compose Engage */}
-          <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
+          <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
               <Mail className="w-4 h-4 text-sky-600 dark:text-sky-400" />
               Agentic Engage Mail
@@ -275,7 +278,7 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
               <select
                 value={toAddress}
                 onChange={(e) => setToAddress(e.target.value)}
-                className="mt-1 w-full rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+                className="mt-1 w-full max-w-full min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               >
                 {nonEmergency.map((a) => (
                   <option key={a.id} value={a.agentEmail}>
@@ -330,9 +333,9 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
           </div>
 
           {/* Inbox Threads */}
-          <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-3">
+          <div className="lg:col-span-7 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Inbox Threads</h3>
-            <div className="space-y-2.5">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-[460px]" innerClassName="space-y-2.5">
               {emails.map((mail) => {
                 const isExpanded = expandedEmailId === mail.id;
                 return (
@@ -364,7 +367,7 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
                   </div>
                 );
               })}
-            </div>
+            </SwipeScrollArea>
           </div>
         </div>
       ) : (
@@ -512,14 +515,14 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
       {/* Mandatory User Confirmation Dialog before mutating Gmail */}
       {pendingGmailSend && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-0 sm:p-4"
           onClick={() => setPendingGmailSend(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl max-h-[90dvh] flex flex-col overflow-hidden pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
@@ -544,12 +547,14 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-              This will send a live email from your connected Gmail account to{' '}
-              <span className="font-mono text-sky-700 dark:text-sky-400">{toAddress}</span> with subject{' '}
-              <strong>&quot;{subject}&quot;</strong>.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0">
+              <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">
+                This will send a live email from your connected Gmail account to{' '}
+                <span className="font-mono text-sky-700 dark:text-sky-400 break-all">{toAddress}</span> with subject{' '}
+                <strong>&quot;{subject}&quot;</strong>.
+              </p>
+            </SwipeScrollArea>
+            <div className="flex justify-end gap-2 pt-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setPendingGmailSend(false)}
@@ -572,14 +577,14 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
       {/* Mandatory User Confirmation Dialog before mutating Google Calendar */}
       {pendingCalendarBooking && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-zinc-950/60 dark:bg-black/75 backdrop-blur-sm p-0 sm:p-4"
           onClick={() => setPendingCalendarBooking(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl"
+            className="w-full max-w-md rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 p-5 space-y-4 shadow-2xl max-h-[90dvh] flex flex-col overflow-hidden pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
@@ -604,14 +609,16 @@ export const OmnichannelCommsModule: React.FC<OmnichannelCommsModuleProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-              Insert event <strong>&quot;{pendingCalendarBooking.title}&quot;</strong> into your primary Google Calendar for{' '}
-              <span className="font-mono text-sky-700 dark:text-sky-400">
-                {new Date(pendingCalendarBooking.startTime).toLocaleString('en-ZA')}
-              </span>
-              ?
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
+            <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0">
+              <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                Insert event <strong>&quot;{pendingCalendarBooking.title}&quot;</strong> into your primary Google Calendar for{' '}
+                <span className="font-mono text-sky-700 dark:text-sky-400">
+                  {new Date(pendingCalendarBooking.startTime).toLocaleString('en-ZA')}
+                </span>
+                ?
+              </p>
+            </SwipeScrollArea>
+            <div className="flex justify-end gap-2 pt-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setPendingCalendarBooking(null)}

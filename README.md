@@ -37,7 +37,7 @@
 |  - Poppy v1.0 Router (poppyRouter.ts)  |   | - Default-Deny Security Rules  |
 |  - AgentMail Router (agentmailRouter)  |   +--------------------------------+
 |  - Live FX + IP/Geo Currency Detection |
-|  - Ephemeral Wi-Fi LAN Mesh (10m TTL)  |
+|  - Ephemeral Wi-Fi/WS Mesh (`/ws/mesh`)|
 +----------------------------------------+
 ```
 
@@ -49,7 +49,8 @@
 | Path | View | Description |
 | --- | --- | --- |
 | `/` | `MinimalLandingPage` | Interactive product overview featuring an optical WebGL/GLSL shader hero (`OpticalShaderCanvas`), `AppWalkthroughPlayer`, and separated **01. FOR PROFESSIONALS** & **02. FOR BUSINESSES** flippable agent card showcases (`LandingFlippableCardExamples`). |
-| `/directory`, `/app` | Main App Workspace | Full interactive Switchboard workspace with Directory, Negotiate Arena, Hiring OS, `.agent` Registry, Spatial Radar & Contacts, and Developer/Skills Toolkit. |
+| `/directory`, `/app` | Main App Workspace | Full interactive Switchboard workspace with Directory, Intent & Auto-Match Hub (`/intent`), Negotiate Arena, Hiring OS, `.agent` Registry, Spatial Radar & Contacts, and Developer/Skills Toolkit. |
+| `/intent` | `IntentProfilePage` | Human Implied Intent declarations + Company RFP/Vacancy Intent manager with autonomous Gemini & deterministic cross-matching. |
 | `/term` | Global Platform Terms | Full SWITCHZ Global Platform Terms & Conditions (Silvernest Pty Ltd, South Africa). |
 | `/terms` | Privacy & Candidate Terms | Candidate Terms of Service, Global AI Privacy Consent Notice, Cookie Notice, POPIA §11 revocation, GDPR & EU AI Act disclosures, and AI Outreach Disclaimer. |
 | `/employeragreement` | Employer Master Agreement | Global Employer Master Recruitment Services Agreement & Placement Fee Schedule (Contingency, Executive, Retained, Remote Flat Fee, and Escrow/x402 Mediation). |
@@ -63,15 +64,17 @@
   - Status circles display context badges at the circle edge via `StatusCategoryBadge.tsx`: **Hired** (`Handshake`), **Deal Approved** (`$`), **Sponsored/Ad**, **LinkedIn**, and generic **AI**.
   - Both professionals and businesses can publish status cards with category badges; automated hires and deal approvals auto-publish corresponding cards.
 - **1-Click Job Seeker & Employer Automation (`QuickJobAgentModal.tsx`, `QuickEmployerAgentModal.tsx`)**:
-  - **Personal Career Agent**: Sign up / paste a LinkedIn URL (`POST /api/recruitment/linkedin-quickstart`) to spawn a personal agent and auto-match against open vacancies—including an **OpenAI Business Agent** (`openai.com/careers/search/`) seeded with **10 regional & remote roles across 10 countries/zones**.
+  - **Personal Career Agent**: Paste any personal URL (LinkedIn, GitHub, portfolio, or personal domain) via `POST /api/recruitment/linkedin-quickstart` to spawn a personal agent with `impliedIntent` and auto-match against open vacancies—including an **OpenAI Business Agent** (`openai.com/careers/search/`) seeded with **10 regional & remote roles across 10 countries/zones**.
+  - **Human & Company Intent Hub (`IntentProfilePage.tsx`, `/intent`)**: Professionals declare implied interests (categories, topics, desired outcomes, compensation targets, broadcast/scan radius, and autonomous contact rules), while businesses signal intent by publishing **Requests for Proposal (RFPs)** and **Vacancies**. Agents autonomously rank opportunities via `POST /api/agents/autonomous-match`.
   - **Autonomous CV Tailoring, Cover Letter & Document Export (`src/lib/docExport.ts`, `AgentProfileHistoryModal.tsx`)**: Once matched, the personal agent reformats the candidate's CV to the job spec, drafts a tailored cover letter and interview prep questions (`POST /api/recruitment/tailor-application`), submits the package, logs every action in **Agent History**, and allows downloading any CV or cover letter as **PDF** (`jspdf`) or **DOCX** (`docx`).
-  - **1-Click Employer Agent & HR Portal (`QuickEmployerAgentModal.tsx`, `CompanyHrPortalModal.tsx`)**: Businesses paste a jobs/careers URL (`POST /api/recruitment/employer-quickstart`) to synthesize a company hiring agent, generate structured vacancies, auto-rank top matching candidates, inspect candidate docs/videos, record HR review notes, and audit hiring team activity.
+  - **1-Click Employer Agent & HR Portal (`QuickEmployerAgentModal.tsx`, `CompanyHrPortalModal.tsx`)**: Businesses paste a jobs/careers URL (`POST /api/recruitment/employer-quickstart`) to synthesize a company hiring agent, generate structured vacancies, publish RFPs, auto-rank top matching candidates, inspect candidate docs/videos, record HR review notes, and audit hiring team activity.
 - **Anti-Deepfake Video Verification & Live Interviews (`VideoInterviewStudioPanel.tsx`, `LiveInterviewRoomModal.tsx`)**:
   - Supports webcam capture or video upload with multimodal Gemini frame/video liveness & deepfake forensics (`POST /api/recruitment/verify-video`), AI/HR pre-screening (`POST /api/recruitment/prescreen`), live interview rooms, and Google/Outlook/`.ics` calendar scheduling (`calendarAgentTool.ts`).
 - **Bilateral A2A Negotiation & Reverse-RFP (`NegotiationArenaModule.tsx`, `SurfaceSimulatorFrame.tsx`)**:
   - 4-turn buyer/seller negotiation (`POST /api/a2a/negotiate`) and multi-channel Reverse-RFP broadcasting (`POST /api/rfp/broadcast`) previewable across Desktop, Mobile, CarPlay, and XR surfaces.
-- **Spatial Radar, Wi-Fi/BLE Mesh & Contacts (`SpatialMapsDiscovery.tsx`, `ContactsHubModule.tsx`)**:
+- **Spatial Radar, Real-Time WebSocket Wi-Fi/BLE Mesh & Compass/Gyroscope (`SpatialMapsDiscovery.tsx`, `ContactsHubModule.tsx`)**:
   - **Automatic Map Failover**: Uses **Google Maps** (`@vis.gl/react-google-maps`) as primary renderer and automatically fails over to **Mapbox GL JS** (`mapbox-gl`) if Google Maps fails to load, returns auth errors, or fires `gmp-quota-exceeded`.
+  - **Real-Time Compass, Gyroscope & GPS Mesh**: Combines live `watchPosition` GPS, `DeviceOrientationEvent` compass heading + pitch/roll telemetry (plus interactive azimuth sweep), WebSocket `/ws/mesh` room sync, Bluetooth/BLE beacons, and independent **Broadcast (TX) & Scan (RX)** radius sliders with **Mutual Bearing Lock** and **Autonomous Auto-Add Contacts** inside scan radius.
   - **Proximity Sharing**: Announces ephemeral peers over same Wi-Fi LAN subnet hashes (`POST /api/proximity/announce`), discovers nearby BLE/Wi-Fi peers (`GET /api/proximity/peers`), and logs saved cards/negotiations (`POST /api/proximity/exchange`).
 - **Predictive Dialer & `$0.00` Civic SOS (`AgentDialerModal.tsx`)**:
   - Real-time predictive matching by digits, T9 patterns, shortcodes, or handles; dialing `911`, `112`, `999`, `10111`, or `10177` activates `$0.00` Civic Priority Dispatch with GPS lock and unit ETAs.
@@ -101,8 +104,8 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 4. **Live FX & Geo-Currency Detection (`server.ts` & `src/lib/fx.ts`)**:
    - Fetches and caches live USD exchange rates for 1 hour from `https://open.er-api.com/v6/latest/USD` across 13 supported currencies (`USD`, `ZAR`, `EUR`, `GBP`, `NGN`, `KES`, `CAD`, `AUD`, `INR`, `AED`, `SGD`, `JPY`, `BRL`), falling back to `DEFAULT_RATES_PER_USD`.
    - Auto-suggests user currency from `lat`/`lng` bounding boxes, reverse-proxy country headers (`cf-ipcountry`, `x-appengine-country`, `x-vercel-ip-country`), or `Accept-Language`.
-5. **Ephemeral Same-Wi-Fi LAN Mesh (`server.ts`)**:
-   - Computes a normalized subnet identifier from client IP (`req.ip` / `x-forwarded-for`), hashing it with SHA-256 (`wifi-lan-<12hex>`) so raw IP addresses are never exposed. Announced peers auto-expire after a **10-minute TTL** and merge with seeded regional conference/beacon peers.
+5. **Real-Time Spatial Proximity, Compass/Gyro & WebSocket Mesh (`server.ts`)**:
+   - Computes a normalized subnet identifier from client IP (`req.ip` / `x-forwarded-for`), hashing it with SHA-256 (`wifi-lan-<12hex>`) so raw IP addresses are never exposed. Announced peers auto-expire after a **10-minute TTL**, broadcast live via **WebSocket (`/ws/mesh`)** per room, compute Haversine distance + compass bearing, and detect bi-directional **Mutual Bearing Lock** (both users facing within ±35° along their connecting azimuth).
 6. **Zero-Scraping Compliance**:
    - LinkedIn profile URLs are normalized into clean reference handles without scraping external HTML; CV parsing, job matching, and tailored DOCX/PDF packages operate strictly on user-submitted text, URL references, and directory job specifications.
 
@@ -144,13 +147,15 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 | `POST` | `/api/rfp/broadcast` | `{ title, description, budgetZAR, category, channels, publisherHandle, agents }` | Broadcasts Reverse-RFP across directory, `google_maps_billboard`, `ble_beacon`, `carplay` and returns ranked matching vendor proposals. |
 | `POST` | `/api/rfp/match` | `{ agent, passerbyLocation, activeRfps }` | Evaluates spatial BLE/geofence passerby handshake (`engaged`, `score`, `handshakeMessage`, `offerZAR`). |
 | `POST` | `/api/ai/opportunities` | `{ userAgent, contacts, jobs, rfps, peers }` | Gemini-powered Opportunity Scout returning 3–6 prioritized commercial/career opportunities. Returns `503 GEMINI_NOT_CONFIGURED` if API key is absent. |
+| `POST` | `/api/agents/autonomous-match` | `{ agent, agents, jobs, rfps, peers }` | Autonomous `gemini-4-hydrogen` + deterministic cross-matcher ranking vacancies, RFPs, peer agents, and nearby spatial peers against `impliedIntent`. |
 
-### 4. Proximity Mesh: Same Wi-Fi LAN & BLE (`server.ts`)
-| Method | Endpoint | Query / Body | Response / Behavior |
+### 4. Real-Time Proximity Mesh: WebSocket, Wi-Fi LAN, BLE & Compass (`server.ts`)
+| Method / Protocol | Endpoint | Query / Body | Response / Behavior |
 | --- | --- | --- | --- |
-| `POST` | `/api/proximity/announce` | `{ handle, displayName, roleTitle, organization, type, skills, eventRoom, intent, active, ... }` | Registers or withdraws (`active: false`) an ephemeral peer on the hashed client subnet + `eventRoom` (10-min TTL). |
-| `GET` | `/api/proximity/peers` | `?room=&excludeHandle=` | Lists active subnet/room peers alongside seeded conference BLE peers + active `wifiNetworkKey`. |
-| `POST` | `/api/proximity/exchange` | `{ fromHandle, toHandle, mode, eventRoom, transport }` | Logs a `card_share` or `share_and_negotiate` handshake event. |
+| `WS` | `/ws/mesh` | `?room=<eventRoom>` | Real-time room-scoped WebSocket push notifications on peer announce, withdrawal, or handshake exchange. |
+| `POST` | `/api/proximity/announce` | `{ handle, displayName, roleTitle, organization, type, skills, impliedTopics, headingDeg, pitchDeg, rollDeg, broadcastRadiusMeters, scanRadiusMeters, eventRoom, intent, active, ... }` | Registers or withdraws (`active: false`) an ephemeral peer on the hashed client subnet + `eventRoom` (10-min TTL) and pushes `peers_updated` to `/ws/mesh`. |
+| `GET` | `/api/proximity/peers` | `?room=&excludeHandle=&lat=&lng=&headingDeg=&scanRadiusMeters=` | Lists active subnet/room peers with Haversine distance, relative compass bearing, `mutualBearingLock`, and `withinScanRadius`. |
+| `POST` | `/api/proximity/exchange` | `{ fromHandle, toHandle, mode, eventRoom, transport }` | Logs a `card_share` or `share_and_negotiate` handshake event and notifies room subscribers via `/ws/mesh`. |
 
 ### 5. `.agent` Handle Registry, Auctions & `x402` (`server.ts`)
 | Method | Endpoint | Query / Body | Response / Behavior |
@@ -238,7 +243,7 @@ All documents enforce a global **default-deny safety net**, strict ID validation
 | Layer | Technologies |
 | --- | --- |
 | **Frontend** | React `19.0.1`, TypeScript `7.0.2`, Vite `8.3.0`, Tailwind CSS v4 (`@tailwindcss/vite`), `lucide-react`, `motion` |
-| **Backend** | Node.js, Express `4.21.2`, `tsx` (`^4.21.0`), `dotenv` |
+| **Backend** | Node.js, Express `4.21.2`, `ws` WebSockets, `tsx` (`^4.21.0`), `dotenv` |
 | **AI & Agents** | `@google/genai` (`^3.3.0` — `gemini-4-hydrogen` Thinking & Function Calling, `gemini-2.5-flash`) |
 | **Database & Auth** | Firebase `13.3.0` (Firestore + Firebase Auth Google Workspace scopes) + local persisted store |
 | **Maps & Geo** | `@vis.gl/react-google-maps` (`^1.10.2`) primary + `mapbox-gl` (`^3.35.0`) automatic failover |
@@ -281,6 +286,7 @@ Configure variables in `.env` (see `.env.example`):
 │   │   ├── LandingFlippableCardExamples.tsx # Separated "For Professionals" & "For Businesses" flippable showcase cards
 │   │   ├── AppWalkthroughPlayer.tsx       # Interactive platform walkthrough video player
 │   │   ├── LegalDocumentView.tsx          # /term, /terms, and /employeragreement reader
+│   │   ├── IntentProfilePage.tsx          # Human Intent & Company RFP/Vacancy Intent hub with autonomous agent matching
 │   │   ├── DirectoryModule.tsx            # Carousel/Grid .agent directory & category filters
 │   │   ├── AgentCardCarousel.tsx          # 3D swipable carousel with edge scroll buttons & keyboard controls
 │   │   ├── AgentIdentityCard.tsx          # 2-sided Personal/Business .agent card, fullscreen toggle & 8s pitch video/gallery

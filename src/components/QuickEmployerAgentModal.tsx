@@ -24,6 +24,7 @@ import {
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 import { LegalDocTab } from '../data/legalDocuments';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface QuickEmployerAgentModalProps {
@@ -336,13 +337,13 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl border border-zinc-300 dark:border-white/15 p-4 sm:p-6 space-y-4 max-h-[92dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
+        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl border border-zinc-300 dark:border-white/15 max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1 mb-1" />
+        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-white/10">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-3 pb-3 border-b border-zinc-200 dark:border-white/10 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -356,7 +357,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
             <div className="min-w-0">
               <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight flex items-center gap-2 truncate">
                 <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>1-Click Employer Agent &amp; Vacancy Poster</span>
+                <span className="truncate">1-Click Employer Agent &amp; Vacancy Poster</span>
               </h2>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
                 Add job listing URL · Auto-create verified hiring agent · Auto-match candidate agents
@@ -373,6 +374,14 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        <SwipeScrollArea
+          direction="vertical"
+          arrowSize="sm"
+          showArrows={true}
+          className="flex-1 min-h-0"
+          innerClassName="px-4 sm:px-6 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-4"
+        >
 
         {/* Step 1: Input Form */}
         {!createdAgent ? (
@@ -509,14 +518,14 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
               </p>
             )}
 
-            <div className="pt-2 flex items-center justify-between gap-2">
+            <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <span className="text-[11px] text-zinc-500">
                 Poppy v1.0 verified protocol · Zero scraping
               </span>
               <button
                 type="submit"
                 disabled={creating || !acceptedEmployerTerms}
-                className="min-h-[42px] px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center gap-2 transition-all shadow-md disabled:opacity-50"
+                className="min-h-[42px] w-full sm:w-auto px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50"
               >
                 {creating ? (
                   <>
@@ -610,7 +619,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
 
             {/* Candidate Auto-Matches Strip */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h4 className="font-display font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
@@ -625,7 +634,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                     type="button"
                     onClick={handleInviteTopCandidatesBatch}
                     disabled={batchInviting}
-                    className="min-h-[32px] px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
+                    className="min-h-[32px] px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50 shrink-0"
                   >
                     {batchInviting ? (
                       <>
@@ -642,7 +651,13 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                 )}
               </div>
 
-              <div className="space-y-2 max-h-72 overflow-y-auto no-scrollbar">
+              <SwipeScrollArea
+                direction="vertical"
+                arrowSize="sm"
+                showArrows={true}
+                className="max-h-72"
+                innerClassName="space-y-2 pr-1"
+              >
                 {deliveredMatches.map((match) => {
                   const isInvited = invitedCandidateIds[match.id] || match.status === 'interview';
                   const isBusy = bookingBusyId === match.id;
@@ -651,7 +666,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                       key={match.id}
                       className="rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/90 p-3 space-y-2"
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">
@@ -707,10 +722,10 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                     </div>
                   );
                 })}
-              </div>
+              </SwipeScrollArea>
             </div>
 
-            <div className="pt-2 flex items-center justify-between">
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={handleReset}
@@ -728,6 +743,7 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
             </div>
           </div>
         )}
+        </SwipeScrollArea>
       </div>
     </div>
   );

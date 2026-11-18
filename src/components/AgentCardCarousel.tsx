@@ -195,7 +195,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
   return (
     <div className="flex flex-col items-center justify-center gap-2 w-full">
       <div className="relative w-full flex items-center justify-center overflow-x-clip py-1">
-        <div className="w-full flex items-center justify-center gap-4 lg:gap-8 touch-pan-y px-3 sm:px-0">
+        <div className="w-full flex items-center justify-center gap-4 lg:gap-8 touch-pan-y px-1.5 sm:px-0">
           {prevAgent && (
             <div
               onClick={goPrev}
@@ -245,7 +245,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
                   }}
                   aria-label="Previous card"
                   title="Previous card"
-                  className="absolute -left-2.5 sm:-left-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
+                  className="absolute left-0.5 sm:-left-4 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -258,7 +258,7 @@ export const AgentCardCarousel: React.FC<AgentCardCarouselProps> = ({
                   }}
                   aria-label="Next card"
                   title="Next card"
-                  className="absolute -right-2.5 sm:-right-4 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
+                  className="absolute right-0.5 sm:-right-4 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-300 dark:border-white/20 flex items-center justify-center text-zinc-800 dark:text-zinc-100 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>

@@ -16,6 +16,8 @@ export function matchCandidateToJob(
     new Set([
       ...(seeker.skills || []),
       ...(seeker.cvSummary?.parsedSkills || []),
+      ...(seeker.impliedIntent?.topics || []),
+      ...(seeker.impliedIntent?.desiredOutcomes || []),
       ...(seeker.roleTitle ? seeker.roleTitle.split(/[/,&·]/) : []),
     ])
   )

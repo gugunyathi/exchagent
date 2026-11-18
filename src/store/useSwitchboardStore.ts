@@ -42,6 +42,8 @@ import {
   HrTeamMember,
   HrReviewNote,
   AgentStatusPostDoc,
+  AgentIntentProfile,
+  AutonomousMatchItem,
   zarToUsd,
 } from '../types/firestore';
 import {
@@ -144,6 +146,7 @@ function loadInitialSlice(): Required<PersistedSlice> {
           cardStyle: a.cardStyle || seed.cardStyle,
           hrTeam: a.hrTeam?.length ? a.hrTeam : seed.hrTeam,
           careersUrl: a.careersUrl || seed.careersUrl,
+          impliedIntent: a.impliedIntent || seed.impliedIntent,
         };
       });
       return {
@@ -245,6 +248,15 @@ export function useSwitchboardStore() {
   } | null>(null);
   const [aiOpportunitiesLoading, setAiOpportunitiesLoading] = useState(false);
   const [aiOpportunitiesError, setAiOpportunitiesError] = useState<string | null>(null);
+
+  const [autonomousMatches, setAutonomousMatches] = useState<AutonomousMatchItem[]>([]);
+  const [autonomousMatchLoading, setAutonomousMatchLoading] = useState(false);
+  const [autonomousMatchMeta, setAutonomousMatchMeta] = useState<{
+    engine?: string;
+    generatedAt?: string;
+    executiveSummary?: string;
+    sourceHandle?: string;
+  } | null>(null);
 
   const [surface, setSurface] = useState<SurfaceMode>('desktop');
   const [currency, setCurrencyState] = useState<CurrencyMode>('USD');
@@ -1957,6 +1969,180 @@ export function useSwitchboardStore() {
     [contacts, currentUser.uid, jobs, rfps]
   );
 
+  const updateAgentIntent = useCallback(
+    async (agentId: string, intent: AgentIntentProfile) => {
+      let targetAgent: AgentDoc | undefined;
+      setAgents((prev) =>
+        prev.map((a) => {
+          if (a.id !== agentId) return a;
+          const mergedTopics = Array.from(new Set([...(a.skills || []), ...(intent.topics || [])])).slice(0, 12);
+          targetAgent = {
+            ...a,
+            skills: mergedTopics.length > 0 ? mergedTopics : a.skills,
+            impliedIntent: {
+              ...intent,
+              updatedAt: new Date().toISOString(),
+            },
+          };
+          return targetAgent;
+        })
+      );
+
+      if (targetAgent && db && firebaseUser && firestoreOnline) {
+        try {
+          await setDoc(doc(db, 'agents', targetAgent.id), targetAgent);
+        } catch {
+          // keep local persistence
+        }
+      }
+
+      if (targetAgent) {
+        logAgentHistory({
+          agentId: targetAgent.id,
+          agentHandle: targetAgent.handle,
+          actorType: targetAgent.type === 'business' ? 'company_agent' : 'personal_agent',
+          actorName: `${targetAgent.displayName} Agent`,
+          actionType: 'AUTO_MATCH',
+          title: 'Implied Intent Profile Updated',
+          details: `${intent.headline || `${intent.categories.join(', ')} intent active`} (${intent.autoMatchEnabled ? 'AUTO-MATCH ON' : 'SAVED'})`,
+          channel: 'Intent & Auto-Match Hub',
+        });
+        emitToast(`Updated Intent profile for ${targetAgent.displayName}`, 'success');
+      }
+      return targetAgent || null;
+    },
+    [firebaseUser, firestoreOnline, logAgentHistory]
+  );
+
+  const updateJobStatus = useCallback((jobId: string, status: JobPostingDoc['status']) => {
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status } : j)));
+    emitToast(`Vacancy marked ${status}`, 'info');
+  }, []);
+
+  const updateRfpStatus = useCallback((rfpId: string, status: RfpDoc['status']) => {
+    setRfps((prev) => prev.map((r) => (r.id === rfpId ? { ...r, status } : r)));
+    emitToast(`RFP marked ${status}`, 'info');
+  }, []);
+
+  const runAutonomousIntentMatch = useCallback(
+    async (sourceAgent: AgentDoc, livePeers: ProximityPeerDoc[] = []) => {
+      setAutonomousMatchLoading(true);
+      try {
+        const res = await fetch('/api/agents/autonomous-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceAgent,
+            agents,
+            jobs,
+            rfps,
+            peers: livePeers,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          emitToast(data?.error || 'Autonomous matcher could not complete', 'warning');
+          return null;
+        }
+        const items = Array.isArray(data.matches) ? (data.matches as AutonomousMatchItem[]) : [];
+        setAutonomousMatches(items);
+        setAutonomousMatchMeta({
+          engine: data.engine,
+          generatedAt: data.generatedAt,
+          executiveSummary: data.executiveSummary,
+          sourceHandle: sourceAgent.handle,
+        });
+        return items;
+      } catch (err) {
+        emitToast(err instanceof Error ? err.message : 'Network error running autonomous match', 'warning');
+        return null;
+      } finally {
+        setAutonomousMatchLoading(false);
+      }
+    },
+    [agents, jobs, rfps]
+  );
+
+  const autoAddProximityPeers = useCallback(
+    (
+      peers: ProximityPeerDoc[],
+      opts: {
+        scanRadiusMeters: number;
+        myTopics: string[];
+        requireTopicOverlap: boolean;
+        roomCode: string;
+      }
+    ): PersonalContactDoc[] => {
+      const normalizedTopics = opts.myTopics.map((t) => t.trim().toLowerCase()).filter((t) => t.length >= 2);
+      const existingHandles = new Set(
+        contacts.filter((c) => c.ownerUid === currentUser.uid).map((c) => c.handle.toLowerCase())
+      );
+
+      const added: PersonalContactDoc[] = [];
+      const now = new Date().toISOString();
+
+      for (const peer of peers) {
+        if (peer.distanceMeters > opts.scanRadiusMeters) continue;
+        if (existingHandles.has(peer.handle.toLowerCase())) continue;
+
+        const peerHay = [
+          peer.roleTitle,
+          peer.summary || '',
+          ...(peer.skills || []),
+          ...(peer.impliedTopics || []),
+        ]
+          .join(' ')
+          .toLowerCase();
+        const topicOverlap = normalizedTopics.filter((t) => peerHay.includes(t));
+
+        if (opts.requireTopicOverlap && normalizedTopics.length > 0 && topicOverlap.length === 0) {
+          continue;
+        }
+
+        existingHandles.add(peer.handle.toLowerCase());
+        added.push({
+          id: `contact_auto_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          ownerUid: currentUser.uid,
+          handle: peer.handle,
+          displayName: peer.displayName,
+          roleTitle: peer.roleTitle,
+          organization: peer.organization,
+          type: peer.type === 'business' ? 'business' : 'persona',
+          verified: peer.verified !== false,
+          voiceNumber: peer.voiceNumber || '+27-87-AGENT-000',
+          agentEmail: peer.agentEmail || `engage@${peer.handle}`,
+          skills: peer.skills || [],
+          summary: peer.summary,
+          imageUrl: peer.imageUrl,
+          brandColor: peer.brandColor,
+          brandLogoCode: peer.brandLogoCode,
+          cardStyle: peer.cardStyle,
+          source: peer.sameWifi ? 'event_wifi' : 'event_ble',
+          sharedAtLocation: peer.locationLabel,
+          eventName: opts.roomCode,
+          sharedByHandle: peer.handle,
+          favorite: false,
+          tags: Array.from(new Set(['auto-radar', ...topicOverlap.slice(0, 2), ...(peer.skills || []).slice(0, 2)])),
+          notes: `Auto-added via proximity radar (${peer.distanceMeters}m${peer.mutualBearingLock ? ', mutual compass bearing lock' : ''})${topicOverlap.length ? ` · Matched intent: ${topicOverlap.join(', ')}` : ''}`,
+          sharedAt: now,
+        });
+      }
+
+      if (added.length > 0) {
+        setContacts((prev) => [...added, ...prev]);
+        emitToast(
+          added.length === 1
+            ? `Auto-added ${added[0].displayName} (${added[0].tags[0]}) within ${opts.scanRadiusMeters}m`
+            : `Auto-added ${added.length} nearby contacts within ${opts.scanRadiusMeters}m`,
+          'success'
+        );
+      }
+
+      return added;
+    },
+    [contacts, currentUser.uid]
+  );
+
   const resetDemoData = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setAgents(SEED_AGENTS);
@@ -1983,6 +2169,8 @@ export function useSwitchboardStore() {
     setAiOpportunities([]);
     setAiOpportunitiesMeta(null);
     setAiOpportunitiesError(null);
+    setAutonomousMatches([]);
+    setAutonomousMatchMeta(null);
     setPasserbyEvents([]);
     setDispatchedUnits([]);
   }, []);
@@ -2011,6 +2199,9 @@ export function useSwitchboardStore() {
     aiOpportunitiesMeta,
     aiOpportunitiesLoading,
     aiOpportunitiesError,
+    autonomousMatches,
+    autonomousMatchLoading,
+    autonomousMatchMeta,
     passerbyEvents,
     dispatchedUnits,
     userLocation,
@@ -2075,6 +2266,11 @@ export function useSwitchboardStore() {
     toggleContactFavorite,
     deleteContact,
     scanOpportunitiesWithAi,
+    updateAgentIntent,
+    updateJobStatus,
+    updateRfpStatus,
+    runAutonomousIntentMatch,
+    autoAddProximityPeers,
     resetDemoData,
   };
 }

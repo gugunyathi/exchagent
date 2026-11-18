@@ -35,6 +35,7 @@ import {
 import { emitToast } from '../lib/toast';
 import { resolveAgentImage, resolveAgentMediaGallery } from '../lib/agentImages';
 import { AgentMediaGalleryModal } from './AgentMediaGalleryModal';
+import { SwipeScrollArea } from './SwipeScrollArea';
 
 /** Square full-screen expand & exit icons matching the reference square frame geometry */
 const SquareExpandIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
@@ -564,7 +565,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
     >
       <div
         className={`relative w-full ${
-          expandedFull ? 'h-full' : 'h-[358px] sm:h-[404px]'
+          expandedFull ? 'h-full' : 'h-[416px] sm:h-[444px]'
         } preserve-3d ${flipped ? 'rotate-y-180' : ''}`}
       >
         {/* FRONT FACE — High-contrast Tactile Editorial Business Card */}
@@ -704,9 +705,9 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
           </div>
 
           {/* Card Core Content — Left Clickable Media/Video + Right Identity Details */}
-          <div className={`relative z-10 ${expandedFull ? 'px-5 sm:px-7 py-4 sm:py-5 gap-4' : 'px-3.5 py-2.5 gap-2'} flex-1 min-h-0 flex flex-col justify-between`}>
+          <div className={`relative z-10 ${expandedFull ? 'px-4 sm:px-7 py-4 sm:py-5 gap-5' : 'px-3.5 sm:px-4 py-3 sm:py-3.5 gap-3.5'} flex-1 min-h-0 flex flex-col justify-between`}>
             {/* Horizontal Split: Left Visual Frame + Right Text Stack */}
-            <div className={`grid ${expandedFull ? 'grid-cols-[150px_1fr] sm:grid-cols-[240px_1fr] gap-5 sm:gap-6' : 'grid-cols-[106px_1fr] sm:grid-cols-[114px_1fr] gap-3'} flex-1 min-h-0 items-stretch`}>
+            <div className={`grid ${expandedFull ? 'grid-cols-1 sm:grid-cols-[240px_1fr] gap-4 sm:gap-6' : 'grid-cols-[104px_1fr] sm:grid-cols-[114px_1fr] gap-3 sm:gap-3.5'} flex-1 min-h-0 items-start`}>
               {/* Left Side: Clickable Portrait / Brand Media / 8s Intro Video Preview */}
               <div
                 role="button"
@@ -724,7 +725,9 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                   }
                 }}
                 title="Click to open Full-Screen Image & Video Gallery (Unmuted)"
-                className="group/media relative h-full min-h-[146px] sm:min-h-[168px] rounded-xl overflow-hidden border border-zinc-200 dark:border-white/15 bg-zinc-100 dark:bg-zinc-900 shadow-xs cursor-pointer"
+                className={`group/media relative ${
+                  expandedFull ? 'h-[172px] sm:h-full sm:min-h-[180px]' : 'h-[140px] sm:h-[156px]'
+                } shrink-0 rounded-xl overflow-hidden border border-zinc-200 dark:border-white/15 bg-zinc-100 dark:bg-zinc-900 shadow-xs cursor-pointer`}
               >
                 {cardVideoPlaying && shortVideoItem ? (
                   shortVideoItem.kind === 'video' ? (
@@ -846,7 +849,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 </div>
 
                 {/* Concise Skills */}
-                <div className="flex flex-wrap items-center gap-1 pt-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 pt-2 pb-1">
                   {agent.skills.slice(0, 3).map((skill) => (
                     <span
                       key={skill}
@@ -860,8 +863,8 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
             </div>
 
             {/* Contact Links + Handshake QR */}
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-200 dark:border-white/10">
-              <div className="space-y-1 min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2.5 pt-3.5 sm:pt-4 mt-0.5 border-t border-zinc-200 dark:border-white/10 shrink-0">
+              <div className="space-y-1.5 min-w-0 flex-1">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1046,7 +1049,13 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
           </div>
 
           {/* Key-Value Spec Sheet Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 divide-y divide-zinc-200 dark:divide-white/[0.07] text-[11px]">
+          <SwipeScrollArea
+            direction="vertical"
+            arrowSize="sm"
+            showArrows={true}
+            className="flex-1 min-h-0"
+            innerClassName="py-2 pr-1 divide-y divide-zinc-200 dark:divide-white/[0.07] text-[11px]"
+          >
             <div className="py-1.5 flex items-center justify-between gap-2">
               <span className="text-zinc-600 dark:text-zinc-400 shrink-0">Protocol</span>
               <span className="font-mono text-zinc-900 dark:text-zinc-200 truncate">{protocolValue}</span>
@@ -1195,7 +1204,7 @@ export const AgentIdentityCard: React.FC<AgentIdentityCardProps> = ({
                 </span>
               </div>
             )}
-          </div>
+          </SwipeScrollArea>
 
           {/* Back Actions Footer */}
           <div className="grid grid-cols-4 gap-2 pt-2.5 border-t border-zinc-200 dark:border-white/10 shrink-0">

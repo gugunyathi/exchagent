@@ -24,6 +24,7 @@ import {
   CLICKWRAP_SNIPPETS,
   LegalSectionItem,
 } from '../data/legalDocuments';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface LegalDocumentViewProps {
@@ -141,11 +142,17 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
 
       {/* Document Tab Selector */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs">
+        <SwipeScrollArea
+          direction="horizontal"
+          arrowSize="sm"
+          showArrows={true}
+          className="w-full sm:w-auto max-w-full rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xs"
+          innerClassName="inline-flex items-center gap-1 p-1 pr-7"
+        >
           <button
             type="button"
             onClick={() => onSelectDoc('terms')}
-            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
               activeDoc === 'terms'
                 ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                 : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-white'
@@ -159,7 +166,7 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
           <button
             type="button"
             onClick={() => onSelectDoc('privacy')}
-            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
               activeDoc === 'privacy'
                 ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                 : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-white'
@@ -173,7 +180,7 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
           <button
             type="button"
             onClick={() => onSelectDoc('employer')}
-            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
               activeDoc === 'employer'
                 ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                 : 'text-zinc-600 dark:text-zinc-400 font-medium hover:text-zinc-950 dark:hover:text-white'
@@ -183,7 +190,7 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
             <span>Employer Agreement &amp; Fees</span>
             <span className="font-mono text-[10px] opacity-70">/employeragreement</span>
           </button>
-        </div>
+        </SwipeScrollArea>
 
         {onOpenPrivacyDesk && (
           <button
@@ -328,8 +335,14 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
               ))}
 
               {/* Styled Commercial Fee Schedule Table */}
-              <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-white/10">
-                <table className="w-full text-left border-collapse text-xs sm:text-[13px]">
+              <SwipeScrollArea
+                direction="horizontal"
+                arrowSize="sm"
+                showArrows={true}
+                className="rounded-xl border border-zinc-200 dark:border-white/10"
+                innerClassName="pr-2"
+              >
+                <table className="w-full min-w-[600px] text-left border-collapse text-xs sm:text-[13px]">
                   <thead>
                     <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-white/10 text-zinc-900 dark:text-zinc-100">
                       <th className="py-3 px-3.5 font-semibold whitespace-nowrap">Tier</th>
@@ -357,7 +370,7 @@ export const LegalDocumentView: React.FC<LegalDocumentViewProps> = ({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </SwipeScrollArea>
 
               {LEGAL_PART_2_SECTIONS.slice(3).map((sec) => (
                 <SectionBlock key={sec.id} section={sec} />

@@ -1,8 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel, Type, FunctionDeclaration } from '@google/genai';
 import {
@@ -15,7 +17,11 @@ import {
   SEED_EVENT_PEERS,
 } from './src/data/seedData';
 import { quoteHandlePricing } from './src/services/paymentRails';
-import { ZAR_PER_USD, ProximityPeerDoc } from './src/types/firestore';
+import {
+  ZAR_PER_USD,
+  ProximityPeerDoc,
+  AutonomousMatchItem,
+} from './src/types/firestore';
 import {
   CURRENCY_CATALOG,
   DEFAULT_RATES_PER_USD,
@@ -717,11 +723,12 @@ async function startServer() {
     });
   });
 
-  // Same Wi-Fi LAN & BLE Proximity Event Mesh Registry
+  // Same Wi-Fi LAN, Bluetooth/BLE & Bi-Directional Compass/Gyro Proximity Event Mesh Registry
   interface StoredProximityPeer extends ProximityPeerDoc {
     expiresAtMs: number;
   }
   const activeProximityPeers = new Map<string, StoredProximityPeer>();
+  const meshRoomSockets = new Map<string, Set<WebSocket>>();
   const proximityExchangeLogs: Array<{
     id: string;
     fromHandle: string;
@@ -755,6 +762,86 @@ async function startServer() {
     }
   }
 
+  function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  }
+
+  function computeBearingDeg(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const toDeg = (r: number) => ((r * 180) / Math.PI + 360) % 360;
+    const phi1 = toRad(lat1);
+    const phi2 = toRad(lat2);
+    const dLam = toRad(lng2 - lng1);
+    const y = Math.sin(dLam) * Math.cos(phi2);
+    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLam);
+    return Math.round(toDeg(Math.atan2(y, x)));
+  }
+
+  function angularDiffDeg(a: number, b: number): number {
+    const d = Math.abs(((a - b + 540) % 360) - 180);
+    return d;
+  }
+
+  function broadcastToMeshRoom(roomCode: string, payload: unknown) {
+    const sockets = meshRoomSockets.get(roomCode.toLowerCase());
+    if (!sockets || sockets.size === 0) return;
+    const raw = JSON.stringify(payload);
+    for (const sock of sockets) {
+      if (sock.readyState === WebSocket.OPEN) {
+        sock.send(raw);
+      }
+    }
+  }
+
+  function enrichPeerWithSpatialGeometry(
+    peer: ProximityPeerDoc,
+    callerLat?: number,
+    callerLng?: number,
+    callerHeading?: number
+  ): ProximityPeerDoc {
+    let distanceMeters = peer.distanceMeters;
+    let relativeBearingDeg = peer.relativeBearingDeg;
+    let mutualBearingLock = false;
+
+    if (
+      typeof callerLat === 'number' &&
+      typeof callerLng === 'number' &&
+      typeof peer.lat === 'number' &&
+      typeof peer.lng === 'number' &&
+      (Math.abs(callerLat - peer.lat) > 0.00001 || Math.abs(callerLng - peer.lng) > 0.00001)
+    ) {
+      const geoDist = haversineMeters(callerLat, callerLng, peer.lat, peer.lng);
+      distanceMeters = geoDist;
+      relativeBearingDeg = computeBearingDeg(callerLat, callerLng, peer.lat, peer.lng);
+      const bearingPeerToCaller = computeBearingDeg(peer.lat, peer.lng, callerLat, callerLng);
+
+      if (typeof callerHeading === 'number' && typeof peer.headingDeg === 'number') {
+        const callerFacingPeer = angularDiffDeg(callerHeading, relativeBearingDeg) <= 48;
+        const peerFacingCaller = angularDiffDeg(peer.headingDeg, bearingPeerToCaller) <= 48;
+        mutualBearingLock = callerFacingPeer && peerFacingCaller;
+      }
+    } else if (typeof callerHeading === 'number' && typeof peer.headingDeg === 'number') {
+      // Fallback bi-directional facing calculation on relative room coordinates
+      const oppositeHeading = (callerHeading + 180) % 360;
+      mutualBearingLock = angularDiffDeg(peer.headingDeg, oppositeHeading) <= 45;
+      relativeBearingDeg = relativeBearingDeg ?? ((peer.headingDeg + 180) % 360);
+    }
+
+    return {
+      ...peer,
+      distanceMeters,
+      relativeBearingDeg,
+      mutualBearingLock,
+    };
+  }
+
   app.post('/api/proximity/announce', (req, res) => {
     pruneExpiredPeers();
     const body = req.body || {};
@@ -768,6 +855,7 @@ async function startServer() {
 
     if (body.active === false) {
       activeProximityPeers.delete(key);
+      broadcastToMeshRoom(roomCode, { type: 'peer_removed', handle, roomCode });
       return res.json({ status: 'STOPPED', handle, roomCode });
     }
 
@@ -783,6 +871,7 @@ async function startServer() {
       verified: body.verified !== false,
       intent: body.intent || 'networking',
       skills: Array.isArray(body.skills) ? body.skills.slice(0, 8).map(String) : [],
+      impliedTopics: Array.isArray(body.impliedTopics) ? body.impliedTopics.slice(0, 12).map(String) : undefined,
       summary: body.summary ? String(body.summary) : undefined,
       imageUrl: body.imageUrl ? String(body.imageUrl) : undefined,
       brandLogoCode: body.brandLogoCode ? String(body.brandLogoCode) : undefined,
@@ -798,6 +887,11 @@ async function startServer() {
       sameWifi: true,
       lat: Number.isFinite(Number(body.lat)) ? Number(body.lat) : undefined,
       lng: Number.isFinite(Number(body.lng)) ? Number(body.lng) : undefined,
+      headingDeg: Number.isFinite(Number(body.headingDeg)) ? ((Number(body.headingDeg) % 360) + 360) % 360 : undefined,
+      pitchDeg: Number.isFinite(Number(body.pitchDeg)) ? Number(body.pitchDeg) : undefined,
+      rollDeg: Number.isFinite(Number(body.rollDeg)) ? Number(body.rollDeg) : undefined,
+      broadcastRadiusMeters: Number.isFinite(Number(body.broadcastRadiusMeters)) ? Number(body.broadcastRadiusMeters) : 120,
+      scanRadiusMeters: Number.isFinite(Number(body.scanRadiusMeters)) ? Number(body.scanRadiusMeters) : 150,
       incentive: body.incentive ? String(body.incentive) : undefined,
       matchedScore: 95,
       lastSeenAt: new Date().toISOString(),
@@ -806,6 +900,7 @@ async function startServer() {
 
     activeProximityPeers.set(key, peer);
     const { expiresAtMs: _ignore, ...publicPeer } = peer;
+    broadcastToMeshRoom(roomCode, { type: 'peer_upsert', peer: publicPeer });
     return res.json({
       status: 'BROADCASTING',
       subnetTag,
@@ -820,6 +915,9 @@ async function startServer() {
     const callerHandle = String(req.query.selfHandle || '').trim().toLowerCase();
     const includeBeacons = req.query.includeBeacons !== 'false';
     const callerSubnet = extractClientSubnetTag(req);
+    const callerLat = Number.isFinite(Number(req.query.lat)) ? Number(req.query.lat) : undefined;
+    const callerLng = Number.isFinite(Number(req.query.lng)) ? Number(req.query.lng) : undefined;
+    const callerHeading = Number.isFinite(Number(req.query.heading)) ? Number(req.query.heading) : undefined;
 
     const livePeers: ProximityPeerDoc[] = [];
     for (const stored of activeProximityPeers.values()) {
@@ -828,10 +926,17 @@ async function startServer() {
       if (!matchesRoom && !matchesSubnet) continue;
       if (callerHandle && stored.handle.toLowerCase() === callerHandle) continue;
       const { expiresAtMs: _ignore, ...publicPeer } = stored;
-      livePeers.push({
-        ...publicPeer,
-        sameWifi: matchesSubnet,
-      });
+      livePeers.push(
+        enrichPeerWithSpatialGeometry(
+          {
+            ...publicPeer,
+            sameWifi: matchesSubnet,
+          },
+          callerLat,
+          callerLng,
+          callerHeading
+        )
+      );
     }
 
     const seedPeers = includeBeacons
@@ -839,10 +944,17 @@ async function startServer() {
           if (callerHandle && sp.handle.toLowerCase() === callerHandle) return false;
           if (livePeers.some((lp) => lp.handle.toLowerCase() === sp.handle.toLowerCase())) return false;
           return roomCode === 'sandton-summit-2026' || roomCode === 'auto-wifi' || sp.roomCode === roomCode;
-        }).map((sp) => ({
-          ...sp,
-          roomCode: roomCode === 'auto-wifi' ? sp.roomCode : roomCode,
-        }))
+        }).map((sp) =>
+          enrichPeerWithSpatialGeometry(
+            {
+              ...sp,
+              roomCode: roomCode === 'auto-wifi' ? sp.roomCode : roomCode,
+            },
+            callerLat,
+            callerLng,
+            callerHeading
+          )
+        )
       : [];
 
     const combined = [...livePeers, ...seedPeers];
@@ -1060,6 +1172,259 @@ async function startServer() {
         error: msg,
       });
     }
+  });
+
+  // Unified Autonomous Intent & Mutual Opportunity Matcher (Personal & Company Agents)
+  app.post('/api/agents/autonomous-match', async (req, res) => {
+    const {
+      sourceAgent,
+      agents = SEED_AGENTS,
+      jobs = SEED_JOBS,
+      rfps = SEED_RFPS,
+      peers = SEED_EVENT_PEERS,
+    } = req.body || {};
+
+    if (!sourceAgent || !sourceAgent.handle) {
+      return res.status(400).json({ error: 'sourceAgent with handle is required.' });
+    }
+
+    const sourceTokens: string[] = Array.from(
+      new Set<string>(
+        [
+          ...(Array.isArray(sourceAgent.skills) ? sourceAgent.skills : []),
+          ...(Array.isArray(sourceAgent.impliedIntent?.topics) ? sourceAgent.impliedIntent.topics : []),
+          ...(Array.isArray(sourceAgent.cvSummary?.parsedSkills) ? sourceAgent.cvSummary.parsedSkills : []),
+          ...(Array.isArray(sourceAgent.cvSummary?.preferredRoles) ? sourceAgent.cvSummary.preferredRoles : []),
+          String(sourceAgent.roleTitle || ''),
+          String(sourceAgent.impliedIntent?.headline || ''),
+        ]
+          .flatMap((t) => String(t).split(/[,/|·]+/))
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length >= 2)
+      )
+    );
+
+    const computeKeywordOverlap = (targetTexts: string[]): string[] => {
+      const hay = targetTexts.join(' ').toLowerCase();
+      return sourceTokens.filter((tok) => hay.includes(tok)).slice(0, 6);
+    };
+
+    const deterministicMatches: AutonomousMatchItem[] = [];
+    const nowIso = new Date().toISOString();
+
+    if (sourceAgent.type === 'persona') {
+      // Match open Vacancies
+      for (const job of Array.isArray(jobs) ? jobs : []) {
+        if (job.status && job.status !== 'OPEN') continue;
+        const matched = computeKeywordOverlap([
+          job.title || '',
+          job.description || '',
+          ...(Array.isArray(job.requiredSkills) ? job.requiredSkills : []),
+        ]);
+        const minSalary = Number(sourceAgent.impliedIntent?.targetBudgetMinZAR || sourceAgent.cvSummary?.salaryMinZAR || 0);
+        const salaryMax = Number(job.salaryRangeZAR?.max || 0);
+        const salaryFitBonus = minSalary === 0 || salaryMax >= minSalary ? 10 : 0;
+        const score = Math.min(98, 68 + matched.length * 8 + salaryFitBonus);
+        deterministicMatches.push({
+          id: `auto_job_${job.id}`,
+          kind: 'job',
+          score,
+          title: job.title,
+          subtitle: `${job.companyName} · ${job.remoteMode} · ${job.location}`,
+          targetHandle: job.companyAgentHandle,
+          targetName: job.companyName,
+          rationale:
+            matched.length > 0
+              ? `Matches your implied intent topics (${matched.slice(0, 3).join(', ')}) with ${job.remoteMode} delivery.`
+              : `Open employer mandate at ${job.companyName} aligned with your career agent profile.`,
+          matchedKeywords: matched.length > 0 ? matched : (job.requiredSkills || []).slice(0, 3),
+          valueZAR: salaryMax || undefined,
+          recommendedAction: 'apply',
+          jobId: job.id,
+          createdAt: nowIso,
+        });
+      }
+
+      // Match open Reverse-RFPs
+      for (const rfp of Array.isArray(rfps) ? rfps : []) {
+        if (rfp.status && rfp.status !== 'OPEN') continue;
+        const matched = computeKeywordOverlap([rfp.title || '', rfp.description || '', rfp.category || '']);
+        const score = Math.min(97, 66 + matched.length * 9 + (sourceAgent.impliedIntent?.categories?.includes('commercial_deal') ? 8 : 0));
+        deterministicMatches.push({
+          id: `auto_rfp_${rfp.id}`,
+          kind: 'rfp',
+          score,
+          title: rfp.title,
+          subtitle: `Open RFP by ${rfp.publisherHandle} · ${rfp.category}`,
+          targetHandle: rfp.publisherHandle,
+          targetName: rfp.publisherHandle,
+          rationale:
+            matched.length > 0
+              ? `Live RFP matching your intent keywords (${matched.slice(0, 3).join(', ')}). Ready to submit A2A proposal.`
+              : `Open commercial RFP seeking vendor/specialist bids within R${Number(rfp.budgetZAR || 0).toLocaleString('en-ZA')}.`,
+          matchedKeywords: matched.length > 0 ? matched : [rfp.category || 'RFP'],
+          valueZAR: Number(rfp.budgetZAR || 0) || undefined,
+          recommendedAction: 'pitch_rfp',
+          rfpId: rfp.id,
+          createdAt: nowIso,
+        });
+      }
+    } else {
+      // Business Agent: match personal talent agents & vendor/partner agents
+      for (const peerAgent of Array.isArray(agents) ? agents : []) {
+        if (peerAgent.handle === sourceAgent.handle || peerAgent.handle === '911.emergency.agent') continue;
+        const matched = computeKeywordOverlap([
+          peerAgent.roleTitle || '',
+          peerAgent.summary || '',
+          peerAgent.impliedIntent?.headline || '',
+          ...(Array.isArray(peerAgent.skills) ? peerAgent.skills : []),
+          ...(Array.isArray(peerAgent.impliedIntent?.topics) ? peerAgent.impliedIntent.topics : []),
+        ]);
+        const isSeeker = peerAgent.type === 'persona';
+        const score = Math.min(98, 69 + matched.length * 8 + (isSeeker ? 6 : 3));
+        deterministicMatches.push({
+          id: `auto_agent_${peerAgent.id}`,
+          kind: 'agent',
+          score,
+          title: `${peerAgent.displayName} (${peerAgent.roleTitle})`,
+          subtitle: `${peerAgent.organization} · ${peerAgent.handle}`,
+          targetHandle: peerAgent.handle,
+          targetName: peerAgent.displayName,
+          rationale:
+            matched.length > 0
+              ? `Mutual intent alignment across ${matched.slice(0, 3).join(', ')} — ready for ${isSeeker ? 'interview invite' : 'commercial A2A deal'}.`
+              : `${isSeeker ? 'Verified specialist' : 'Verified partner'} in ${peerAgent.organization} aligned with your active RFPs & vacancies.`,
+          matchedKeywords: matched.length > 0 ? matched : (peerAgent.skills || []).slice(0, 3),
+          valueZAR: peerAgent.cvSummary?.salaryMinZAR || peerAgent.guardrails?.maxAutoSpendZAR,
+          recommendedAction: isSeeker ? 'invite_candidate' : 'engage',
+          createdAt: nowIso,
+        });
+      }
+    }
+
+    // Also include live proximity peers from events / radar
+    for (const peer of Array.isArray(peers) ? peers : []) {
+      if (peer.handle === sourceAgent.handle) continue;
+      const matched = computeKeywordOverlap([
+        peer.roleTitle || '',
+        peer.summary || '',
+        ...(Array.isArray(peer.skills) ? peer.skills : []),
+        ...(Array.isArray(peer.impliedTopics) ? peer.impliedTopics : []),
+      ]);
+      const score = Math.min(
+        98,
+        72 + matched.length * 7 + (peer.mutualBearingLock ? 10 : 0) + (peer.distanceMeters <= 40 ? 6 : 0)
+      );
+      deterministicMatches.push({
+        id: `auto_peer_${peer.id}`,
+        kind: 'proximity_peer',
+        score,
+        title: `${peer.displayName} · Nearby (${peer.distanceMeters}m)`,
+        subtitle: `${peer.locationLabel} · ${peer.transport.replace('_', ' ').toUpperCase()}`,
+        targetHandle: peer.handle,
+        targetName: peer.displayName,
+        rationale: peer.mutualBearingLock
+          ? `Mutual compass bearing lock at ${peer.distanceMeters}m! High-intent ${peer.intent} match.`
+          : `Detected ${peer.distanceMeters}m away at ${peer.locationLabel}${matched.length ? ` matching ${matched.slice(0, 2).join(', ')}` : ''}.`,
+        matchedKeywords: matched.length > 0 ? matched : (peer.skills || []).slice(0, 3),
+        distanceMeters: peer.distanceMeters,
+        bearingDeg: peer.relativeBearingDeg ?? peer.headingDeg,
+        mutualFacing: Boolean(peer.mutualBearingLock),
+        recommendedAction: 'add_contact',
+        createdAt: nowIso,
+      });
+    }
+
+    const sortedDeterministic = deterministicMatches.sort((a, b) => b.score - a.score).slice(0, 12);
+
+    const ai = getGeminiClient();
+    if (ai && sortedDeterministic.length > 0) {
+      try {
+        const prompt = [
+          `You are the SWITCHZ Autonomous Intent Synthesis Engine.`,
+          `Source Agent: ${sourceAgent.displayName} (@${sourceAgent.handle}, type=${sourceAgent.type})`,
+          `Implied Intent Headline: "${sourceAgent.impliedIntent?.headline || sourceAgent.roleTitle}"`,
+          `Topics/Skills: ${sourceTokens.join(', ')}`,
+          `Candidate Top Matches JSON:\n${JSON.stringify(
+            sortedDeterministic.slice(0, 8).map((m) => ({
+              id: m.id,
+              kind: m.kind,
+              title: m.title,
+              targetHandle: m.targetHandle,
+              score: m.score,
+              matchedKeywords: m.matchedKeywords,
+            }))
+          )}`,
+          `Return a crisp 1-sentence executive summary of these autonomous matches AND optionally refine rationales (using the exact same ids).`,
+        ].join('\n\n');
+
+        const aiResp = await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: prompt,
+            config: {
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  executiveSummary: { type: Type.STRING },
+                  refined: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        id: { type: Type.STRING },
+                        rationale: { type: Type.STRING },
+                        score: { type: Type.NUMBER },
+                      },
+                      required: ['id', 'rationale'],
+                    },
+                  },
+                },
+                required: ['executiveSummary', 'refined'],
+              },
+            },
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Gemini match timeout')), 6500)),
+        ]);
+
+        const parsed = JSON.parse((aiResp.text || '{}').trim()) as {
+          executiveSummary?: string;
+          refined?: Array<{ id: string; rationale: string; score?: number }>;
+        };
+        const refinedMap = new Map((parsed.refined || []).map((r) => [r.id, r]));
+        const merged = sortedDeterministic
+          .map((item) => {
+            const ref = refinedMap.get(item.id);
+            if (!ref) return item;
+            return {
+              ...item,
+              rationale: ref.rationale || item.rationale,
+              score: typeof ref.score === 'number' ? Math.min(99, Math.max(60, Math.round(ref.score))) : item.score,
+            };
+          })
+          .sort((a, b) => b.score - a.score);
+
+        return res.json({
+          engine: 'gemini-4-hydrogen',
+          generatedAt: nowIso,
+          executiveSummary:
+            parsed.executiveSummary ||
+            `Matched ${merged.length} autonomous opportunities aligned with ${sourceAgent.displayName}'s implied intent.`,
+          matches: merged,
+        });
+      } catch (err) {
+        console.warn('Autonomous match Gemini fallback:', err instanceof Error ? err.message : err);
+      }
+    }
+
+    return res.json({
+      engine: 'switchz-autonomous-intent-matcher',
+      generatedAt: nowIso,
+      executiveSummary: `Matched ${sortedDeterministic.length} vacancies, RFPs, agents & proximity peers aligned with ${sourceAgent.displayName}'s implied intent.`,
+      matches: sortedDeterministic,
+    });
   });
 
   // Part 2: .agent Handle & Number Registry API
@@ -1363,8 +1728,84 @@ export class ErrorOverlay extends HTMLElement {}
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SWITCHZ running on http://0.0.0.0:${PORT}`);
+  const server = http.createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws/mesh' });
+
+  wss.on('connection', (ws, req) => {
+    let joinedRoom = 'sandton-summit-2026';
+    try {
+      const url = new URL(req.url || '/ws/mesh', 'http://localhost');
+      joinedRoom = (url.searchParams.get('room') || 'sandton-summit-2026').trim().toLowerCase();
+    } catch {
+      joinedRoom = 'sandton-summit-2026';
+    }
+
+    if (!meshRoomSockets.has(joinedRoom)) {
+      meshRoomSockets.set(joinedRoom, new Set());
+    }
+    meshRoomSockets.get(joinedRoom)!.add(ws);
+
+    // Push immediate room snapshot on join
+    pruneExpiredPeers();
+    const snapshotPeers: ProximityPeerDoc[] = [];
+    for (const stored of activeProximityPeers.values()) {
+      if (stored.roomCode === joinedRoom) {
+        const { expiresAtMs: _ignore, ...pub } = stored;
+        snapshotPeers.push(pub);
+      }
+    }
+    ws.send(JSON.stringify({ type: 'room_snapshot', roomCode: joinedRoom, peers: snapshotPeers }));
+
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString()) as {
+          type?: string;
+          roomCode?: string;
+          handle?: string;
+          headingDeg?: number;
+          pitchDeg?: number;
+          rollDeg?: number;
+          lat?: number;
+          lng?: number;
+          broadcastRadiusMeters?: number;
+          scanRadiusMeters?: number;
+          impliedTopics?: string[];
+        };
+        const targetRoom = (msg.roomCode || joinedRoom).trim().toLowerCase();
+        if (msg.type === 'orientation_update' && msg.handle) {
+          const key = `${targetRoom}::${msg.handle.toLowerCase()}`;
+          const existing = activeProximityPeers.get(key);
+          if (existing) {
+            if (typeof msg.headingDeg === 'number') existing.headingDeg = ((msg.headingDeg % 360) + 360) % 360;
+            if (typeof msg.pitchDeg === 'number') existing.pitchDeg = msg.pitchDeg;
+            if (typeof msg.rollDeg === 'number') existing.rollDeg = msg.rollDeg;
+            if (typeof msg.lat === 'number') existing.lat = msg.lat;
+            if (typeof msg.lng === 'number') existing.lng = msg.lng;
+            if (typeof msg.broadcastRadiusMeters === 'number') existing.broadcastRadiusMeters = msg.broadcastRadiusMeters;
+            if (typeof msg.scanRadiusMeters === 'number') existing.scanRadiusMeters = msg.scanRadiusMeters;
+            if (Array.isArray(msg.impliedTopics)) existing.impliedTopics = msg.impliedTopics;
+            existing.lastSeenAt = new Date().toISOString();
+            existing.expiresAtMs = Date.now() + 10 * 60 * 1000;
+            const { expiresAtMs: _ignore, ...pub } = existing;
+            broadcastToMeshRoom(targetRoom, { type: 'peer_upsert', peer: pub });
+          }
+        }
+      } catch {
+        // ignore malformed frames
+      }
+    });
+
+    ws.on('close', () => {
+      const set = meshRoomSockets.get(joinedRoom);
+      if (set) {
+        set.delete(ws);
+        if (set.size === 0) meshRoomSockets.delete(joinedRoom);
+      }
+    });
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`SWITCHZ running on http://0.0.0.0:${PORT} (WebSocket mesh: /ws/mesh)`);
   });
 }
 

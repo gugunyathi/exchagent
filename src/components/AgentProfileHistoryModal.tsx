@@ -15,11 +15,15 @@ import {
   Send,
   Loader2,
   Award,
+  Target,
+  Plus,
 } from 'lucide-react';
 import {
   AgentDoc,
   AgentApplicationPackage,
   AgentActionHistoryEntry,
+  AgentIntentProfile,
+  IntentCategory,
   JobPostingDoc,
   RecruitmentMatchDoc,
   CurrencyMode,
@@ -32,6 +36,7 @@ import {
   downloadCoverLetterAsDocx,
 } from '../lib/docExport';
 import { emitToast } from '../lib/toast';
+import { SwipeScrollArea } from './SwipeScrollArea';
 
 interface AgentProfileHistoryModalProps {
   open: boolean;
@@ -51,6 +56,8 @@ interface AgentProfileHistoryModalProps {
     match?: RecruitmentMatchDoc
   ) => Promise<AgentApplicationPackage | null>;
   onLogHistory: (entry: Omit<AgentActionHistoryEntry, 'id' | 'timestamp'>) => void;
+  onUpdateIntent?: (agentId: string, intent: AgentIntentProfile) => Promise<AgentDoc | null>;
+  onOpenIntentHub?: () => void;
 }
 
 export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> = ({
@@ -67,13 +74,37 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
   initialPackageId = null,
   onTailorAndApply,
   onLogHistory,
+  onUpdateIntent,
+  onOpenIntentHub,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'history'>('docs');
+  const [activeTab, setActiveTab] = useState<'overview' | 'docs' | 'history' | 'intent'>('docs');
   const [selectedPkgId, setSelectedPkgId] = useState<string | null>(initialPackageId);
   const [docSubTab, setDocSubTab] = useState<'cv' | 'cover_letter' | 'prep'>('cv');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'docs' | 'matches'>('all');
   const [tailoringJobId, setTailoringJobId] = useState<string | null>(null);
   const [sendingFollowup, setSendingFollowup] = useState(false);
+  const [intentHeadline, setIntentHeadline] = useState('');
+  const [intentTopics, setIntentTopics] = useState<string[]>([]);
+  const [intentTopicInput, setIntentTopicInput] = useState('');
+  const [intentCats, setIntentCats] = useState<IntentCategory[]>(['career_role', 'commercial_deal']);
+  const [autoMatchFlag, setAutoMatchFlag] = useState(true);
+  const [autoAddFlag, setAutoAddFlag] = useState(true);
+
+  useEffect(() => {
+    if (!agent) return;
+    setIntentHeadline(
+      agent.impliedIntent?.headline ||
+        `Seeking ${agent.roleTitle} opportunities, B2B engagements & event networking`
+    );
+    setIntentTopics(agent.impliedIntent?.topics?.length ? agent.impliedIntent.topics : agent.skills || []);
+    setIntentCats(
+      agent.impliedIntent?.categories?.length
+        ? agent.impliedIntent.categories
+        : ['career_role', 'commercial_deal', 'event_networking']
+    );
+    setAutoMatchFlag(agent.impliedIntent?.autoMatchEnabled ?? true);
+    setAutoAddFlag(agent.impliedIntent?.autoAddProximityContacts ?? true);
+  }, [agent]);
 
   const agentPackages = useMemo(() => {
     if (!agent) return [];
@@ -259,7 +290,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">
             {allPersonas.length > 1 && onSelectAgent && (
               <select
                 value={agent.id}
@@ -267,7 +298,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                   const found = allPersonas.find((p) => p.id === e.target.value);
                   if (found) onSelectAgent(found);
                 }}
-                className="min-h-[34px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100 max-w-[170px]"
+                className="min-h-[34px] rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-zinc-100 w-full sm:w-auto max-w-full sm:max-w-[170px] min-w-0"
               >
                 {allPersonas.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -289,12 +320,19 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10">
+        <div className="shrink-0">
+          <SwipeScrollArea
+            direction="horizontal"
+            showArrows={true}
+            arrowSize="sm"
+            className="w-full"
+            innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/10"
+          >
             {[
               { id: 'docs' as const, label: `Submitted Docs & PDF/DOCX (${agentPackages.length})`, icon: FileText },
               { id: 'history' as const, label: `Agent Action History (${agentHistory.length})`, icon: History },
               { id: 'overview' as const, label: `Profile & Matched Roles (${agentMatches.length})`, icon: Briefcase },
+              { id: 'intent' as const, label: `My Intent & Auto-Match`, icon: Target },
             ].map((t) => {
               const Icon = t.icon;
               const active = activeTab === t.id;
@@ -303,7 +341,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id)}
-                  className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                  className={`min-h-[34px] px-3 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors ${
                     active
                       ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                       : 'text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
@@ -314,16 +352,16 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                 </button>
               );
             })}
-          </div>
+          </SwipeScrollArea>
         </div>
 
         {/* Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 space-y-4">
+        <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="flex-1 min-h-0" innerClassName="pr-1 space-y-4">
           {/* TAB 1: SUBMITTED DOCS, VIEWER & PDF/DOCX DOWNLOAD */}
           {activeTab === 'docs' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
               {/* Left: Submitted Application Packages List */}
-              <div className="lg:col-span-4 space-y-2">
+              <div className="lg:col-span-4 min-w-0 space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                   Tailored Applications ({agentPackages.length})
                 </p>
@@ -383,7 +421,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
               </div>
 
               {/* Right: Document Sheet & Export Controls */}
-              <div className="lg:col-span-8">
+              <div className="lg:col-span-8 min-w-0">
                 {selectedPkg ? (
                   <div className="rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-4">
                     {/* Package Header + Download Buttons */}
@@ -429,11 +467,17 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
 
                     {/* Sub-tabs: Tailored CV / Cover Letter / Interview Prep */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10">
+                      <SwipeScrollArea
+                        direction="horizontal"
+                        showArrows={true}
+                        arrowSize="sm"
+                        className="max-w-full"
+                        innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10"
+                      >
                         <button
                           type="button"
                           onClick={() => setDocSubTab('cv')}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 ${
                             docSubTab === 'cv'
                               ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-2xs'
                               : 'text-zinc-600 dark:text-zinc-400'
@@ -444,7 +488,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                         <button
                           type="button"
                           onClick={() => setDocSubTab('cover_letter')}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 ${
                             docSubTab === 'cover_letter'
                               ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-2xs'
                               : 'text-zinc-600 dark:text-zinc-400'
@@ -455,7 +499,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                         <button
                           type="button"
                           onClick={() => setDocSubTab('prep')}
-                          className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 ${
                             docSubTab === 'prep'
                               ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white font-semibold shadow-2xs'
                               : 'text-zinc-600 dark:text-zinc-400'
@@ -463,7 +507,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                         >
                           AI Interview Prep ({selectedPkg.interviewPrepQuestions.length})
                         </button>
-                      </div>
+                      </SwipeScrollArea>
 
                       <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
                         <button
@@ -682,7 +726,13 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                 <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
                   Full Audit &amp; Action Timeline for {agent.handle}
                 </p>
-                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10">
+                <SwipeScrollArea
+                  direction="horizontal"
+                  showArrows={true}
+                  arrowSize="sm"
+                  className="max-w-full"
+                  innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10"
+                >
                   {[
                     { id: 'all' as const, label: 'All Actions' },
                     { id: 'docs' as const, label: 'CV & Cover Letters' },
@@ -692,7 +742,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                       key={f.id}
                       type="button"
                       onClick={() => setHistoryFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 ${
                         historyFilter === f.id
                           ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
                           : 'text-zinc-600 dark:text-zinc-400'
@@ -701,7 +751,7 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
                       {f.label}
                     </button>
                   ))}
-                </div>
+                </SwipeScrollArea>
               </div>
 
               {agentHistory.length === 0 ? (
@@ -891,7 +941,180 @@ export const AgentProfileHistoryModal: React.FC<AgentProfileHistoryModalProps> =
               </div>
             </div>
           )}
-        </div>
+
+          {/* TAB 4: IMPLIED INTENT & AUTO-MATCH SETTINGS */}
+          {activeTab === 'intent' && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-white/10 p-4 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <Target className="w-4 h-4 text-indigo-500" />
+                      Implied Intent for {agent.displayName}
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Signals what your Personal Agent searches for across vacancies, RFPs, and nearby Wi-Fi/BLE radar contacts.
+                    </p>
+                  </div>
+                  {onOpenIntentHub && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenIntentHub();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-500"
+                    >
+                      Open Full Intent &amp; Matches Hub
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 block mb-1">
+                    Intent Headline
+                  </label>
+                  <input
+                    type="text"
+                    value={intentHeadline}
+                    onChange={(e) => setIntentHeadline(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 px-3 py-2 text-xs text-zinc-950 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 block mb-1.5">
+                    Intent Categories
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ['career_role', 'Career / Hiring'],
+                        ['commercial_deal', 'Commercial Deals'],
+                        ['partnership', 'Partnerships'],
+                        ['rfp_sourcing', 'RFP Bids'],
+                        ['investment', 'Investment'],
+                        ['event_networking', 'Event Radar'],
+                      ] as Array<[IntentCategory, string]>
+                    ).map(([id, label]) => {
+                      const active = intentCats.includes(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() =>
+                            setIntentCats((prev) =>
+                              prev.includes(id)
+                                ? prev.length > 1
+                                  ? prev.filter((c) => c !== id)
+                                  : prev
+                                : [...prev, id]
+                            )
+                          }
+                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                            active
+                              ? 'bg-indigo-500/15 border-indigo-500/40 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 block mb-1.5">
+                    Intent Topics &amp; Skills
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {intentTopics.map((topic) => (
+                      <span
+                        key={topic}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-800 dark:text-zinc-200"
+                      >
+                        {topic}
+                        <button
+                          type="button"
+                          onClick={() => setIntentTopics((p) => p.filter((t) => t !== topic))}
+                          className="text-zinc-400 hover:text-rose-500"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={intentTopicInput}
+                      onChange={(e) => setIntentTopicInput(e.target.value)}
+                      placeholder="Add implied topic..."
+                      className="flex-1 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 px-3 py-1.5 text-xs text-zinc-950 dark:text-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = intentTopicInput.trim();
+                        if (val && !intentTopics.includes(val)) setIntentTopics((p) => [...p, val]);
+                        setIntentTopicInput('');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 text-xs font-semibold inline-flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer">
+                    <span>Autonomous Opportunity Matching</span>
+                    <input
+                      type="checkbox"
+                      checked={autoMatchFlag}
+                      onChange={(e) => setAutoMatchFlag(e.target.checked)}
+                      className="accent-indigo-600 w-4 h-4"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs font-medium text-zinc-800 dark:text-zinc-200 cursor-pointer">
+                    <span>Auto-Add Radar Contacts in Radius</span>
+                    <input
+                      type="checkbox"
+                      checked={autoAddFlag}
+                      onChange={(e) => setAutoAddFlag(e.target.checked)}
+                      className="accent-emerald-600 w-4 h-4"
+                    />
+                  </label>
+                </div>
+
+                {onUpdateIntent && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onUpdateIntent(agent.id, {
+                        categories: intentCats,
+                        headline: intentHeadline.trim() || agent.roleTitle,
+                        desiredOutcomes: agent.cvSummary?.preferredRoles || [agent.roleTitle],
+                        topics: intentTopics,
+                        targetBudgetMinZAR: agent.cvSummary?.salaryMinZAR || 85000,
+                        preferredRemoteModes: ['Remote', 'Hybrid'],
+                        maxDistanceMeters: agent.geoLocation?.radiusMeters || 150,
+                        autoMatchEnabled: autoMatchFlag,
+                        autoAddProximityContacts: autoAddFlag,
+                        requireTopicOverlapForAutoAdd: false,
+                        updatedAt: new Date().toISOString(),
+                      });
+                    }}
+                    className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                  >
+                    Save Implied Intent Profile
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </SwipeScrollArea>
       </div>
     </div>
   );

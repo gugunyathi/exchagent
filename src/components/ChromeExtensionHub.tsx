@@ -228,7 +228,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <div className="lg:col-span-7 glass-panel rounded-2xl p-4 space-y-4">
+        <div className="lg:col-span-7 min-w-0 glass-panel rounded-2xl p-4 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
               <Globe className="w-4 h-4 text-sky-600 dark:text-sky-400" />
@@ -243,7 +243,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                   setSimResult(null);
                 }
               }}
-              className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-200 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+              className="min-h-[36px] w-full sm:w-auto max-w-full min-w-0 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-200 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
             >
               {agents
                 .filter((a) => a.handle !== '911.emergency.agent')
@@ -325,7 +325,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
           </div>
         </div>
 
-        <div className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-4">
+        <div className="lg:col-span-5 min-w-0 glass-panel rounded-2xl p-4 space-y-4">
           <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-2">
             <FileCode2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             Website &amp; Bio Snippets
@@ -343,7 +343,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                 {copiedId === 'meta' ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <SwipeScrollArea direction="horizontal" showArrows={true}>
+            <SwipeScrollArea direction="horizontal" arrowSize="sm" showArrows={true}>
               <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-800 dark:text-zinc-300 whitespace-pre">
                 {metaTagSnippet}
               </pre>
@@ -362,7 +362,7 @@ chrome.storage.local.get(['lastDetectedAgent'], (data) => {
                 {copiedId === 'agentjson' ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <SwipeScrollArea direction="horizontal" showArrows={true}>
+            <SwipeScrollArea direction="horizontal" arrowSize="sm" showArrows={true}>
               <pre className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-3 text-[11px] font-mono text-zinc-900 dark:text-emerald-300 whitespace-pre">
                 {agentJsonSnippet}
               </pre>

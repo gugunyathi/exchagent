@@ -34,6 +34,7 @@ import {
 } from '../types/firestore';
 import { CARD_STYLE_PRESETS, CardStylePreset } from '../data/seedData';
 import { AgentIdentityCard } from './AgentIdentityCard';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 import { AGENT_IMAGE_PRESETS, resolveAgentImage } from '../lib/agentImages';
 
@@ -296,11 +297,11 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-zinc-950/70 dark:bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-zinc-950/70 dark:bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl max-h-[92dvh] flex flex-col rounded-2xl bg-white dark:bg-[#121215] border border-zinc-300 dark:border-white/15 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-4xl max-h-[94dvh] sm:max-h-[92dvh] flex flex-col rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#121215] border border-zinc-300 dark:border-white/15 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Bar */}
@@ -356,10 +357,16 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
           </div>
         </div>
 
-        {/* Studio Body: Split View with Live Preview & Customizer Tabs */}
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+        {/* Studio Body: Unified vertical SwipeScrollArea on mobile (<lg), split scrollable columns on desktop (lg+) */}
+        <SwipeScrollArea
+          direction="vertical"
+          arrowSize="sm"
+          showArrows={true}
+          className="flex-1 min-h-0"
+          innerClassName="lg:h-full lg:grid lg:grid-cols-12"
+        >
           {/* LEFT: Live Interactive Preview */}
-          <div className="lg:col-span-5 p-4 sm:p-5 flex flex-col items-center justify-between border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-white/10 bg-zinc-100/60 dark:bg-zinc-950/50">
+          <div className="lg:col-span-5 min-w-0 p-3.5 sm:p-5 flex flex-col items-center justify-between border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-white/10 bg-zinc-100/60 dark:bg-zinc-950/50">
             <div className="w-full flex items-center justify-between mb-2">
               <span className="text-[11px] font-mono font-medium text-zinc-600 dark:text-zinc-400 inline-flex items-center gap-1.5">
                 <Eye className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
@@ -403,9 +410,15 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
           </div>
 
           {/* RIGHT: Controls & Tabs */}
-          <div className="lg:col-span-7 flex flex-col min-h-0 bg-white dark:bg-[#121215]">
+          <div className="lg:col-span-7 min-w-0 flex flex-col lg:min-h-0 bg-white dark:bg-[#121215]">
             {/* Tab Bar */}
-            <div className="shrink-0 flex items-center border-b border-zinc-200 dark:border-white/10 px-3 pt-2 bg-zinc-50 dark:bg-zinc-900/30 gap-1 overflow-x-auto no-scrollbar">
+            <SwipeScrollArea
+              direction="horizontal"
+              arrowSize="sm"
+              showArrows={true}
+              className="shrink-0 border-b border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/30"
+              innerClassName="flex items-center px-3 pr-8 pt-2 gap-1"
+            >
               {[
                 { id: 'presets', label: 'Presets', icon: Sparkles },
                 { id: 'photo', label: 'Photo & Video', icon: Camera },
@@ -420,7 +433,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                     key={t.id}
                     type="button"
                     onClick={() => setActiveTab(t.id as any)}
-                    className={`min-h-[36px] px-3 rounded-t-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors border-b-2 whitespace-nowrap ${
+                    className={`min-h-[36px] px-3 rounded-t-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors border-b-2 whitespace-nowrap shrink-0 ${
                       active
                         ? 'border-zinc-950 text-zinc-950 dark:border-white dark:text-white bg-white dark:bg-[#121215]'
                         : 'border-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
@@ -431,10 +444,16 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                   </button>
                 );
               })}
-            </div>
+            </SwipeScrollArea>
 
             {/* Tab Content Panels */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-5 no-scrollbar">
+            <SwipeScrollArea
+              direction="vertical"
+              arrowSize="sm"
+              showArrows={true}
+              className="lg:flex-1 lg:min-h-0"
+              innerClassName="p-4 sm:p-5 space-y-5"
+            >
               {/* TAB 1: PRESETS */}
               {activeTab === 'presets' && (
                 <div className="space-y-4">
@@ -602,7 +621,12 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                         <span className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">
                           Custom Gallery Slides ({draftMediaGallery.length})
                         </span>
-                        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                        <SwipeScrollArea
+                          direction="horizontal"
+                          arrowSize="sm"
+                          showArrows={true}
+                          innerClassName="flex items-center gap-2 pb-1 pr-7"
+                        >
                           {draftMediaGallery.map((item) => (
                             <div
                               key={item.id}
@@ -660,7 +684,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                               </div>
                             </div>
                           ))}
-                        </div>
+                        </SwipeScrollArea>
                       </div>
                     )}
                   </div>
@@ -774,7 +798,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                     <label className="block font-display font-bold text-xs text-zinc-950 dark:text-white mb-1.5">
                       Banner Height
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {[
                         { id: 'compact', label: 'Compact', px: '44px' },
                         { id: 'normal', label: 'Standard', px: '52px' },
@@ -802,7 +826,7 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                     <label className="block font-display font-bold text-xs text-zinc-950 dark:text-white mb-1.5">
                       Verification Badge Frame
                     </label>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {[
                         { id: 'glass', label: 'Frosted Glass' },
                         { id: 'pill', label: 'Solid Pill' },
@@ -851,14 +875,14 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                         type="color"
                         value={draftStyle.bannerBgColor || '#0284c7'}
                         onChange={(e) => updateDraft({ bannerBgColor: e.target.value })}
-                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5"
+                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5 shrink-0"
                       />
                       <input
                         type="text"
                         value={draftStyle.bannerBgColor || ''}
                         onChange={(e) => updateDraft({ bannerBgColor: e.target.value })}
                         placeholder="#0284c7"
-                        className="flex-1 min-h-[36px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white"
+                        className="flex-1 min-w-0 min-h-[36px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white"
                       />
                     </div>
                   </div>
@@ -1009,41 +1033,41 @@ export const CardCustomizationModal: React.FC<CardCustomizationModalProps> = ({
                         type="color"
                         value={draftStyle.borderAccentColor || '#0284c7'}
                         onChange={(e) => updateDraft({ borderAccentColor: e.target.value })}
-                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5"
+                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5 shrink-0"
                       />
                       <input
                         type="text"
                         value={draftStyle.borderAccentColor || ''}
                         onChange={(e) => updateDraft({ borderAccentColor: e.target.value })}
                         placeholder="#0284c7"
-                        className="flex-1 min-h-[36px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white"
+                        className="flex-1 min-w-0 min-h-[36px] px-3 rounded-lg border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-mono text-zinc-950 dark:text-white"
                       />
                     </div>
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Modal Bottom Action Bar */}
-            <div className="shrink-0 p-3 sm:p-4 border-t border-zinc-200 dark:border-white/10 flex items-center justify-between gap-2 bg-zinc-50/75 dark:bg-zinc-900/50">
-              <button
-                type="button"
-                onClick={onClose}
-                className="min-h-[38px] px-4 rounded-xl border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium transition-colors"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSave}
-                className="min-h-[38px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100 text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition-colors"
-              >
-                <Check className="w-4 h-4" />
-                <span>Save Card Personalization</span>
-              </button>
-            </div>
+            </SwipeScrollArea>
           </div>
+        </SwipeScrollArea>
+
+        {/* Modal Bottom Action Bar (Always Pinned) */}
+        <div className="shrink-0 p-3 sm:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-zinc-200 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 bg-zinc-50/75 dark:bg-zinc-900/50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[38px] px-4 rounded-xl border border-zinc-300 dark:border-white/15 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-medium transition-colors"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            className="min-h-[38px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100 text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition-colors"
+          >
+            <Check className="w-4 h-4" />
+            <span>Save Card Personalization</span>
+          </button>
         </div>
       </div>
     </div>

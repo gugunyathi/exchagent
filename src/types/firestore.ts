@@ -177,6 +177,49 @@ export interface AgentMediaItem {
   caption?: string;
 }
 
+export type IntentCategory =
+  | 'career_role'
+  | 'commercial_deal'
+  | 'rfp_sourcing'
+  | 'partnership'
+  | 'investment'
+  | 'event_networking';
+
+export interface AgentIntentProfile {
+  categories: IntentCategory[];
+  headline: string;
+  desiredOutcomes: string[];
+  topics: string[];
+  targetBudgetMinZAR?: number;
+  targetBudgetMaxZAR?: number;
+  preferredRemoteModes?: Array<'Remote' | 'Hybrid' | 'On-Site'>;
+  maxDistanceMeters?: number;
+  autoMatchEnabled: boolean;
+  autoAddProximityContacts: boolean;
+  requireTopicOverlapForAutoAdd: boolean;
+  updatedAt: string;
+}
+
+export interface AutonomousMatchItem {
+  id: string;
+  kind: 'job' | 'rfp' | 'agent' | 'proximity_peer';
+  score: number;
+  title: string;
+  subtitle: string;
+  targetHandle: string;
+  targetName: string;
+  rationale: string;
+  matchedKeywords: string[];
+  valueZAR?: number;
+  distanceMeters?: number;
+  bearingDeg?: number;
+  mutualFacing?: boolean;
+  recommendedAction: 'apply' | 'pitch_rfp' | 'engage' | 'add_contact' | 'invite_candidate';
+  jobId?: string;
+  rfpId?: string;
+  createdAt: string;
+}
+
 export interface AgentDoc {
   id: string;
   handle: string;
@@ -214,6 +257,7 @@ export interface AgentDoc {
   tagline?: string;
   summary?: string;
   skills: string[];
+  impliedIntent?: AgentIntentProfile;
   guardrails: AgentGuardrails;
   walletAddresses: AgentWalletAddresses;
   geoLocation?: AgentGeoLocation;
@@ -757,6 +801,7 @@ export interface ProximityPeerDoc {
   verified: boolean;
   intent: ProximityIntent;
   skills: string[];
+  impliedTopics?: string[];
   summary?: string;
   imageUrl?: string;
   brandLogoCode?: string;
@@ -772,6 +817,13 @@ export interface ProximityPeerDoc {
   sameWifi?: boolean;
   lat?: number;
   lng?: number;
+  headingDeg?: number;
+  pitchDeg?: number;
+  rollDeg?: number;
+  broadcastRadiusMeters?: number;
+  scanRadiusMeters?: number;
+  mutualBearingLock?: boolean;
+  relativeBearingDeg?: number;
   incentive?: string;
   matchedScore?: number;
   lastSeenAt: string;

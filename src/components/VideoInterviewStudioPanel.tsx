@@ -33,6 +33,7 @@ import {
   downloadScheduleCsv,
   insertGoogleCalendarEvent,
 } from '../services/calendarAgentTool';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface VideoInterviewStudioPanelProps {
@@ -409,7 +410,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* Left: Clean Media Frame + Compact Forensic Authenticity Badge */}
-        <div className="lg:col-span-6 glass-panel rounded-2xl p-4 space-y-3">
+        <div className="lg:col-span-6 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
               <Video className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
@@ -594,7 +595,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
         </div>
 
         {/* Right: Pre-Screening & Live Video Launch */}
-        <div className="lg:col-span-6 glass-panel rounded-2xl p-4 space-y-3">
+        <div className="lg:col-span-6 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-display text-sm font-bold text-zinc-950 dark:text-zinc-50 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -603,7 +604,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
             <select
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
-              className="min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-xs text-zinc-900 dark:text-zinc-200 max-w-full sm:max-w-[220px]"
+              className="min-h-[36px] w-full sm:w-auto min-w-0 max-w-full sm:max-w-[220px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 py-1 text-xs text-zinc-900 dark:text-zinc-200"
             >
               {jobs.map((j) => (
                 <option key={j.id} value={j.id}>
@@ -683,7 +684,13 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
             </div>
           </div>
 
-          <div className="space-y-2 max-h-[200px] overflow-y-auto no-scrollbar">
+          <SwipeScrollArea
+            direction="vertical"
+            arrowSize="sm"
+            showArrows={true}
+            className="max-h-[200px]"
+            innerClassName="space-y-2 pr-1"
+          >
             {(currentVideo?.preScreenReviews || []).map((rev) => (
               <div key={rev.id} className="rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] gap-2">
@@ -702,7 +709,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                 <p className="text-[11px] text-zinc-700 dark:text-zinc-400">{rev.notes}</p>
               </div>
             ))}
-          </div>
+          </SwipeScrollArea>
         </div>
       </div>
 
@@ -759,7 +766,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
             <select
               value={interviewerHandle}
               onChange={(e) => setInterviewerHandle(e.target.value)}
-              className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
+              className="mt-1 w-full min-w-0 max-w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
             >
               {businesses.map((b) => (
                 <option key={b.id} value={b.handle}>
@@ -845,7 +852,7 @@ export const VideoInterviewStudioPanel: React.FC<VideoInterviewStudioPanelProps>
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-zinc-200 dark:border-white/10 text-[11px]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-zinc-200 dark:border-white/10 text-[11px]">
                 <a
                   href={buildGoogleCalendarUrl(b)}
                   target="_blank"

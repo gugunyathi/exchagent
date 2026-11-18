@@ -20,6 +20,7 @@ import {
 } from '../types/firestore';
 import { StatusCategoryBadge, getStatusCategoryLabel } from './StatusCategoryBadge';
 import { resolveAgentImage } from '../lib/agentImages';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface PostStatusModalProps {
@@ -226,12 +227,12 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl p-4 sm:p-5 space-y-4 max-h-[92dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        className="w-full max-w-2xl glass-panel rounded-t-3xl sm:rounded-2xl max-h-[92dvh] overflow-hidden flex flex-col"
       >
-        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1" />
+        <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
 
         {/* Header: Back + Title + Close */}
-        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-zinc-200 dark:border-white/10">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 pt-3 pb-2.5 border-b border-zinc-200 dark:border-white/10 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -263,12 +264,24 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
           </button>
         </div>
 
+        <SwipeScrollArea
+          direction="vertical"
+          arrowSize="sm"
+          showArrows={true}
+          className="flex-1 min-h-0"
+          innerClassName="px-4 sm:px-5 py-4 space-y-4"
+        >
         {/* Post As (User or Company Switcher) */}
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
             Post As (User or Company Agent)
           </label>
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          <SwipeScrollArea
+            direction="horizontal"
+            arrowSize="sm"
+            showArrows={true}
+            innerClassName="flex items-center gap-2 pb-1 pr-7"
+          >
             {eligibleAgents.map((a) => {
               const active = a.id === authorAgent.id;
               return (
@@ -291,7 +304,7 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
                 </button>
               );
             })}
-          </div>
+          </SwipeScrollArea>
         </div>
 
         {/* Status Type Options (Automatically sets circle icon badge!) */}
@@ -546,7 +559,9 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-white/10">
+        </SwipeScrollArea>
+
+        <div className="flex items-center justify-end gap-2 px-4 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-zinc-200 dark:border-white/10 shrink-0">
           <button
             type="button"
             onClick={onClose}

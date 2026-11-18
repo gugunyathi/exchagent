@@ -15,6 +15,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { AgentDoc, BookingDoc, JobPostingDoc, PreScreenReview } from '../types/firestore';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface LiveInterviewRoomModalProps {
@@ -186,7 +187,7 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-5xl max-h-[95dvh] overflow-y-auto no-scrollbar rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 shadow-2xl flex flex-col pb-[env(safe-area-inset-bottom)]"
+        className="w-full max-w-5xl max-h-[95dvh] overflow-hidden rounded-t-3xl sm:rounded-2xl bg-white dark:bg-[#0c0c0f] border border-zinc-300 dark:border-white/15 shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mt-2 shrink-0" />
@@ -227,8 +228,14 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
           </button>
         </div>
 
-        <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-7 space-y-3">
+        <SwipeScrollArea
+          direction="vertical"
+          arrowSize="sm"
+          showArrows={true}
+          className="flex-1 min-h-0"
+          innerClassName="p-3.5 sm:p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] grid grid-cols-1 lg:grid-cols-12 gap-4"
+        >
+          <div className="lg:col-span-7 min-w-0 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Candidate Tile */}
               <div className="relative aspect-video rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 overflow-hidden flex flex-col justify-between p-3">
@@ -347,7 +354,7 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
             </div>
           </div>
 
-          <div className="lg:col-span-5 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-4 space-y-3">
+          <div className="lg:col-span-5 min-w-0 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 p-4 space-y-3">
             <h4 className="font-display text-xs font-bold text-zinc-950 dark:text-zinc-200">
               Live HR Scorecard
             </h4>
@@ -383,7 +390,7 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
                 <select
                   value={decision}
                   onChange={(e) => setDecision(e.target.value as PreScreenReview['decision'])}
-                  className="mt-1 w-full min-h-[38px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
+                  className="mt-1 w-full min-w-0 max-w-full min-h-[38px] rounded-lg bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-950 dark:text-white"
                 >
                   <option value="SHORTLIST">SHORTLIST</option>
                   <option value="PASS">PASS</option>
@@ -423,7 +430,7 @@ export const LiveInterviewRoomModal: React.FC<LiveInterviewRoomModalProps> = ({
               Save Evaluation
             </button>
           </div>
-        </div>
+        </SwipeScrollArea>
       </div>
     </div>
   );

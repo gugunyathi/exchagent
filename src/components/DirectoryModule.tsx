@@ -145,8 +145,12 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
     return (
       a.handle.toLowerCase().includes(q) ||
       a.displayName.toLowerCase().includes(q) ||
+      a.roleTitle.toLowerCase().includes(q) ||
       a.organization.toLowerCase().includes(q) ||
+      (a.tagline || '').toLowerCase().includes(q) ||
       (a.summary || '').toLowerCase().includes(q) ||
+      (a.impliedIntent?.headline || '').toLowerCase().includes(q) ||
+      (a.impliedIntent?.topics || []).some((t) => t.toLowerCase().includes(q)) ||
       a.skills.some((s) => s.toLowerCase().includes(q))
     );
   });
@@ -334,9 +338,10 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
       <div className="shrink-0 flex items-center justify-between gap-2 pb-1.5">
         <SwipeScrollArea
           direction="horizontal"
-          showArrows={false}
+          showArrows={true}
+          arrowSize="sm"
           className="flex-1 min-w-0"
-          innerClassName="flex items-center gap-1"
+          innerClassName="flex items-center gap-1 pr-6"
         >
           {(
             [
@@ -446,7 +451,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
             </button>
           </div>
         ) : viewMode === 'carousel' ? (
-          <div className="min-h-full w-full flex flex-col items-center justify-center py-1 pb-14">
+          <div className="min-h-full w-full flex flex-col items-center justify-center py-1 pb-16 sm:pb-14">
             <AgentCardCarousel
               agents={filtered}
               bookings={bookings}
@@ -510,58 +515,68 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
           <form
             onSubmit={handleDeploySubmit}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xl glass-panel rounded-t-3xl sm:rounded-2xl p-4 sm:p-5 space-y-4 max-h-[90dvh] overflow-y-auto no-scrollbar pb-[calc(1rem+env(safe-area-inset-bottom))]"
+            className="w-full max-w-xl glass-panel rounded-t-3xl sm:rounded-2xl flex flex-col max-h-[90dvh] overflow-hidden"
           >
-            <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto -mt-1 mb-1" />
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200 dark:border-white/10">
-              <div className="flex items-center gap-2 min-w-0">
-                <button
-                  type="button"
-                  onClick={closeDeploy}
-                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
-                  aria-label="Back to Directory"
-                  title="Back"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
-                  New Agent Card
-                </h2>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setBuyerKind('human')}
-                  className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
-                    buyerKind === 'human'
-                      ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
-                  }`}
-                >
-                  Human
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBuyerKind('bot')}
-                  className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
-                    buyerKind === 'bot'
-                      ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
-                  }`}
-                >
-                  Bot (x402)
-                </button>
-                <button
-                  type="button"
-                  onClick={closeDeploy}
-                  className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center ml-1"
-                  aria-label="Close"
-                  title="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+            <div className="shrink-0 px-4 sm:px-5 pt-3 sm:pt-4 pb-2.5 border-b border-zinc-200 dark:border-white/10">
+              <div className="sm:hidden w-10 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700 mx-auto mb-2" />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={closeDeploy}
+                    className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center shrink-0"
+                    aria-label="Back to Directory"
+                    title="Back"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <h2 className="font-display text-base font-bold text-zinc-950 dark:text-white tracking-tight truncate">
+                    New Agent Card
+                  </h2>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setBuyerKind('human')}
+                    className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
+                      buyerKind === 'human'
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
+                    }`}
+                  >
+                    Human
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBuyerKind('bot')}
+                    className={`min-h-[32px] px-2.5 rounded-lg text-[11px] font-medium border transition-colors ${
+                      buyerKind === 'bot'
+                        ? 'bg-zinc-950 text-white border-zinc-950 dark:bg-zinc-50 dark:text-zinc-950 dark:border-white'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 border-zinc-300 dark:border-white/15'
+                    }`}
+                  >
+                    Bot (x402)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeDeploy}
+                    className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white flex items-center justify-center ml-0.5"
+                    aria-label="Close"
+                    title="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
+
+            <SwipeScrollArea
+              direction="vertical"
+              arrowSize="sm"
+              showArrows={true}
+              className="flex-1 min-h-0"
+              innerClassName="px-4 sm:px-5 py-4 space-y-4"
+            >
 
             {onOpenQuickJobAgent && (
               <div className="rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-500/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -698,13 +713,13 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
 
               <div>
                 <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">
-                  {newType === 'persona' ? 'LinkedIn URL' : 'Website URL'}
+                  {newType === 'persona' ? 'Personal URL (LinkedIn, Portfolio, GitHub)' : 'Company / Careers URL'}
                 </label>
                 <input
                   type="text"
                   value={newProfileUrl}
                   onChange={(e) => setNewProfileUrl(e.target.value)}
-                  placeholder={newType === 'persona' ? 'linkedin.com/in/thabo' : 'discovery.co.za'}
+                  placeholder={newType === 'persona' ? 'linkedin.com/in/thabo or thabo.dev' : 'discovery.co.za'}
                   className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 text-zinc-950 dark:text-white placeholder:text-zinc-500"
                 />
               </div>
@@ -897,20 +912,20 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                     </select>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">Accent Color</label>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="color"
                         value={newAccentColor}
                         onChange={(e) => setNewAccentColor(e.target.value)}
-                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5"
+                        className="w-9 h-9 rounded-lg border border-zinc-300 dark:border-white/15 cursor-pointer bg-transparent p-0.5 shrink-0"
                       />
                       <input
                         type="text"
                         value={newAccentColor}
                         onChange={(e) => setNewAccentColor(e.target.value)}
-                        className="flex-1 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2 font-mono text-[11px] text-zinc-900 dark:text-zinc-200"
+                        className="flex-1 min-w-0 min-h-[36px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2 font-mono text-[11px] text-zinc-900 dark:text-zinc-200"
                       />
                     </div>
                   </div>
@@ -921,7 +936,12 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                   <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1.5">
                     Card Portrait / Brand Photo
                   </label>
-                  <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <SwipeScrollArea
+                    direction="horizontal"
+                    arrowSize="sm"
+                    showArrows={true}
+                    innerClassName="flex items-center gap-2 pb-1 pr-7"
+                  >
                     {AGENT_IMAGE_PRESETS.filter((p) => p.type === newType).map((preset) => {
                       const active = newImageUrl === preset.src;
                       return (
@@ -954,17 +974,18 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                       placeholder="Or paste custom image URL..."
                       className="flex-1 min-w-[160px] min-h-[38px] rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-[11px] font-mono text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-500"
                     />
-                  </div>
+                  </SwipeScrollArea>
                 </div>
               </div>
             </div>
+            </SwipeScrollArea>
 
-            <div className="flex items-center justify-between gap-2 pt-2">
-              <span className="text-xs text-rose-600 dark:text-rose-400">{deployNotice || ''}</span>
+            <div className="shrink-0 flex items-center justify-between gap-2 px-4 sm:px-5 pt-2.5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-zinc-200 dark:border-white/10 bg-zinc-50/70 dark:bg-zinc-950/70">
+              <span className="text-xs text-rose-600 dark:text-rose-400 truncate">{deployNotice || ''}</span>
               <button
                 type="submit"
                 disabled={deploying || handleQuote.isProtectedCivic}
-                className="min-h-[42px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white px-5 text-xs font-semibold disabled:opacity-50"
+                className="min-h-[40px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white px-5 text-xs font-semibold disabled:opacity-50 shrink-0"
               >
                 {deploying ? 'Deploying...' : 'Deploy Card'}
               </button>

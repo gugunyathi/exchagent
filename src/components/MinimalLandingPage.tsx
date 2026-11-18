@@ -22,6 +22,7 @@ import { SHOWCASE_CORPORATE_IMAGES } from '../lib/agentImages';
 import { AppWalkthroughPlayer, WalkthroughScenario } from './AppWalkthroughPlayer';
 import { OpticalShaderCanvas } from './OpticalShaderCanvas';
 import { LandingFlippableCardExamples } from './LandingFlippableCardExamples';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 export type LandingTargetModule =
@@ -208,19 +209,19 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto w-full px-3 sm:px-6 py-5 sm:py-10 space-y-16 sm:space-y-24">
+    <div className="max-w-6xl mx-auto w-full overflow-x-clip px-3 sm:px-6 py-5 sm:py-10 space-y-14 sm:space-y-24">
       {/* 1. Optical Shader Atmospheric Hero */}
       <section
         ref={heroContainerRef}
-        className="relative rounded-3xl overflow-hidden border border-zinc-800 bg-[#060911] text-white shadow-2xl"
+        className="relative rounded-2xl sm:rounded-3xl overflow-hidden border border-zinc-800 bg-[#060911] text-white shadow-2xl"
       >
         <div className="absolute inset-0">
           <OpticalShaderCanvas interactiveTargetRef={heroContainerRef} />
         </div>
 
-        <div className="relative z-10 p-6 sm:p-10 lg:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
+        <div className="relative z-10 p-4 sm:p-10 lg:p-12 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-10 items-stretch">
           {/* Left Hero Narrative */}
-          <div className="lg:col-span-7 flex flex-col justify-between space-y-8">
+          <div className="lg:col-span-7 min-w-0 flex flex-col justify-between space-y-6 sm:space-y-8">
             <div className="space-y-6">
               {/* Oversized SWITCHZ Logo Lockup */}
               <div className="flex items-center gap-3.5 sm:gap-4">
@@ -286,7 +287,7 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
           </div>
 
           {/* Right Hero Column: Specular Interactive Lookbook Frame */}
-          <div className="lg:col-span-5 flex flex-col justify-between">
+          <div className="lg:col-span-5 min-w-0 flex flex-col justify-between">
             <div
               onMouseMove={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -397,7 +398,13 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
             </h2>
           </div>
 
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 overflow-x-auto no-scrollbar shrink-0">
+          <SwipeScrollArea
+            direction="horizontal"
+            arrowSize="sm"
+            showArrows={true}
+            className="w-full md:w-auto max-w-full rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shrink-0"
+            innerClassName="flex items-center gap-1 p-1 pr-7"
+          >
             {[
               { id: 'all', label: 'All Capabilities' },
               { id: 'professionals', label: 'For Professionals' },
@@ -420,7 +427,7 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
                 </button>
               );
             })}
-          </div>
+          </SwipeScrollArea>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -744,7 +751,13 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
                 </button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+              <SwipeScrollArea
+                direction="vertical"
+                arrowSize="sm"
+                showArrows={true}
+                className="flex-1 min-h-0"
+                innerClassName="p-4 sm:p-5 space-y-4"
+              >
                 {stagedPacks.length === 0 ? (
                   <div className="py-12 text-center space-y-3">
                     <ShoppingBag className="w-8 h-8 mx-auto text-zinc-400" />
@@ -829,9 +842,9 @@ export const MinimalLandingPage: React.FC<MinimalLandingPageProps> = ({
                     </div>
                   </div>
                 )}
-              </div>
+              </SwipeScrollArea>
 
-              <div className="p-4 border-t border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
+              <div className="p-4 border-t border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/50 space-y-2 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                 <button
                   type="button"
                   onClick={() => {

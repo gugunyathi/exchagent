@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { AgentDoc, AgentMediaItem } from '../types/firestore';
 import { resolveAgentMediaGallery } from '../lib/agentImages';
+import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
 interface AgentMediaGalleryModalProps {
@@ -42,7 +43,6 @@ export const AgentMediaGalleryModal: React.FC<AgentMediaGalleryModalProps> = ({
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const thumbStripRef = useRef<HTMLDivElement | null>(null);
 
   const safeIdx = gallery.length > 0 ? Math.min(Math.max(0, activeIdx), gallery.length - 1) : 0;
   const currentItem: AgentMediaItem | undefined = gallery[safeIdx];
@@ -215,10 +215,10 @@ export const AgentMediaGalleryModal: React.FC<AgentMediaGalleryModalProps> = ({
     >
       {/* Top Lightbox Chrome */}
       <div
-        className="px-3 sm:px-6 py-3 flex items-center justify-between gap-3 border-b border-white/10 bg-zinc-950/70 shrink-0"
+        className="px-2.5 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-3 border-b border-white/10 bg-zinc-950/70 shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={onClose}
@@ -244,7 +244,7 @@ export const AgentMediaGalleryModal: React.FC<AgentMediaGalleryModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <input
             ref={fileInputRef}
             type="file"
@@ -391,17 +391,15 @@ export const AgentMediaGalleryModal: React.FC<AgentMediaGalleryModalProps> = ({
 
       {/* Bottom Scrollable Thumbnail Gallery Strip */}
       <div
-        className="px-3 sm:px-6 py-3 border-t border-white/10 bg-zinc-950/85 shrink-0"
+        className="px-2.5 sm:px-6 py-2.5 sm:py-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] border-t border-white/10 bg-zinc-950/85 shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          ref={thumbStripRef}
-          onWheel={(e) => {
-            if (thumbStripRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-              thumbStripRef.current.scrollLeft += e.deltaY;
-            }
-          }}
-          className="max-w-4xl mx-auto flex items-center justify-start sm:justify-center gap-2.5 overflow-x-auto no-scrollbar py-0.5"
+        <SwipeScrollArea
+          direction="horizontal"
+          arrowSize="sm"
+          showArrows={true}
+          className="max-w-4xl mx-auto"
+          innerClassName="flex items-center justify-start sm:justify-center gap-2.5 py-0.5 px-7"
         >
           {gallery.map((item, idx) => {
             const isSelected = idx === safeIdx;
@@ -443,7 +441,7 @@ export const AgentMediaGalleryModal: React.FC<AgentMediaGalleryModalProps> = ({
               </button>
             );
           })}
-        </div>
+        </SwipeScrollArea>
       </div>
     </div>,
     document.body

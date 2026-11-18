@@ -44,9 +44,11 @@ export const PromotedStatusCircles: React.FC<PromotedStatusCirclesProps> = ({
     <div className="shrink-0 z-20 -mx-1 px-1 pb-1.5">
       <SwipeScrollArea
         direction="horizontal"
+        showArrows={true}
+        arrowSize="sm"
         stepPx={180}
         className="w-full"
-        innerClassName="flex items-center gap-2.5 sm:gap-3 px-6 sm:px-8 py-0.5"
+        innerClassName="flex items-center gap-2.5 sm:gap-3 px-7 sm:px-8 py-0.5"
       >
         {/* 1-Click + Post Status Circle */}
         {onOpenPostStatus && (

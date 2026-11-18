@@ -106,6 +106,9 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
   const [x402StatusBanner, setX402StatusBanner] = useState<string | null>(null);
 
   // Reverse-RFP State
+  const [rfpPublisherHandle, setRfpPublisherHandle] = useState(
+    nonEmergencyAgents.find((a) => a.type === 'business')?.handle || nonEmergencyAgents[0]?.handle || ''
+  );
   const [rfpTitle, setRfpTitle] = useState('Solar Smart Inverter Fleet for Randburg Retail Strip');
   const [rfpDesc, setRfpDesc] = useState(
     'Require 12 hybrid 15kVA smart inverters with automated telemetry and x402 milestone payouts.'
@@ -252,11 +255,12 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
     e.preventDefault();
     setBroadcasting(true);
     try {
-      const publisher = nonEmergencyAgents[0];
+      const publisher =
+        nonEmergencyAgents.find((a) => a.handle === rfpPublisherHandle) || nonEmergencyAgents[0];
       const rfp: RfpDoc = {
         id: `rfp_${Date.now()}`,
         publisherAgentId: publisher?.id || 'agent_alex_founder',
-        publisherOwnerUid: ownerUid,
+        publisherOwnerUid: publisher?.ownerUid || ownerUid,
         publisherHandle: publisher?.handle || 'alex.founder.agent',
         title: rfpTitle,
         description: rfpDesc,
@@ -325,7 +329,10 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
 
         <SwipeScrollArea
           direction="horizontal"
-          innerClassName="inline-flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
+          showArrows={true}
+          arrowSize="sm"
+          className="w-full sm:w-auto"
+          innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
         >
           <button
             type="button"
@@ -355,7 +362,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       {subTab === 'arena' ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
           {/* Left Pane: Compact Engage Composer & Recent Threads */}
-          <form onSubmit={handleRunNegotiation} className="lg:col-span-4 glass-panel rounded-2xl p-4 space-y-3">
+          <form onSubmit={handleRunNegotiation} className="lg:col-span-4 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">New A2A Engage</h3>
 
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
@@ -363,7 +370,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               <select
                 value={initiatorHandle}
                 onChange={(e) => setInitiatorHandle(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -378,7 +385,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               <select
                 value={targetHandle}
                 onChange={(e) => setTargetHandle(e.target.value)}
-                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+                className="mt-1 w-full max-w-full min-w-0 min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-zinc-100 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
               >
                 {nonEmergencyAgents.map((a) => (
                   <option key={a.id} value={a.handle}>
@@ -398,7 +405,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                 Sticker (US$)
                 <input
@@ -428,7 +435,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
 
             <div className="pt-3 border-t border-zinc-200 dark:border-white/10">
               <p className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 mb-2">Recent Threads</p>
-              <SwipeScrollArea direction="vertical" className="max-h-40" innerClassName="space-y-1">
+              <SwipeScrollArea direction="vertical" showArrows={true} arrowSize="sm" className="max-h-40" innerClassName="space-y-1">
                 {negotiations.map((neg) => (
                   <button
                     key={neg.id}
@@ -453,7 +460,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
           </form>
 
           {/* Right Pane: Split Chat Stream & Settlement Bar */}
-          <div className="lg:col-span-8 glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="lg:col-span-8 min-w-0 glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
             {runningNeg ? (
               <div className="space-y-3 py-6">
                 <div className="skeleton-line h-4 w-1/3" />
@@ -607,8 +614,23 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
       ) : (
         /* Reverse-RFP Tab */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-          <form onSubmit={handleBroadcastRfp} className="lg:col-span-5 glass-panel rounded-2xl p-4 space-y-3">
+          <form onSubmit={handleBroadcastRfp} className="lg:col-span-5 min-w-0 glass-panel rounded-2xl p-4 space-y-3">
             <h3 className="text-sm font-display font-bold text-zinc-950 dark:text-zinc-50">Broadcast Reverse-RFP</h3>
+
+            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+              Publishing Company / Personal Agent
+              <select
+                value={rfpPublisherHandle}
+                onChange={(e) => setRfpPublisherHandle(e.target.value)}
+                className="mt-1 w-full min-h-[38px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-white focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+              >
+                {nonEmergencyAgents.map((a) => (
+                  <option key={a.id} value={a.handle}>
+                    {a.displayName} ({a.handle})
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
               RFP Title
@@ -631,7 +653,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                 Budget (US$) ·{' '}
                 <span className="font-mono text-zinc-500">
@@ -692,7 +714,7 @@ export const NegotiationArenaModule: React.FC<NegotiationArenaModuleProps> = ({
             </button>
           </form>
 
-          <div className="lg:col-span-7 space-y-4">
+          <div className="lg:col-span-7 min-w-0 space-y-4">
             {rfpProposals.length > 0 && (
               <div className="glass-panel rounded-2xl p-4 border-emerald-400 dark:border-emerald-400/25 space-y-2.5">
                 <h4 className="text-xs font-display font-bold text-emerald-700 dark:text-emerald-300">Auto-Matched Vendor Bids</h4>
