@@ -916,6 +916,72 @@ export interface AgentStatusPostDoc {
   createdAt: string;
 }
 
+export interface DevicePasskeyRecord {
+  id: string;
+  credentialId: string;
+  ownerUid: string;
+  deviceId: string;
+  deviceLabel: string;
+  userDisplayName: string;
+  userEmail: string;
+  publicKeySpki: string;
+  algorithm: 'WEBAUTHN_FIDO2' | 'DEVICE_KEY_P256';
+  transports: string[];
+  counter: number;
+  rememberedAgentIds: string[];
+  rememberedAgentHandles: string[];
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+export interface UserSessionRecord {
+  id: string;
+  ownerUid: string;
+  deviceId: string;
+  authMethod: 'passkey' | 'google' | 'guest';
+  credentialId?: string;
+  userDisplayName: string;
+  userEmail: string;
+  activeAgentId?: string;
+  activeAgentHandle?: string;
+  agentIds: string[];
+  agentHandles: string[];
+  networkAutopilotEnabled?: boolean;
+  lastTab?: string;
+  userAgent?: string;
+  createdAt: string;
+  lastActiveAt: string;
+}
+
+export type ActivityCategory =
+  | 'network_autopilot'
+  | 'proximity'
+  | 'passkey_auth'
+  | 'session'
+  | 'negotiation'
+  | 'recruitment'
+  | 'comms'
+  | 'registry';
+
+export interface UserAgentActivityEntry {
+  id: string;
+  ownerUid: string;
+  deviceId?: string;
+  sessionId?: string;
+  agentId?: string;
+  agentHandle?: string;
+  targetHandle?: string;
+  category: ActivityCategory;
+  title: string;
+  summary: string;
+  locationLabel?: string;
+  distanceMeters?: number;
+  matchScore?: number;
+  valueZAR?: number;
+  metadata?: Record<string, string | number | boolean>;
+  timestamp: string;
+}
+
 export function zarToUsd(zar: number): number {
   const rate = getFxRatePerUsd('ZAR');
   return Number((zar / rate).toFixed(2));
