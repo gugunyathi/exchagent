@@ -16,7 +16,12 @@ import {
   SEED_JOBS,
   SEED_EVENT_PEERS,
 } from './src/data/seedData';
-import { quoteHandlePricing } from './src/services/paymentRails';
+import {
+  quoteHandlePricing,
+  generateRandomAgentHandle,
+  HandleEntityType,
+  HandleBillingCycle,
+} from './src/services/paymentRails';
 import {
   ZAR_PER_USD,
   ProximityPeerDoc,
@@ -303,9 +308,9 @@ async function startServer() {
         '- `POST /api/rfp/broadcast`',
         '- Body: `{ "title": "...", "description": "...", "budgetZAR": 165000, "broadcastChannels": ["directory", "google_maps_billboard", "ble_beacon"] }`',
         '',
-        '## 4. Quote & Claim `.agent` Handles with x402 (`names.search`, `names.claim`)',
-        '- `GET /api/names/search?q=007`',
-        '- `POST /api/names/claim` (returns `402 Payment Required` with USDC x402 instructions for bot/short-handle tiers; `403` for protected civic numbers `911`, `112`, `999`, `10111`).',
+        '## 4. Quote & Claim `.agent` Handles (`names.search`, `names.claim`)',
+        '- `GET /api/names/search?q=007&entityType=personal|business&billingCycle=monthly|annual`',
+        '- `POST /api/names/claim` — Free (`$0`) for system-assigned names (`personalagent1643.agent`, `businessagent1761.agent`); custom Personal min `$2/mo` (`$20/yr`); custom Business base `$10/mo` (`$100/yr`); separate one-time domain purchases & English auctions for unique/short handles; `403` for protected civic numbers (`911`, `112`, `999`, `10111`).',
         '',
         '## 5. Spatial Passerby Geofence Match (`spatial.passerby_match`)',
         '- `POST /api/rfp/match` with `{ "userHandle": "...", "targetHandle": "...", "locationLabel": "...", "distanceMeters": 28 }`',
@@ -1433,13 +1438,19 @@ async function startServer() {
     if (!q.trim()) {
       return res.status(400).json({ error: 'Query parameter q is required.' });
     }
-    const quote = quoteHandlePricing(q);
+    const entityType: HandleEntityType =
+      req.query.entityType === 'business' ? 'business' : 'personal';
+    const billingCycle: HandleBillingCycle =
+      req.query.billingCycle === 'annual' ? 'annual' : 'monthly';
+
+    const quote = quoteHandlePricing(q, { entityType, billingCycle });
     const claimed = SEED_CLAIMED_HANDLES.find((h) => h.handle === quote.normalizedHandle);
     const auction = SEED_AUCTIONS.find((a) => a.handle === quote.normalizedHandle);
     const listing = SEED_SECONDARY_LISTINGS.find((l) => l.handle === quote.normalizedHandle);
 
     res.json({
       quote,
+      randomAlternative: generateRandomAgentHandle(entityType),
       availability: quote.isProtectedCivic
         ? 'PROTECTED_CIVIC'
         : auction
@@ -1456,9 +1467,20 @@ async function startServer() {
   });
 
   app.post('/api/names/claim', (req, res) => {
-    const { handle, buyerType = 'human' } = req.body || {};
+    const {
+      handle,
+      buyerType = 'human',
+      entityType: rawEntityType = 'personal',
+      billingCycle: rawBillingCycle = 'monthly',
+    } = req.body || {};
     if (!handle) return res.status(400).json({ error: 'handle is required' });
-    const quote = quoteHandlePricing(handle);
+
+    const entityType: HandleEntityType =
+      rawEntityType === 'business' ? 'business' : 'personal';
+    const billingCycle: HandleBillingCycle =
+      rawBillingCycle === 'annual' ? 'annual' : 'monthly';
+
+    const quote = quoteHandlePricing(handle, { entityType, billingCycle });
 
     if (quote.isProtectedCivic) {
       return res.status(403).json({
@@ -1467,12 +1489,17 @@ async function startServer() {
     }
     if (quote.isAuctionRequired) {
       return res.status(409).json({
-        error: `${quote.normalizedHandle} requires English Auction bidding.`,
+        error: `${quote.normalizedHandle} requires English Auction bidding as a separate unique domain purchase.`,
         auctionRequired: true,
+        isSeparateDomainPurchase: true,
       });
     }
 
-    const requiredUSD = buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD;
+    const requiredUSD = quote.isSystemRandom
+      ? 0
+      : buyerType === 'bot'
+      ? quote.botX402PriceUSD
+      : quote.humanPriceUSD;
     const x402Header = req.headers['x-402-payment-token'];
 
     if (requiredUSD > 0 && !x402Header) {
@@ -1481,8 +1508,11 @@ async function startServer() {
         protocol: 'x402',
         amountUSD: requiredUSD,
         amountZAR: Math.round(requiredUSD * ZAR_PER_USD),
+        entityType: quote.entityType,
+        billingCycle: quote.billingCycle,
+        isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
         accepts: ['Base USDC', 'Arc', 'Solana USDC', 'PayPal Vault'],
-        hint: 'Include X-402-Payment-Token header or settle via Switchboard UI.',
+        hint: 'Include X-402-Payment-Token header or settle via Switchboard UI (or choose a free random handle).',
       });
     }
 
@@ -1490,6 +1520,10 @@ async function startServer() {
       status: 'CLAIMED',
       handle: quote.normalizedHandle,
       tierLabel: quote.tierLabel,
+      entityType: quote.entityType,
+      billingCycle: quote.billingCycle,
+      isSystemRandom: quote.isSystemRandom,
+      isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
       paidUSD: requiredUSD,
       claimedAt: new Date().toISOString(),
     });

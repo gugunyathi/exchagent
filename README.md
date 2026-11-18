@@ -48,7 +48,8 @@
 ### SPA Routes (`src/App.tsx`)
 | Path | View | Description |
 | --- | --- | --- |
-| `/` | `MinimalLandingPage` | Interactive product overview featuring an optical WebGL/GLSL shader hero (`OpticalShaderCanvas`), `AppWalkthroughPlayer`, and separated **01. FOR PROFESSIONALS** & **02. FOR BUSINESSES** flippable agent card showcases (`LandingFlippableCardExamples`). |
+| `/` | `MinimalLandingPage` | Corporate product overview featuring an optical shader hero, audience index strip, **01. For Professionals**, **02. For Companies** (with looping flippable cards & video), **03. For Recruiters**, **04. For Events**, **05. Pricing**, and **06. Live Product Walkthroughs**. |
+| `/pricing` | `PricingSection` | Standalone pricing page with Platform Plans, `.agent` Handle Registry Tiers, and the Global Employer Placement Schedule. |
 | `/directory`, `/app` | Main App Workspace | Full interactive Switchboard workspace with Directory, Intent & Auto-Match Hub (`/intent`), Negotiate Arena, Hiring OS, `.agent` Registry, Spatial Radar & Contacts, and Developer/Skills Toolkit. |
 | `/intent` | `IntentProfilePage` | Human Implied Intent declarations + Company RFP/Vacancy Intent manager with autonomous Gemini & deterministic cross-matching. |
 | `/term` | Global Platform Terms | Full SWITCHZ Global Platform Terms & Conditions (Silvernest Pty Ltd, South Africa). |
@@ -79,7 +80,7 @@
 - **Predictive Dialer & `$0.00` Civic SOS (`AgentDialerModal.tsx`)**:
   - Real-time predictive matching by digits, T9 patterns, shortcodes, or handles; dialing `911`, `112`, `999`, `10111`, or `10177` activates `$0.00` Civic Priority Dispatch with GPS lock and unit ETAs.
 - **`.agent` Handle Registry & `x402` Marketplace (`RegistryMarketplaceModule.tsx`, `src/services/paymentRails.ts`)**:
-  - Sliding-scale handle pricing (1-char `$1,000` down to 7+ chars `$0.00` human / `$0.20` USDC bot), HTTP `402` payment challenges (`x402_base`, `x402_arc`, `x402_solana`, `paypal_vault`), English auctions for reserved brands/shortcodes (`1–100`, `007`), secondary listings, and `403` locks on civic emergency codes.
+  - Free (`$0`) system-assigned handles (`personalagent1643.agent`, `businessagent1761.agent`); custom Personal name registrations minimum **`$2/month` or `$20/year`**; custom Business name registrations base **`$10/month` or `$100/year`**; separate one-time domain name purchases for short 1–4 character domains (`$50–$1,000`) and English auctions for unique names/numbers (`1–100`, `007`, reserved brands); HTTP `402` payment challenges (`x402_base`, `x402_arc`, `x402_solana`, `paypal_vault`); and `403` locks on civic emergency codes.
 - **AgentMail Inbox & AI Email Triage (`AgentMailInboxModule.tsx`, `OmnichannelCommsModule.tsx`)**:
   - Full inbox thread reader, compose/reply modal, and autonomous Gemini inbox classification (`QUALIFIED_ENGAGE`, `RFP_RESPONSE`, `SPAM_BLOCKED`, `MEETING_CONFIRMED`).
 - **Developer Toolkit (`AgentSkillsPage.tsx`, `ChromeExtensionHub.tsx`, `DeveloperLedgerModule.tsx`)**:
@@ -160,8 +161,8 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 ### 5. `.agent` Handle Registry, Auctions & `x402` (`server.ts`)
 | Method | Endpoint | Query / Body | Response / Behavior |
 | --- | --- | --- | --- |
-| `GET` | `/api/names/search` | `?q=<handle>` | Returns handle pricing quote, availability, civic protection flag, active auction info, and secondary listings. |
-| `POST` | `/api/names/claim` | `{ handle, buyerType: 'human'\|'agent', rail, ownerHandle }` + optional `X-402-Payment-Token` | Returns `403` for protected civic numbers (`911`/`112`/`999`/`10111`/`10177`), `409` for auction-only handles, HTTP `402` x402 payment challenge if paid & missing token, or `201` on settlement. |
+| `GET` | `/api/names/search` | `?q=<handle>&entityType=personal\|business&billingCycle=monthly\|annual` | Returns handle pricing quote, `randomAlternative`, availability, civic protection flag, active auction info, and secondary listings. |
+| `POST` | `/api/names/claim` | `{ handle, buyerType: 'human'\|'bot', entityType: 'personal'\|'business', billingCycle: 'monthly'\|'annual', rail, ownerHandle }` + optional `X-402-Payment-Token` | Free (`$0`) for `personalagentXXXX.agent` / `businessagentXXXX.agent`, `403` for protected civic numbers, `409` for auction-only separate domain purchases, HTTP `402` x402 payment challenge if paid & missing token, or claimed receipt. |
 | `POST` | `/api/names/bid` | `{ handle, bidderHandle, amountUSD }` | Places an English Auction bid (`400` if bid does not exceed current minimum). |
 
 ### 6. Email Triage & Predictive Voice/SOS Dialer (`server.ts`)
@@ -194,8 +195,8 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 | `POST` | `/api/recruitment/match` | `{ job, seeker }` | Returns explainable 0–100 `score`, factor breakdown (`skillsOverlap`, `experienceFit`, `compensationFit`, `locationCultureFit`), `strengths`, and `gaps` (supports `blindScreening`). |
 | `POST` | `/api/recruitment/verify-video` | `{ candidateHandle, title, fileName, mimeType, durationSeconds, capturedVia, challengeCode, frames, videoBase64 }` | Multimodal Gemini video/frame forensics returning `verdict` (`VERIFIED_HUMAN` \| `SUSPICIOUS_SYNTHETIC` \| `PENDING_REVIEW`), `authenticityScore`, `deepfakeRiskPct`, liveness signals, and `sha256Digest`. |
 | `POST` | `/api/recruitment/prescreen` | `{ job, reviewerHandle, reviewerName, candidateHandle, cvSkills, videoVerification }` | Generates pre-screen `decision` (`PASS` \| `SHORTLIST` \| `HOLD` \| `REJECT`), `score`, and summary notes (auto-holds synthetic/deepfake flags). |
-| `POST` | `/api/recruitment/linkedin-quickstart` | `{ linkedinUrl, focusNote, jobs }` | 1-click creates a free 7+ char Personal Career `.agent` profile from a LinkedIn slug and ranks top **10** matching vacancies with tailored interview pitches. |
-| `POST` | `/api/recruitment/employer-quickstart` | `{ jobUrl, companyName, department, candidates }` | 1-click synthesizes a Business Hiring `.agent` desk + 1–3 structured vacancies from a careers URL and auto-matches top candidates. |
+| `POST` | `/api/recruitment/linkedin-quickstart` | `{ linkedinUrl, focusNote, handleMode, billingCycle, customHandle, jobs }` | 1-click creates a Personal Career `.agent` profile (free random `personalagentXXXX.agent` at `$0`, or custom personal name from `$2/mo` / `$20/yr`) and ranks top **10** matching vacancies with tailored interview pitches. |
+| `POST` | `/api/recruitment/employer-quickstart` | `{ jobUrl, companyName, department, handleMode, billingCycle, customHandle, candidates }` | 1-click synthesizes a Business Hiring `.agent` desk (free random `businessagentXXXX.agent` at `$0`, or custom business name base `$10/mo` / `$100/yr`) + 1–3 structured vacancies from a careers URL and auto-matches top candidates. |
 | `POST` | `/api/recruitment/tailor-application` | `{ seeker, job, existingMatch }` | Generates a spec-aligned `cvDoc` (`TailoredCvDocument`), executive `coverLetterDoc` (`TailoredCoverLetterDocument`), `interviewPrepQuestions`, and `updatedCvSummary` ready for PDF/DOCX export. |
 
 ### 9. AgentMail Integration (`server/agentmailRouter.ts`)

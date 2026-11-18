@@ -23,7 +23,12 @@ import {
   formatLocalRateBanner,
   formatUsdPrice,
 } from '../lib/fx';
-import { quoteHandlePricing } from '../services/paymentRails';
+import {
+  quoteHandlePricing,
+  generateRandomAgentHandle,
+  HandleEntityType,
+  HandleBillingCycle,
+} from '../services/paymentRails';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
@@ -47,13 +52,71 @@ interface RegistryMarketplaceModuleProps {
   onBuyoutListing: (listingId: string, buyerHandle: string) => AgentHandleDoc | null;
 }
 
-const SLIDING_SCALE_ROWS = [
-  { tier: '1-Character / 1-Digit', humanUSD: 1000, note: 'Genesis vanity (x.agent, 1.agent)' },
-  { tier: '2-Character / 2-Digit', humanUSD: 500, note: 'Shortcode (ai.agent, 88.agent)' },
-  { tier: '3-Character', humanUSD: 200, note: 'Executive ticker (pay.agent, mtn.agent)' },
-  { tier: '4-Character', humanUSD: 50, note: 'Studio & startup tier' },
-  { tier: '5–6 Characters', humanUSD: 10, note: 'Growth brand namespace' },
-  { tier: '7+ Characters', humanUSD: 0, note: 'Free for verified humans · US$0.20 x402 for bots' },
+interface RegistryTierRow {
+  tier: string;
+  priceDisplay: string;
+  usdValue: number;
+  suffix: string;
+  note: string;
+}
+
+const SLIDING_SCALE_ROWS: RegistryTierRow[] = [
+  {
+    tier: 'Random Assigned Name (Personal or Business)',
+    priceDisplay: 'FREE ($0)',
+    usdValue: 0,
+    suffix: '',
+    note: 'System-assigned name (personalagent1643.agent, businessagent1761.agent)',
+  },
+  {
+    tier: 'Personal Custom Name (5+ Chars)',
+    priceDisplay: '$2/mo · $20/yr min',
+    usdValue: 2,
+    suffix: '/mo (or $20/yr)',
+    note: 'Minimum custom personal registration fee',
+  },
+  {
+    tier: 'Business Custom Name (5+ Chars)',
+    priceDisplay: '$10/mo · $100/yr base',
+    usdValue: 10,
+    suffix: '/mo (or $100/yr)',
+    note: 'Base custom business & hiring desk registration',
+  },
+  {
+    tier: '4-Character Unique Domain',
+    priceDisplay: '$50 one-time',
+    usdValue: 50,
+    suffix: ' one-time',
+    note: 'Separate one-time domain name purchase',
+  },
+  {
+    tier: '3-Character Unique Domain',
+    priceDisplay: '$200 one-time',
+    usdValue: 200,
+    suffix: ' one-time',
+    note: 'Separate one-time domain name purchase',
+  },
+  {
+    tier: '2-Character Unique Domain',
+    priceDisplay: '$500 one-time',
+    usdValue: 500,
+    suffix: ' one-time',
+    note: 'Separate one-time domain name purchase',
+  },
+  {
+    tier: '1-Character / 1-Digit Domain',
+    priceDisplay: '$1,000 one-time',
+    usdValue: 1000,
+    suffix: ' one-time',
+    note: 'Separate flagship domain name purchase',
+  },
+  {
+    tier: 'Unique Name Auctions (1–100, 007, Brands)',
+    priceDisplay: '$800 – $1,500+ one-time',
+    usdValue: 800,
+    suffix: '+ one-time',
+    note: 'Auction prices are a separate domain name purchase',
+  },
 ];
 
 export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps> = ({
@@ -78,10 +141,13 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   const [subTab, setSubTab] = useState<'search' | 'auctions' | 'marketplace' | 'leaderboard'>('search');
   const [queryInput, setQueryInput] = useState('');
   const [buyerType, setBuyerType] = useState<'human' | 'bot'>('human');
+  const [entityType, setEntityType] = useState<HandleEntityType>('personal');
+  const [billingCycle, setBillingCycle] = useState<HandleBillingCycle>('monthly');
   const [tiersExpanded, setTiersExpanded] = useState(true);
   const [bidAmountById, setBidAmountById] = useState<Record<string, number>>({});
 
-  const quote = quoteHandlePricing(queryInput || 'switchboard');
+  const defaultPreviewInput = entityType === 'business' ? 'businessagent1761' : 'personalagent1643';
+  const quote = quoteHandlePricing(queryInput || defaultPreviewInput, { entityType, billingCycle });
   const existingClaim = claimedHandles.find((h) => h.handle === quote.normalizedHandle);
   const existingAuction = auctions.find((a) => a.handle === quote.normalizedHandle);
   const existingListing = secondaryListings.find(
@@ -103,29 +169,44 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   };
 
   const handleClaim = async () => {
-    if (!queryInput.trim()) return;
+    const targetHandleInput = queryInput.trim() || defaultPreviewInput;
     if (quote.isProtectedCivic || quote.isAuctionRequired || existingClaim) return;
 
-    const priceUSD = buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD;
+    const priceUSD = quote.isSystemRandom
+      ? 0
+      : buyerType === 'bot'
+      ? quote.botX402PriceUSD
+      : quote.humanPriceUSD;
     const record: AgentHandleDoc = {
       id: `h_${Date.now()}`,
-      handle: quote.normalizedHandle,
-      category: quote.charLength <= 6 ? 'short_handle' : 'standard',
+      handle: quoteHandlePricing(targetHandleInput, { entityType, billingCycle }).normalizedHandle,
+      category: quote.charLength <= 4 ? 'short_handle' : 'standard',
       charLength: quote.charLength,
+      entityType: quote.entityType,
+      billingCycle: quote.isSystemRandom
+        ? 'free_random'
+        : quote.isSeparateDomainPurchase
+        ? 'one_time'
+        : billingCycle,
       ownerUid,
       ownerDisplayName: ownerName,
       tierPriceUSD: priceUSD,
-      paidVia: buyerType === 'bot' || priceUSD > 0 ? 'x402_usdc' : 'free_human',
+      paidVia: quote.isSystemRandom
+        ? 'free_random'
+        : buyerType === 'bot' || priceUSD > 0
+        ? 'x402_usdc'
+        : 'free_human',
       status: 'ACTIVE',
       claimedAt: new Date().toISOString(),
     };
     onClaimHandle(record);
-    emitToast(
-      `Claimed ${record.handle} (${
-        record.paidVia === 'free_human' ? 'Free Human Tier' : formatPrimaryPrice(priceUSD)
-      })`,
-      'success'
-    );
+    const cycleSuffix =
+      quote.isSystemRandom
+        ? 'Free System Handle'
+        : quote.isSeparateDomainPurchase
+        ? `${formatPrimaryPrice(priceUSD)} one-time domain`
+        : `${formatPrimaryPrice(priceUSD)}${billingCycle === 'annual' ? '/yr' : '/mo'}`;
+    emitToast(`Claimed ${record.handle} (${cycleSuffix})`, 'success');
   };
 
   const ownerMap: Record<string, { owner: string; count: number; totalValueUSD: number; handles: string[] }> = {};
@@ -269,43 +350,106 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
         <div className="max-w-3xl mx-auto space-y-3.5">
           {/* Raycast/Spotlight-style Handle Search Bar */}
           <div className="glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Search .agent Handle</span>
-              <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setBuyerType('human')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${
-                    buyerType === 'human'
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white border border-zinc-300 dark:border-white/15 font-semibold shadow-sm'
-                      : 'text-zinc-600 dark:text-zinc-400 font-medium'
-                  }`}
-                >
-                  Human
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBuyerType('bot')}
-                  className={`px-2.5 py-1 rounded text-xs transition-colors ${
-                    buyerType === 'bot'
-                      ? 'bg-white dark:bg-zinc-800 text-amber-700 dark:text-amber-300 border border-zinc-300 dark:border-white/15 font-semibold shadow-sm'
-                      : 'text-zinc-600 dark:text-zinc-400 font-medium'
-                  }`}
-                >
-                  Bot (x402)
-                </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Search .agent Handle</span>
+                <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setEntityType('personal')}
+                    className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                      entityType === 'personal'
+                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Personal ($2/mo)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntityType('business')}
+                    className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                      entityType === 'business'
+                        ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Business ($10/mo)
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle('monthly')}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      billingCycle === 'monthly'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white border border-zinc-300 dark:border-white/15 font-semibold'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle('annual')}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      billingCycle === 'annual'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white border border-zinc-300 dark:border-white/15 font-semibold'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Annual
+                  </button>
+                </div>
+
+                <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setBuyerType('human')}
+                    className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                      buyerType === 'human'
+                        ? 'bg-white dark:bg-zinc-800 text-zinc-950 dark:text-white border border-zinc-300 dark:border-white/15 font-semibold shadow-sm'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Human
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBuyerType('bot')}
+                    className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                      buyerType === 'bot'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-700 dark:text-amber-300 border border-zinc-300 dark:border-white/15 font-semibold shadow-sm'
+                        : 'text-zinc-600 dark:text-zinc-400 font-medium'
+                    }`}
+                  >
+                    Bot (x402)
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="relative">
-              <Search className="w-4 h-4 text-zinc-500 dark:text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={queryInput}
-                onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Type handle or shortcode (911, 007, coke, ai, sandton.solar)..."
-                className="w-full min-h-[46px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-10 pr-4 text-sm font-mono text-zinc-950 dark:text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
-              />
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-zinc-500 dark:text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={queryInput}
+                  onChange={(e) => setQueryInput(e.target.value)}
+                  placeholder="Type custom name (alex.founder, acme) or leave empty for free random name..."
+                  className="w-full min-h-[46px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 pl-10 pr-4 text-sm font-mono text-zinc-950 dark:text-zinc-50 placeholder:text-zinc-500 focus:outline-none focus:border-sky-600 dark:focus:border-sky-400"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setQueryInput(generateRandomAgentHandle(entityType))}
+                className="min-h-[46px] px-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-semibold text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 whitespace-nowrap shrink-0"
+              >
+                Assign Free Random ($0)
+              </button>
             </div>
 
             {/* Instant Quote & 1-Click Action */}
@@ -318,26 +462,37 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 tabular-nums">
                     {quote.charLength} chars · {quote.tierLabel}
                   </p>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    {quote.billingNote}
+                  </p>
                 </div>
-                <div className="sm:text-right">
-                  <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">Registration Fee</p>
+                <div className="sm:text-right shrink-0">
+                  <p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                    {quote.isSeparateDomainPurchase
+                      ? 'Separate Domain Purchase'
+                      : quote.isSystemRandom
+                      ? 'System-Assigned Name'
+                      : 'Name Registration Fee'}
+                  </p>
                   <p className="text-base sm:text-lg font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-300">
                     {quote.isProtectedCivic
                       ? 'PROTECTED'
-                      : buyerType === 'bot'
-                      ? formatPrimaryPrice(quote.botX402PriceUSD)
-                      : quote.humanPriceUSD === 0
-                      ? 'FREE (Human)'
-                      : formatPrimaryPrice(quote.humanPriceUSD)}
+                      : quote.isSystemRandom
+                      ? 'FREE ($0)'
+                      : quote.isSeparateDomainPurchase
+                      ? `${formatPrimaryPrice(quote.oneTimeDomainUSD)} one-time`
+                      : `${formatPrimaryPrice(quote.humanPriceUSD)}${billingCycle === 'annual' ? '/yr' : '/mo'}`}
                   </p>
                   {!quote.isProtectedCivic &&
+                    !quote.isSystemRandom &&
                     formatSecondaryEquiv(
-                      buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD
+                      quote.isSeparateDomainPurchase ? quote.oneTimeDomainUSD : quote.humanPriceUSD
                     ) && (
                       <p className="text-[11px] font-mono tabular-nums text-zinc-500 dark:text-zinc-400">
                         {formatSecondaryEquiv(
-                          buyerType === 'bot' ? quote.botX402PriceUSD : quote.humanPriceUSD
+                          quote.isSeparateDomainPurchase ? quote.oneTimeDomainUSD : quote.humanPriceUSD
                         )}
+                        {!quote.isSeparateDomainPurchase && (billingCycle === 'annual' ? '/yr' : '/mo')}
                       </p>
                     )}
                 </div>
@@ -405,16 +560,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
             {tiersExpanded && (
               <div className="divide-y divide-zinc-200 dark:divide-white/10 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 px-3.5">
                 {SLIDING_SCALE_ROWS.map((row) => {
-                  const primaryText =
-                    row.humanUSD === 0
-                      ? `FREE / ${formatPrimaryPrice(0.2)}`
-                      : formatPrimaryPrice(row.humanUSD);
-                  const secondaryText =
-                    row.humanUSD === 0
-                      ? formatSecondaryEquiv(0.2)
-                        ? `Bot ${formatSecondaryEquiv(0.2)}`
-                        : null
-                      : formatSecondaryEquiv(row.humanUSD);
+                  const localEquiv = formatSecondaryEquiv(row.usdValue);
                   return (
                     <div key={row.tier} className="py-2.5 flex items-center justify-between gap-3">
                       <div>
@@ -423,11 +569,15 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                       </div>
                       <div className="text-right shrink-0">
                         <span className="font-mono tabular-nums font-semibold text-zinc-950 dark:text-zinc-100 block">
-                          {primaryText}
+                          {row.usdValue === 0
+                            ? 'FREE ($0)'
+                            : currency === 'USD'
+                            ? row.priceDisplay
+                            : `${formatPrimaryPrice(row.usdValue)}${row.suffix}`}
                         </span>
-                        {secondaryText && (
+                        {localEquiv && row.usdValue > 0 && (
                           <span className="font-mono tabular-nums text-[10.5px] text-zinc-500 dark:text-zinc-400 block">
-                            {secondaryText}
+                            {localEquiv}
                           </span>
                         )}
                       </div>

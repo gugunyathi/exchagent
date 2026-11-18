@@ -15,7 +15,11 @@ import {
   AgentStatusPostDoc,
 } from '../types/firestore';
 import { LocalCurrencyCode, formatCurrencyFromUsd, formatUsdPrice } from '../lib/fx';
-import { quoteHandlePricing } from '../services/paymentRails';
+import {
+  quoteHandlePricing,
+  generateRandomAgentHandle,
+  HandleBillingCycle,
+} from '../services/paymentRails';
 import { AgentCardCarousel } from './AgentCardCarousel';
 import { AgentIdentityCard } from './AgentIdentityCard';
 import { PromotedStatusCircles } from './PromotedStatusCircles';
@@ -119,6 +123,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
   const [minDiscountPct, setMinDiscountPct] = useState(12);
   const [skillsCsv, setSkillsCsv] = useState('B2B Lead Gen, Calendar Sync, x402 Pay');
   const [buyerKind, setBuyerKind] = useState<'human' | 'bot'>('human');
+  const [billingCycle, setBillingCycle] = useState<HandleBillingCycle>('monthly');
   const [deploying, setDeploying] = useState(false);
   const [deployNotice, setDeployNotice] = useState<string | null>(null);
 
@@ -155,7 +160,13 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
     );
   });
 
-  const handleQuote = quoteHandlePricing(newHandle || 'myagent');
+  const handleQuote = quoteHandlePricing(
+    newHandle || (newType === 'business' ? 'businessagent1761' : 'personalagent1643'),
+    {
+      entityType: newType === 'business' ? 'business' : 'personal',
+      billingCycle,
+    }
+  );
 
   const closeDeploy = React.useCallback(() => {
     setShowDeploy(false);
@@ -585,7 +596,7 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
                     Starting a job search? Use 1-Click LinkedIn Quickstart
                   </p>
                   <p className="text-[11px] text-sky-800 dark:text-sky-300/90">
-                    Paste your LinkedIn URL to get a free Standard .agent card, @agentmail.to inbox, 10 job matches &amp; interview booking.
+                    Paste your LinkedIn URL to get a free random .agent card (or custom $2/mo), @agentmail.to inbox, 10 job matches &amp; interview booking.
                   </p>
                 </div>
                 <button
@@ -628,28 +639,46 @@ export const DirectoryModule: React.FC<DirectoryModuleProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="text-zinc-700 dark:text-zinc-400 font-medium block mb-1">.agent Handle</label>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="text-zinc-700 dark:text-zinc-400 font-medium">.agent Handle</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setNewHandle(generateRandomAgentHandle(newType === 'business' ? 'business' : 'personal'))}
+                      className="text-[10.5px] font-semibold text-sky-700 dark:text-sky-400 hover:underline"
+                    >
+                      Assign Free Name ($0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle((b) => (b === 'monthly' ? 'annual' : 'monthly'))}
+                      className="text-[10.5px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-zinc-700 dark:text-zinc-300"
+                    >
+                      {billingCycle === 'monthly' ? 'Monthly' : 'Annual'}
+                    </button>
+                  </div>
+                </div>
                 <input
                   type="text"
                   required
                   value={newHandle}
                   onChange={(e) => setNewHandle(e.target.value)}
-                  placeholder="thabo.founder"
+                  placeholder={newType === 'business' ? 'businessagent1761 (free) or acme' : 'personalagent1643 (free) or thabo.founder'}
                   className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 py-2 font-mono text-zinc-950 dark:text-white placeholder:text-zinc-500"
                 />
                 <span className="text-[10.5px] font-mono text-emerald-700 dark:text-emerald-400 mt-0.5 block">
                   {handleQuote.normalizedHandle} ·{' '}
                   {handleQuote.isProtectedCivic
                     ? 'LOCKED'
-                    : buyerKind === 'bot'
-                    ? `${formatUsdPrice(handleQuote.botX402PriceUSD)}${
+                    : handleQuote.isSystemRandom
+                    ? 'FREE ($0 System Name)'
+                    : handleQuote.isSeparateDomainPurchase
+                    ? `Separate Domain (${formatUsdPrice(handleQuote.oneTimeDomainUSD)} one-time${
                         localCurrency !== 'USD'
-                          ? ` (≈ ${formatCurrencyFromUsd(handleQuote.botX402PriceUSD, localCurrency, fxRates)})`
+                          ? ` ≈ ${formatCurrencyFromUsd(handleQuote.oneTimeDomainUSD, localCurrency, fxRates)}`
                           : ''
-                      }`
-                    : handleQuote.humanPriceUSD === 0
-                    ? 'FREE'
-                    : `${formatUsdPrice(handleQuote.humanPriceUSD)}${
+                      })`
+                    : `${formatUsdPrice(handleQuote.humanPriceUSD)}${billingCycle === 'annual' ? '/yr' : '/mo'}${
                         localCurrency !== 'USD'
                           ? ` (≈ ${formatCurrencyFromUsd(handleQuote.humanPriceUSD, localCurrency, fxRates)})`
                           : ''

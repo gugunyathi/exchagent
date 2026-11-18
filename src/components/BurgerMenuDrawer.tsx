@@ -39,6 +39,7 @@ import { ThemeToggle } from '../lib/theme';
 
 export type DrawerRouteTarget =
   | { tab: 'home' }
+  | { tab: 'pricing' }
   | { tab: 'legal'; doc: LegalDocTab }
   | { tab: 'directory' }
   | { tab: 'intent' }
@@ -505,6 +506,20 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
               Legal &amp; Compliance
             </p>
             <div className="grid grid-cols-1 gap-1.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigate({ tab: 'pricing' });
+                  onClose();
+                }}
+                className="min-h-[34px] px-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-white/[0.08] text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white flex items-center justify-between"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Tag className="w-3.5 h-3.5" />
+                  Pricing &amp; Fee Schedule
+                </span>
+                <span className="font-mono text-[10px] text-zinc-500">/pricing</span>
+              </button>
               <button
                 type="button"
                 onClick={() => {

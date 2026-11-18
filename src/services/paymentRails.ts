@@ -2,17 +2,28 @@ import { PaymentRail, zarToUsd } from '../types/firestore';
 import { formatUsdPrice } from '../lib/fx';
 import { PROTECTED_EMERGENCY_NUMBERS } from '../data/seedData';
 
+export type HandleEntityType = 'personal' | 'business';
+export type HandleBillingCycle = 'monthly' | 'annual';
+
 export interface HandlePricingQuote {
   normalizedHandle: string;
   baseName: string;
   charLength: number;
   isNumeric: boolean;
+  isSystemRandom: boolean;
   isProtectedCivic: boolean;
   isAuctionRequired: boolean;
+  isSeparateDomainPurchase: boolean;
+  entityType: HandleEntityType;
+  billingCycle: HandleBillingCycle | 'one_time' | 'free';
   auctionReason?: string;
+  monthlyUSD: number;
+  annualUSD: number;
+  oneTimeDomainUSD: number;
   humanPriceUSD: number;
   botX402PriceUSD: number;
   tierLabel: string;
+  billingNote: string;
 }
 
 export const ENTERPRISE_BRAND_AUCTIONS = new Set([
@@ -29,7 +40,36 @@ export const ENTERPRISE_BRAND_AUCTIONS = new Set([
   'openai',
 ]);
 
-export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
+export function generateRandomAgentHandle(entityType: HandleEntityType = 'personal'): string {
+  const num = Math.floor(1000 + Math.random() * 9000);
+  const prefix = entityType === 'business' ? 'businessagent' : 'personalagent';
+  return `${prefix}${num}.agent`;
+}
+
+export function isSystemRandomHandle(rawInput: string): boolean {
+  const clean = rawInput
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/\.agent$/, '');
+  return /^(personalagent|businessagent)\d{4,8}$/.test(clean);
+}
+
+export function quoteHandlePricing(
+  rawInput: string,
+  options?: {
+    entityType?: HandleEntityType;
+    billingCycle?: HandleBillingCycle;
+  }
+): HandlePricingQuote {
+  const entityType: HandleEntityType = options?.entityType === 'business' ? 'business' : 'personal';
+  const billingCycle: HandleBillingCycle = options?.billingCycle === 'annual' ? 'annual' : 'monthly';
+
+  const baseMonthlyUSD = entityType === 'business' ? 10 : 2;
+  const baseAnnualUSD = entityType === 'business' ? 100 : 20;
+  const activeSubPriceUSD = billingCycle === 'annual' ? baseAnnualUSD : baseMonthlyUSD;
+  const activeSubPeriodLabel = billingCycle === 'annual' ? '/yr' : '/mo';
+
   const cleaned = rawInput
     .trim()
     .toLowerCase()
@@ -37,7 +77,7 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
     .replace(/\.agent$/, '')
     .replace(/[^a-z0-9.-]/g, '');
 
-  const baseName = cleaned || 'myagent';
+  const baseName = cleaned || (entityType === 'business' ? 'businessagent1761' : 'personalagent1643');
   const normalizedHandle = `${baseName}.agent`;
   const charLength = baseName.length;
   const isNumeric = /^\d+$/.test(baseName);
@@ -49,12 +89,45 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: true,
       isAuctionRequired: false,
+      isSeparateDomainPurchase: false,
+      entityType,
+      billingCycle: 'free',
       auctionReason: 'Protected Civic & Emergency Number (Locked from Commercial Registration)',
+      monthlyUSD: 0,
+      annualUSD: 0,
+      oneTimeDomainUSD: 0,
       humanPriceUSD: 0,
       botX402PriceUSD: 0,
       tierLabel: 'Civic / Emergency Protected',
+      billingNote: 'Permanently reserved for civic emergency routing.',
+    };
+  }
+
+  if (isSystemRandomHandle(baseName)) {
+    const isBizHandle = baseName.startsWith('businessagent');
+    return {
+      normalizedHandle,
+      baseName,
+      charLength,
+      isNumeric: false,
+      isSystemRandom: true,
+      isProtectedCivic: false,
+      isAuctionRequired: false,
+      isSeparateDomainPurchase: false,
+      entityType: isBizHandle ? 'business' : 'personal',
+      billingCycle: 'free',
+      monthlyUSD: 0,
+      annualUSD: 0,
+      oneTimeDomainUSD: 0,
+      humanPriceUSD: 0,
+      botX402PriceUSD: 0,
+      tierLabel: isBizHandle
+        ? 'Free System Business Handle (e.g. businessagent1761)'
+        : 'Free System Personal Handle (e.g. personalagent1643)',
+      billingNote: 'Free system-assigned handle ($0). Upgrade to a custom name anytime.',
     };
   }
 
@@ -64,12 +137,20 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: true,
-      auctionReason: 'Reserved Enterprise Brand Namespace — English Auction Pool',
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      auctionReason: 'Unique Enterprise Brand Name — Separate Auction Domain Purchase',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 1500,
       humanPriceUSD: 1500,
       botX402PriceUSD: 1500,
-      tierLabel: 'Enterprise Brand Auction',
+      tierLabel: 'Unique Brand Auction (Separate Domain Purchase)',
+      billingNote: 'One-time domain auction purchase (separate from recurring handle plans).',
     };
   }
 
@@ -79,12 +160,20 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: true,
-      auctionReason: 'Iconic Shortcode (1–100 / 007) — English Auction Pool',
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      auctionReason: 'Unique Iconic Shortcode (1–100 / 007) — Separate Auction Domain Purchase',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 800,
       humanPriceUSD: 800,
       botX402PriceUSD: 800,
-      tierLabel: 'Iconic Number Auction',
+      tierLabel: 'Unique Shortcode Auction (Separate Domain Purchase)',
+      billingNote: 'One-time domain auction purchase (separate from recurring handle plans).',
     };
   }
 
@@ -94,63 +183,85 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: false,
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 1000,
       humanPriceUSD: 1000,
       botX402PriceUSD: 1000,
-      tierLabel: '1-Character Ultra Premium',
+      tierLabel: '1-Character Unique Domain (Separate Purchase)',
+      billingNote: 'One-time unique domain name purchase, separate from standard subscriptions.',
     };
   }
+
   if (charLength === 2) {
     return {
       normalizedHandle,
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: false,
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 500,
       humanPriceUSD: 500,
       botX402PriceUSD: 500,
-      tierLabel: '2-Character Sovereign Tier',
+      tierLabel: '2-Character Unique Domain (Separate Purchase)',
+      billingNote: 'One-time unique domain name purchase, separate from standard subscriptions.',
     };
   }
+
   if (charLength === 3) {
     return {
       normalizedHandle,
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: false,
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 200,
       humanPriceUSD: 200,
       botX402PriceUSD: 200,
-      tierLabel: '3-Character Executive Tier',
+      tierLabel: '3-Character Unique Domain (Separate Purchase)',
+      billingNote: 'One-time unique domain name purchase, separate from standard subscriptions.',
     };
   }
+
   if (charLength === 4) {
     return {
       normalizedHandle,
       baseName,
       charLength,
       isNumeric,
+      isSystemRandom: false,
       isProtectedCivic: false,
       isAuctionRequired: false,
+      isSeparateDomainPurchase: true,
+      entityType,
+      billingCycle: 'one_time',
+      monthlyUSD: baseMonthlyUSD,
+      annualUSD: baseAnnualUSD,
+      oneTimeDomainUSD: 50,
       humanPriceUSD: 50,
       botX402PriceUSD: 50,
-      tierLabel: '4-Character Studio Tier',
-    };
-  }
-  if (charLength <= 6) {
-    return {
-      normalizedHandle,
-      baseName,
-      charLength,
-      isNumeric,
-      isProtectedCivic: false,
-      isAuctionRequired: false,
-      humanPriceUSD: 10,
-      botX402PriceUSD: 10,
-      tierLabel: '5–6 Character Growth Tier',
+      tierLabel: '4-Character Unique Domain (Separate Purchase)',
+      billingNote: 'One-time unique domain name purchase, separate from standard subscriptions.',
     };
   }
 
@@ -159,11 +270,25 @@ export function quoteHandlePricing(rawInput: string): HandlePricingQuote {
     baseName,
     charLength,
     isNumeric,
+    isSystemRandom: false,
     isProtectedCivic: false,
     isAuctionRequired: false,
-    humanPriceUSD: 0,
-    botX402PriceUSD: 0.2,
-    tierLabel: '7+ Chars (Free Human / US$0.20 USDC x402 Bot)',
+    isSeparateDomainPurchase: false,
+    entityType,
+    billingCycle,
+    monthlyUSD: baseMonthlyUSD,
+    annualUSD: baseAnnualUSD,
+    oneTimeDomainUSD: 0,
+    humanPriceUSD: activeSubPriceUSD,
+    botX402PriceUSD: activeSubPriceUSD,
+    tierLabel:
+      entityType === 'business'
+        ? `Business Custom Name ($10/mo or $100/yr)`
+        : `Personal Custom Name ($2/mo or $20/yr)`,
+    billingNote:
+      entityType === 'business'
+        ? `Base business registration: $${activeSubPriceUSD}${activeSubPeriodLabel} (or free random businessagentXXXX.agent).`
+        : `Minimum personal registration: $${activeSubPriceUSD}${activeSubPeriodLabel} (or free random personalagentXXXX.agent).`,
   };
 }
 

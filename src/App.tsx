@@ -31,6 +31,8 @@ import {
   Home,
   Target,
   UserPlus,
+  Radio,
+  Activity,
 } from 'lucide-react';
 import {
   AgentDoc,
@@ -41,8 +43,10 @@ import {
 } from './types/firestore';
 import { LegalDocTab } from './data/legalDocuments';
 import { useSwitchboardStore } from './store/useSwitchboardStore';
+import { useNetworkAutopilot } from './hooks/useNetworkAutopilot';
 import { MinimalLandingPage } from './components/MinimalLandingPage';
 import { LegalDocumentView } from './components/LegalDocumentView';
+import { PricingSection } from './components/PricingSection';
 import { IntentProfilePage } from './components/IntentProfilePage';
 import {
   DirectoryModule,
@@ -67,6 +71,7 @@ import { QuickEmployerAgentModal } from './components/QuickEmployerAgentModal';
 import { AgentProfileHistoryModal } from './components/AgentProfileHistoryModal';
 import { CompanyHrPortalModal } from './components/CompanyHrPortalModal';
 import { PostStatusModal } from './components/PostStatusModal';
+import { NetworkAutopilotModal } from './components/NetworkAutopilotModal';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { BurgerMenuDrawer, DrawerRouteTarget } from './components/BurgerMenuDrawer';
 import { SwipeScrollArea } from './components/SwipeScrollArea';
@@ -75,6 +80,7 @@ import { ThemeToggle } from './lib/theme';
 
 export type MainNavTab =
   | 'home'
+  | 'pricing'
   | 'legal'
   | 'directory'
   | 'intent'
@@ -95,6 +101,9 @@ function resolvePathRoute(pathname: string): { tab: MainNavTab; legalDoc: LegalD
   if (clean === '/employeragreement' || clean === '/employer-agreement') {
     return { tab: 'legal', legalDoc: 'employer' };
   }
+  if (clean === '/pricing' || clean === '/plans') {
+    return { tab: 'pricing', legalDoc: 'terms' };
+  }
   if (clean === '/intent') {
     return { tab: 'intent', legalDoc: 'terms' };
   }
@@ -111,7 +120,7 @@ function getPathnameForLegalDoc(doc: LegalDocTab): string {
 }
 
 const PRIMARY_NAV_TABS: Array<{
-  id: Exclude<MainNavTab, 'home' | 'legal' | 'toolkit'>;
+  id: Exclude<MainNavTab, 'home' | 'pricing' | 'legal' | 'toolkit'>;
   label: string;
   mobileLabel: string;
   icon: React.FC<{ className?: string }>;
@@ -174,6 +183,7 @@ export default function App() {
     packageId?: string | null;
   }>({ open: false, agent: null, packageId: null });
   const [hrPortalAgent, setHrPortalAgent] = useState<AgentDoc | null>(null);
+  const [networkAutopilotModalOpen, setNetworkAutopilotModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
@@ -219,6 +229,8 @@ export default function App() {
       } else {
         document.title = 'Global Employer Recruitment Agreement (/employeragreement) — SWITCHZ';
       }
+    } else if (activeTab === 'pricing') {
+      document.title = 'Pricing & Commercial Fee Schedule (/pricing) — SWITCHZ';
     } else if (activeTab === 'home') {
       document.title = 'SWITCHZ — Verified .agent Identity, Autonomous Hiring & A2A Commerce';
     } else {
@@ -241,6 +253,7 @@ export default function App() {
     } else if (
       tabParam === 'directory' ||
       tabParam === 'intent' ||
+      tabParam === 'pricing' ||
       tabParam === 'arena' ||
       tabParam === 'registry' ||
       tabParam === 'spatial'
@@ -285,6 +298,20 @@ export default function App() {
       null,
     [store.agents]
   );
+
+  const networkAutopilot = useNetworkAutopilot({
+    activeUserAgent,
+    userLocation: store.userLocation,
+    onUpdateUserLocation: store.setUserLocation,
+    negotiations: store.negotiations,
+    settlements: store.settlements,
+    onAutoAddPeers: store.autoAddProximityPeers,
+    onRunAutonomousIntentMatch: store.runAutonomousIntentMatch,
+    onSaveNegotiation: store.saveNegotiation,
+    onSettleDeal: store.settleDeal,
+    onAddPasserbyEvent: store.addPasserbyEvent,
+    onLogAgentHistory: store.logAgentHistory,
+  });
 
   const handleOpenProfileHistory = React.useCallback((agent: AgentDoc, packageId?: string) => {
     setProfileHistoryState({ open: true, agent, packageId: packageId || null });
@@ -335,6 +362,8 @@ export default function App() {
     let nextPath = '/';
     if (tab === 'legal') {
       nextPath = getPathnameForLegalDoc(doc);
+    } else if (tab === 'pricing') {
+      nextPath = '/pricing';
     } else if (tab === 'intent') {
       nextPath = '/intent';
     } else if (tab === 'home') {
@@ -808,6 +837,18 @@ export default function App() {
               onNavigateTab={(tab) => navigateRoute({ surface: 'desktop', tab })}
             />
           </SwipeScrollArea>
+        ) : activeTab === 'pricing' ? (
+          <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-16">
+            <PricingSection
+              variant="page"
+              onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
+              onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
+              onOpenHiringDesk={() => navigateRoute({ surface: 'desktop', tab: 'hiring' })}
+              onOpenRegistry={() => navigateRoute({ surface: 'desktop', tab: 'registry' })}
+              onOpenLegalDoc={handleOpenLegalDoc}
+              onBackToOverview={() => navigateRoute({ surface: 'desktop', tab: 'home' })}
+            />
+          </SwipeScrollArea>
         ) : activeTab === 'legal' ? (
           <SwipeScrollArea direction="vertical" className="flex-1 min-h-0" innerClassName="pb-16">
             <LegalDocumentView
@@ -1235,7 +1276,7 @@ export default function App() {
 
       {/* Consolidated Bottom Action Row (hidden on minimal landing & legal views) */}
       {activeTab !== 'home' && activeTab !== 'legal' && (
-      <div className="fixed bottom-[68px] md:bottom-5 right-3 sm:right-5 left-3 sm:left-auto z-40 flex flex-col items-end gap-2 pointer-events-none">
+      <div className="fixed bottom-[68px] md:bottom-5 right-2 sm:right-5 left-2 sm:left-auto z-40 flex flex-col items-end gap-2 pointer-events-none">
         <AnimatePresence>
           {floatingMenuExpanded && (
             <motion.div
@@ -1243,9 +1284,20 @@ export default function App() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.96 }}
               transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-auto rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xl p-1.5 w-48 space-y-0.5"
+              className="pointer-events-auto rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 shadow-2xl p-1.5 w-52 space-y-0.5"
             >
               {[
+                {
+                  label: networkAutopilot.config.enabled
+                    ? '+Network Monitor'
+                    : 'Configure +Network',
+                  icon: Radio,
+                  active: networkAutopilot.config.enabled,
+                  onClick: () => {
+                    setFloatingMenuExpanded(false);
+                    setNetworkAutopilotModalOpen(true);
+                  },
+                },
                 {
                   label: directorySearchOpen ? 'Close Search' : 'Search Cards',
                   icon: Search,
@@ -1302,16 +1354,50 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="w-full sm:w-auto flex items-center justify-end gap-1.5 sm:gap-2">
-          {store.surface === 'desktop' && activeTab === 'directory' && (
-            <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1">
+        <div className="w-full sm:w-auto flex flex-wrap items-center justify-end gap-1 sm:gap-2">
+          {store.surface === 'desktop' && activeTab === 'directory' ? (
+            <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1 max-w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setFloatingMenuExpanded(false);
+                  networkAutopilot.toggleEnabled();
+                }}
+                aria-pressed={networkAutopilot.config.enabled}
+                className={`h-8 sm:h-9 px-2 sm:px-3 rounded-full text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors ${
+                  networkAutopilot.config.enabled
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
+                    : 'bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700'
+                }`}
+                title="Toggle persistent +Network autopilot: scans GPS, Wi-Fi & beacons in range, adds contacts per intents, and negotiates/closes deals"
+              >
+                <Radio className="w-3.5 h-3.5 shrink-0" />
+                <span>{networkAutopilot.config.enabled ? 'Network On' : '+Network'}</span>
+              </button>
+              {networkAutopilot.config.enabled && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFloatingMenuExpanded(false);
+                    setNetworkAutopilotModalOpen(true);
+                  }}
+                  className="h-8 sm:h-9 px-2 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/70 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-500/30 text-[11px] font-mono font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors"
+                  title="Inspect +Network live activity, contacts added, and closed deals"
+                  aria-label="Open +Network Autopilot Details"
+                >
+                  <Activity className="w-3.5 h-3.5 shrink-0" />
+                  <span className="tabular-nums">
+                    {networkAutopilot.stats.contactsAdded + networkAutopilot.stats.dealsClosed}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setFloatingMenuExpanded(false);
                   setQuickJobModalOpen(true);
                 }}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                className="h-8 sm:h-9 px-2 sm:px-3 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors"
                 title="Paste LinkedIn URL for a free Job Agent + 10 matches"
               >
                 <Linkedin className="w-3.5 h-3.5 shrink-0" />
@@ -1323,7 +1409,7 @@ export default function App() {
                   setFloatingMenuExpanded(false);
                   setQuickEmployerModalOpen(true);
                 }}
-                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                className="h-8 sm:h-9 px-2 sm:px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors"
                 title="Paste Job URL for a 1-click Employer Agent + auto-match candidates"
               >
                 <Building2 className="w-3.5 h-3.5 shrink-0" />
@@ -1331,7 +1417,31 @@ export default function App() {
                 <span className="sm:hidden">Hire</span>
               </button>
             </div>
-          )}
+          ) : networkAutopilot.config.enabled ? (
+            <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-indigo-300 dark:border-indigo-500/40 shadow-xl gap-1">
+              <button
+                type="button"
+                onClick={() => networkAutopilot.toggleEnabled()}
+                aria-pressed={true}
+                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                title="+Network Autopilot is active in the background — click to pause"
+              >
+                <Radio className="w-3.5 h-3.5 shrink-0" />
+                <span>Network On</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNetworkAutopilotModalOpen(true)}
+                className="h-8 sm:h-9 px-2.5 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-200 text-[11px] font-mono font-semibold inline-flex items-center gap-1 whitespace-nowrap"
+                title="View +Network live scan activity & closed deals"
+              >
+                <Activity className="w-3.5 h-3.5 shrink-0" />
+                <span className="tabular-nums">
+                  {networkAutopilot.stats.contactsAdded + networkAutopilot.stats.dealsClosed}
+                </span>
+              </button>
+            </div>
+          ) : null}
 
           {/* Single Consolidated Pill: Quick Menu + Predictive Dialer */}
           <div className="pointer-events-auto flex items-center p-1 rounded-full bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-white/15 shadow-xl gap-1 shrink-0">
@@ -1491,6 +1601,22 @@ export default function App() {
             <SwipeScrollArea direction="vertical" className="max-h-80" innerClassName="p-2 space-y-1">
               {!commandQ && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommandOpen(false);
+                      setNetworkAutopilotModalOpen(true);
+                    }}
+                    className="w-full min-h-[42px] text-left rounded-lg px-3 py-2 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center justify-between"
+                  >
+                    <span className="font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> +Network Autonomous Scanner &amp; Deal Closer
+                    </span>
+                    <span className="font-mono text-indigo-600 dark:text-indigo-400">
+                      {networkAutopilot.config.enabled ? 'ACTIVE' : 'OFF'}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1952,6 +2078,30 @@ export default function App() {
         defaultAgent={activeUserAgent}
         currency={store.currency}
         onPublishStatus={store.createStatusPost}
+      />
+
+      <NetworkAutopilotModal
+        open={networkAutopilotModalOpen}
+        onClose={() => setNetworkAutopilotModalOpen(false)}
+        agent={activeUserAgent}
+        currency={store.currency}
+        config={networkAutopilot.config}
+        stats={networkAutopilot.stats}
+        activityLog={networkAutopilot.activityLog}
+        isScanning={networkAutopilot.isScanning}
+        gpsStatus={networkAutopilot.gpsStatus}
+        wifiMeshConnected={networkAutopilot.wifiMeshConnected}
+        blePairedBeacon={networkAutopilot.blePairedBeacon}
+        lastScanAt={networkAutopilot.lastScanAt}
+        onToggleEnabled={networkAutopilot.toggleEnabled}
+        onUpdateConfig={networkAutopilot.updateConfig}
+        onRunCycleNow={networkAutopilot.runCycleNow}
+        onPairBleBeacon={networkAutopilot.pairBleBeacon}
+        onOpenContacts={() =>
+          navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'contacts' })
+        }
+        onOpenIntentHub={() => navigateRoute({ surface: 'desktop', tab: 'intent' })}
+        onOpenArena={() => navigateRoute({ surface: 'desktop', tab: 'arena' })}
       />
 
       <ToastViewport />

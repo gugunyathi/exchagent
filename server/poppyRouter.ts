@@ -14,6 +14,11 @@ import {
   PoppyOperation,
   PoppyMessageExtensionPayload,
 } from '../src/types/firestore';
+import {
+  generateRandomAgentHandle,
+  quoteHandlePricing,
+  HandleBillingCycle,
+} from '../src/services/paymentRails';
 
 const HMAC_SECRET = process.env.POPPY_HMAC_SECRET || 'switchboard-poppy-v1-ephemeral-secret';
 
@@ -1184,6 +1189,9 @@ export function createPoppyRouter(): express.Router {
     const {
       linkedinUrl = '',
       focusNote = '',
+      handleMode = 'random',
+      billingCycle: rawBillingCycle = 'monthly',
+      customHandle = '',
       jobs: clientJobs,
     } = req.body || {};
 
@@ -1191,6 +1199,9 @@ export function createPoppyRouter(): express.Router {
     if (!rawUrl) {
       return res.status(400).json({ error: 'Please paste a LinkedIn, GitHub, or personal portfolio URL.' });
     }
+
+    const billingCycle: HandleBillingCycle =
+      rawBillingCycle === 'annual' ? 'annual' : 'monthly';
 
     // Parse any profile URL cleanly (LinkedIn, GitHub, portfolio domain, Linktree, personal site — zero scraping)
     const cleanedPath = rawUrl
@@ -1227,12 +1238,35 @@ export function createPoppyRouter(): express.Router {
         ? `${toTitle(slugWords[0])} Candidate`
         : 'Verified Candidate';
 
-    // Ensure 7+ characters base handle so it qualifies for FREE Standard Human tier ($0.00)
-    let baseHandle = slugWords.slice(0, 2).join('.');
-    if (baseHandle.length < 7) {
-      baseHandle = `${baseHandle || 'talent'}.jobagent`;
+    // Free personal agent gets system-assigned random handle (personalagentXXXX.agent);
+    // Custom personal name registration starts at $2/month or $20/year.
+    let normalizedHandle = generateRandomAgentHandle('personal');
+    if (handleMode === 'custom') {
+      const requestedCustom = String(customHandle || '').trim();
+      const baseSlugCandidate = requestedCustom || slugWords.slice(0, 2).join('.') || cleanSlug;
+      const customQuote = quoteHandlePricing(baseSlugCandidate, {
+        entityType: 'personal',
+        billingCycle,
+      });
+      if (!customQuote.isProtectedCivic) {
+        normalizedHandle = customQuote.normalizedHandle;
+      }
     }
-    const normalizedHandle = `${baseHandle}.agent`;
+    const handleQuote = quoteHandlePricing(normalizedHandle, {
+      entityType: 'personal',
+      billingCycle,
+    });
+    const handleRegistration = {
+      mode: handleQuote.isSystemRandom ? 'random' : 'custom',
+      handle: handleQuote.normalizedHandle,
+      entityType: 'personal' as const,
+      billingCycle: handleQuote.billingCycle,
+      feeUSD: handleQuote.humanPriceUSD,
+      tierLabel: handleQuote.tierLabel,
+      billingNote: handleQuote.billingNote,
+      isSeparateDomainPurchase: handleQuote.isSeparateDomainPurchase,
+    };
+
     const normalizedLinkedinUrl = isLinkedIn
       ? `linkedin.com/in/${slugRaw.replace(/[^a-z0-9._-]/gi, '') || cleanSlug}`
       : cleanedPath;
@@ -1407,12 +1441,13 @@ export function createPoppyRouter(): express.Router {
 
           return res.json({
             engine: 'gemini-4-hydrogen',
+            handleRegistration,
             profile: {
               displayName: String(parsed.profile.displayName || inferredDisplayName),
               handle: normalizedHandle,
               normalizedLinkedinUrl,
               roleTitle: String(parsed.profile.roleTitle || 'Product, Growth & AI Systems Specialist'),
-              headline: String(parsed.profile.headline || 'Standard Personal Agent · Verified Human'),
+              headline: String(parsed.profile.headline || 'Personal Agent · Verified Human'),
               summary: String(
                 parsed.profile.summary ||
                   `Autonomous SWITCHZ personal agent synced with ${normalizedLinkedinUrl} for direct A2A interview scheduling & deal matching.`
@@ -1495,13 +1530,16 @@ export function createPoppyRouter(): express.Router {
     const fallbackRoles = [focusNote.trim() || 'Senior Growth & Product Lead', 'AI Operations & Strategy', 'Digital Systems Lead'];
     return res.json({
       engine: 'switchz-quickstart-engine',
+      handleRegistration,
       profile: {
         displayName: inferredDisplayName,
         handle: normalizedHandle,
         normalizedLinkedinUrl,
         roleTitle: focusNote.trim() || 'Personal Agent · Product, Growth & Tech',
-        headline: `${inferredDisplayName} — Standard Personal Job & Deal Agent`,
-        summary: `Free standard SWITCHZ personal agent created from ${normalizedLinkedinUrl}. Scanning open vacancies, RFPs & event peers automatically.`,
+        headline: `${inferredDisplayName} — Personal Career & Deal Agent`,
+        summary: handleQuote.isSystemRandom
+          ? `Free system-assigned personal agent (${normalizedHandle}) created from ${normalizedLinkedinUrl}. Scanning open vacancies, RFPs & event peers automatically.`
+          : `Custom personal agent (${normalizedHandle}) created from ${normalizedLinkedinUrl}. Scanning open vacancies, RFPs & event peers automatically.`,
         organization: 'Independent Talent',
         yearsExp: 6,
         skills: skillHints,
@@ -1532,6 +1570,9 @@ export function createPoppyRouter(): express.Router {
       jobUrl = '',
       companyName: clientCompanyName = '',
       department: clientDepartment = '',
+      handleMode = 'random',
+      billingCycle: rawBillingCycle = 'monthly',
+      customHandle = '',
       candidates: clientCandidates,
     } = req.body || {};
 
@@ -1539,6 +1580,9 @@ export function createPoppyRouter(): express.Router {
     if (!rawUrl) {
       return res.status(400).json({ error: 'Please enter a job posting or careers page URL.' });
     }
+
+    const billingCycle: HandleBillingCycle =
+      rawBillingCycle === 'annual' ? 'annual' : 'monthly';
 
     // Clean URL and extract domain / path
     let cleanedPath = rawUrl
@@ -1561,6 +1605,18 @@ export function createPoppyRouter(): express.Router {
     const brandSlug = brandRaw.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'enterprise';
     const toTitle = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
     const inferredCompanyName = clientCompanyName.trim() || toTitle(brandSlug);
+
+    // Free business account gets system-assigned random handle (businessagentXXXX.agent);
+    // Custom business name registration starts at $10/month or $100/year base.
+    const randomBusinessHandle = generateRandomAgentHandle('business');
+    let chosenCustomHandle: string | null = null;
+    if (handleMode === 'custom') {
+      const requested = String(customHandle || '').trim() || `hiring.${brandSlug}`;
+      const quoted = quoteHandlePricing(requested, { entityType: 'business', billingCycle });
+      if (!quoted.isProtectedCivic) {
+        chosenCustomHandle = quoted.normalizedHandle;
+      }
+    }
 
     const candidatePool = Array.isArray(clientCandidates) && clientCandidates.length > 0
       ? clientCandidates
@@ -1631,8 +1687,15 @@ Return structured JSON matching the schema.`;
         if (text) {
           const parsed = JSON.parse(text);
           if (parsed?.company?.name && Array.isArray(parsed?.jobs) && parsed.jobs.length > 0) {
-            let compHandle = String(parsed.company.handle || `${brandSlug}.agent`).toLowerCase();
-            if (!compHandle.endsWith('.agent')) compHandle = `${compHandle}.agent`;
+            let compHandle = randomBusinessHandle;
+            if (handleMode === 'custom') {
+              compHandle = chosenCustomHandle || String(parsed.company.handle || `hiring.${brandSlug}.agent`).toLowerCase();
+              if (!compHandle.endsWith('.agent')) compHandle = `${compHandle}.agent`;
+            }
+            const compQuote = quoteHandlePricing(compHandle, {
+              entityType: 'business',
+              billingCycle,
+            });
             const now = new Date().toISOString();
             const brandColor = parsed.company.brandColor || '#0284c7';
             const logoCode = String(parsed.company.brandLogoCode || brandSlug.slice(0, 3)).toUpperCase().slice(0, 3);
@@ -1759,6 +1822,16 @@ Return structured JSON matching the schema.`;
 
             return res.json({
               engine: 'gemini-employer-quickstart',
+              handleRegistration: {
+                mode: compQuote.isSystemRandom ? 'random' : 'custom',
+                handle: compHandle,
+                entityType: 'business',
+                billingCycle: compQuote.billingCycle,
+                feeUSD: compQuote.humanPriceUSD,
+                tierLabel: compQuote.tierLabel,
+                billingNote: compQuote.billingNote,
+                isSeparateDomainPurchase: compQuote.isSeparateDomainPurchase,
+              },
               employerAgent,
               jobs: createdJobs,
               candidateMatches,
@@ -1772,7 +1845,13 @@ Return structured JSON matching the schema.`;
 
     // High-speed deterministic fallback
     const now = new Date().toISOString();
-    const compHandle = `hiring.${brandSlug}.agent`;
+    const compHandle = handleMode === 'custom'
+      ? (chosenCustomHandle || `hiring.${brandSlug}.agent`)
+      : randomBusinessHandle;
+    const compQuote = quoteHandlePricing(compHandle, {
+      entityType: 'business',
+      billingCycle,
+    });
     const brandColor = '#0284c7';
     const logoCode = brandSlug.slice(0, 3).toUpperCase();
 
@@ -1904,6 +1983,16 @@ Return structured JSON matching the schema.`;
 
     return res.json({
       engine: 'switchboard-employer-fallback',
+      handleRegistration: {
+        mode: compQuote.isSystemRandom ? 'random' : 'custom',
+        handle: compHandle,
+        entityType: 'business',
+        billingCycle: compQuote.billingCycle,
+        feeUSD: compQuote.humanPriceUSD,
+        tierLabel: compQuote.tierLabel,
+        billingNote: compQuote.billingNote,
+        isSeparateDomainPurchase: compQuote.isSeparateDomainPurchase,
+      },
       employerAgent: fallbackAgent,
       jobs: [fallbackJob],
       candidateMatches: fallbackCandidateMatches,

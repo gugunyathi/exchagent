@@ -665,10 +665,12 @@ export interface AgentHandleDoc {
   handle: string;
   category: 'brand' | 'iconic_number' | 'short_handle' | 'standard' | 'protected';
   charLength: number;
+  entityType?: 'personal' | 'business';
+  billingCycle?: 'monthly' | 'annual' | 'one_time' | 'free_random';
   ownerUid: string;
   ownerDisplayName: string;
   tierPriceUSD: number;
-  paidVia: 'free_human' | 'x402_usdc' | 'paypal_vault' | 'auction_win';
+  paidVia: 'free_human' | 'free_random' | 'x402_usdc' | 'paypal_vault' | 'auction_win';
   status: 'ACTIVE' | 'RESERVED_PROTECTED' | 'IN_AUCTION' | 'LISTED_FOR_SALE';
   claimedAt: string;
 }

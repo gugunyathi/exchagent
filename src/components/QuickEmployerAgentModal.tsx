@@ -24,6 +24,7 @@ import {
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 import { LegalDocTab } from '../data/legalDocuments';
+import { HandleBillingCycle, quoteHandlePricing } from '../services/paymentRails';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
@@ -95,6 +96,9 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
   const [jobUrl, setJobUrl] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [department, setDepartment] = useState('');
+  const [handleMode, setHandleMode] = useState<'random' | 'custom'>('random');
+  const [customHandleInput, setCustomHandleInput] = useState('');
+  const [billingCycle, setBillingCycle] = useState<HandleBillingCycle>('monthly');
   const [acceptedEmployerTerms, setAcceptedEmployerTerms] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -154,6 +158,9 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
           jobUrl: trimmedUrl,
           companyName: companyName.trim(),
           department: department.trim(),
+          handleMode,
+          billingCycle,
+          customHandle: customHandleInput.trim(),
           candidates,
         }),
       });
@@ -463,6 +470,94 @@ export const QuickEmployerAgentModal: React.FC<QuickEmployerAgentModalProps> = (
                     className="w-full min-h-[40px] rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs text-zinc-950 dark:text-white placeholder:text-zinc-400"
                   />
                 </div>
+              </div>
+
+              {/* Business .agent Handle Tier Selector */}
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                    Business .agent Name Registration
+                  </span>
+                  <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-200/70 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setHandleMode('random')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        handleMode === 'random'
+                          ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                      }`}
+                    >
+                      Free Assigned ($0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHandleMode('custom')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        handleMode === 'custom'
+                          ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                      }`}
+                    >
+                      Custom Name (Base $10/mo)
+                    </button>
+                  </div>
+                </div>
+
+                {handleMode === 'random' ? (
+                  <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                    System assigns a free business handle like <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">businessagent1761.agent</span> ($0.00). Claim a custom company domain anytime.
+                  </p>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={customHandleInput}
+                        onChange={(e) => setCustomHandleInput(e.target.value)}
+                        placeholder="hiring.yourcompany (or derived from domain)"
+                        className="flex-1 min-h-[38px] rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600"
+                      />
+                      <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-[11px] shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle('monthly')}
+                          className={`px-2.5 py-1.5 rounded-md font-mono font-medium transition-colors ${
+                            billingCycle === 'monthly'
+                              ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          $10/mo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle('annual')}
+                          className={`px-2.5 py-1.5 rounded-md font-mono font-medium transition-colors ${
+                            billingCycle === 'annual'
+                              ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          $100/yr
+                        </button>
+                      </div>
+                    </div>
+                    {(() => {
+                      const q = quoteHandlePricing(customHandleInput || 'hiring.company', {
+                        entityType: 'business',
+                        billingCycle,
+                      });
+                      return (
+                        <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                          {q.normalizedHandle} · {q.isSeparateDomainPurchase
+                            ? `Separate One-Time Domain Purchase ($${q.oneTimeDomainUSD})`
+                            : `$${q.humanPriceUSD}${q.billingCycle === 'annual' ? '/yr' : '/mo'} base business rate`}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
 

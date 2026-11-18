@@ -28,6 +28,7 @@ import {
 } from '../types/firestore';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 import { LegalDocTab, AI_OUTREACH_DISCLAIMER_TEXT } from '../data/legalDocuments';
+import { HandleBillingCycle, quoteHandlePricing } from '../services/paymentRails';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
@@ -97,6 +98,9 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
 }) => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [focusNote, setFocusNote] = useState('');
+  const [handleMode, setHandleMode] = useState<'random' | 'custom'>('random');
+  const [customHandleInput, setCustomHandleInput] = useState('');
+  const [billingCycle, setBillingCycle] = useState<HandleBillingCycle>('monthly');
   const [acceptedCandidatePrivacy, setAcceptedCandidatePrivacy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -153,6 +157,9 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
         body: JSON.stringify({
           linkedinUrl: trimmedUrl,
           focusNote: focusNote.trim(),
+          handleMode,
+          billingCycle,
+          customHandle: customHandleInput.trim(),
           jobs,
         }),
       });
@@ -285,7 +292,7 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
           label: 'Remote / Hybrid Candidate Mesh',
         },
         discoverableByPassersby: true,
-        passerbyIncentive: 'Open to Interviews · Free Standard Job Agent',
+        passerbyIncentive: 'Open to Interviews · Personal Agent',
         calendarSyncEnabled: true,
         gmailBridgeEnabled: true,
         createdAt: now,
@@ -568,26 +575,114 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
               </div>
             </div>
 
-            {/* What Gets Created Automatically */}
-            <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3.5 space-y-2">
-              <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
-                Included automatically in 1 click
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
-                <div className="flex items-start gap-2">
-                  <UserPlus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                  <span>Free verified human <span className="font-mono font-semibold">.agent</span> card ($0.00)</span>
+              {/* Handle Registration Tier Selector */}
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                    .agent Name Registration
+                  </span>
+                  <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-zinc-200/70 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setHandleMode('random')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        handleMode === 'random'
+                          ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                      }`}
+                    >
+                      Free Assigned ($0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHandleMode('custom')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        handleMode === 'custom'
+                          ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                          : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+                      }`}
+                    >
+                      Custom Name (From $2/mo)
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-start gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
-                  <span><span className="font-semibold">10 free</span> AI-scored job matches &amp; interview pitches</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Mail className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <span>Live <span className="font-mono font-semibold">@agentmail.to</span> inbox &amp; 1-click interview booking</span>
+
+                {handleMode === 'random' ? (
+                  <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                    System assigns a free random handle like <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">personalagent1643.agent</span> ($0.00). Upgrade to a custom handle anytime.
+                  </p>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={customHandleInput}
+                        onChange={(e) => setCustomHandleInput(e.target.value)}
+                        placeholder="your.name (or derived from URL)"
+                        className="flex-1 min-h-[38px] rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-3 text-xs font-mono text-zinc-950 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:border-sky-600"
+                      />
+                      <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 text-[11px] shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle('monthly')}
+                          className={`px-2.5 py-1.5 rounded-md font-mono font-medium transition-colors ${
+                            billingCycle === 'monthly'
+                              ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          $2/mo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBillingCycle('annual')}
+                          className={`px-2.5 py-1.5 rounded-md font-mono font-medium transition-colors ${
+                            billingCycle === 'annual'
+                              ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-semibold'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          $20/yr
+                        </button>
+                      </div>
+                    </div>
+                    {(() => {
+                      const q = quoteHandlePricing(customHandleInput || 'custom.name', {
+                        entityType: 'personal',
+                        billingCycle,
+                      });
+                      return (
+                        <p className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                          {q.normalizedHandle} · {q.isSeparateDomainPurchase
+                            ? `Separate One-Time Domain Purchase ($${q.oneTimeDomainUSD})`
+                            : `$${q.humanPriceUSD}${q.billingCycle === 'annual' ? '/yr' : '/mo'} min personal rate`}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* What Gets Created Automatically */}
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3.5 space-y-2">
+                <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+                  Included automatically in 1 click
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
+                  <div className="flex items-start gap-2">
+                    <UserPlus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <span>Free random <span className="font-mono font-semibold">personalagentXXXX.agent</span> ($0) or custom ($2/mo)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Briefcase className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+                    <span><span className="font-semibold">10 free</span> AI-scored job matches &amp; interview pitches</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Mail className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <span>Live <span className="font-mono font-semibold">@agentmail.to</span> inbox &amp; 1-click interview booking</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
             {/* Candidate Terms & Global AI Privacy Clickwrap */}
             <label className="flex items-start gap-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 p-3 cursor-pointer">

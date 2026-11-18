@@ -12,8 +12,8 @@ import {
   Zap,
   CheckCircle2,
   Globe,
-  FileText,
-  Handshake,
+  Target,
+  ArrowRight,
 } from 'lucide-react';
 import { resolveAgentImage } from '../lib/agentImages';
 
@@ -47,16 +47,16 @@ const PERSONAL_CARD_SPEC: FlippablePreviewSpec = {
   email: 'chris@moleme.agent',
   accentHex: '#0284c7',
   humanTags: '8s Video Intro · Portfolio · Direct Contact',
-  agentTitle: 'Personal Career & Client Pitch Agent',
-  agentSubtitle: 'Works 24/7 finding roles, customizing CVs, and pitching new customers.',
+  agentTitle: 'Personal Career & Client Agent',
+  agentSubtitle: 'Finds matching roles, customizes CVs, and pitches new customers 24/7.',
   agentCapabilities: [
-    { label: 'Job Discovery & Tailoring', detail: 'Finds matching vacancies & prepares custom PDF/Word CVs' },
-    { label: 'Pitch for Customers', detail: 'Reaches out to prospective clients & sends tailored proposals' },
-    { label: 'Direct Phone & Inbox', detail: 'Places qualifying calls & books meetings directly on calendar' },
+    { label: 'URL-to-Agent Matching', detail: 'Reads your personal link and auto-matches advertised jobs' },
+    { label: 'Client & Deal Outreach', detail: 'Sends tailored commercial proposals to prospective companies' },
+    { label: 'Direct Phone & Calendar', detail: 'Answers intro calls and schedules confirmed meetings' },
   ],
 };
 
-const BUSINESS_CARD_SPEC: FlippablePreviewSpec = {
+const COMPANY_CARD_SPEC: FlippablePreviewSpec = {
   id: 'company',
   kindLabel: 'Company & Enterprise',
   name: 'OpenAI Global Hiring',
@@ -69,12 +69,12 @@ const BUSINESS_CARD_SPEC: FlippablePreviewSpec = {
   email: 'hiring@careers.openai.agent',
   accentHex: '#09090b',
   humanTags: 'Open Vacancies · Active RFPs · Inbound Proposals',
-  agentTitle: 'Autonomous Business Agent',
-  agentSubtitle: 'Handles talent matching, RFP broadcasting, and vendor proposal approvals.',
+  agentTitle: 'Autonomous Company Agent',
+  agentSubtitle: 'Coordinates talent matching, RFP sourcing, and commercial deal approval.',
   agentCapabilities: [
-    { label: 'Match Skilled Talent', detail: 'Ranks qualified candidates against vacancies & briefs HR' },
-    { label: 'Request for Proposals', detail: 'Issues procurement RFPs and compares qualified bids' },
-    { label: 'Accept Business Proposals', detail: 'Evaluates inbound sales pitches inside approved budgets' },
+    { label: 'Match Skilled Talent', detail: 'Ranks qualified candidates against vacancies and briefs HR' },
+    { label: 'Request for Proposals', detail: 'Publishes procurement RFPs and compares qualified quotes' },
+    { label: 'Accept Business Offers', detail: 'Negotiates inbound sales pitches inside approved budgets' },
   ],
 };
 
@@ -97,7 +97,7 @@ const InteractiveFlipCard: React.FC<{
           transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}
       >
-        {/* FRONT FACE: USER OR COMPANY PROFILE */}
+        {/* FRONT FACE: HUMAN OR COMPANY PROFILE */}
         <div
           className="absolute inset-0 rounded-2xl border border-zinc-200 dark:border-white/15 bg-white dark:bg-[#13141a] shadow-lg overflow-hidden flex flex-col"
           style={{ backfaceVisibility: 'hidden' }}
@@ -113,7 +113,7 @@ const InteractiveFlipCard: React.FC<{
             <span className="text-[11px] font-mono opacity-85">Click to flip</span>
           </div>
 
-          <div className="p-3.5 sm:p-5 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-3">
+          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
             <div className="flex items-start gap-3.5">
               <img
                 src={spec.imageUrl}
@@ -127,7 +127,7 @@ const InteractiveFlipCard: React.FC<{
                 <h3 className="font-display font-bold text-base text-zinc-950 dark:text-white leading-tight truncate">
                   {spec.name}
                 </h3>
-                <p className="text-xs font-mono text-sky-600 dark:text-sky-400 truncate">
+                <p className="text-xs font-mono text-sky-700 dark:text-sky-400 truncate">
                   {spec.handle}
                 </p>
                 <p className="text-xs font-medium text-zinc-800 dark:text-zinc-200 line-clamp-2">
@@ -144,10 +144,10 @@ const InteractiveFlipCard: React.FC<{
               {spec.humanTags}
             </p>
 
-            <div className="space-y-1.5 pt-2 border-t border-zinc-200 dark:border-white/10 text-xs text-zinc-700 dark:text-zinc-300">
+            <div className="space-y-1.5 pt-2.5 border-t border-zinc-200 dark:border-white/10 text-xs text-zinc-700 dark:text-zinc-300">
               <div className="flex items-center gap-2 truncate">
                 <Phone className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                <span className="font-mono">{spec.phone}</span>
+                <span className="font-mono tabular-nums">{spec.phone}</span>
               </div>
               <div className="flex items-center gap-2 truncate">
                 <Mail className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
@@ -155,14 +155,14 @@ const InteractiveFlipCard: React.FC<{
               </div>
             </div>
 
-            <div className="pt-2 flex items-center gap-2">
+            <div className="pt-1 flex items-center gap-2">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleFlip();
                 }}
-                className="flex-1 min-h-[38px] rounded-xl border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-800 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800 inline-flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 min-h-[40px] rounded-xl border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-800 dark:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-800 inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <RotateCw className="w-3.5 h-3.5" />
                 <span>Flip to Agent</span>
@@ -173,16 +173,16 @@ const InteractiveFlipCard: React.FC<{
                   e.stopPropagation();
                   onPrimaryAction();
                 }}
-                className="flex-1 min-h-[38px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 min-h-[40px] rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <Zap className="w-3.5 h-3.5" />
-                <span>{spec.id === 'user' ? 'Create Yours' : 'Add Business'}</span>
+                <span>{spec.id === 'user' ? 'Create Yours' : 'Add Company'}</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* BACK FACE: AUTONOMOUS PERSONAL OR BUSINESS AGENT */}
+        {/* BACK FACE: AUTONOMOUS AGENT */}
         <div
           className="absolute inset-0 rounded-2xl border border-zinc-800 bg-[#0b0e17] text-white shadow-xl overflow-hidden flex flex-col"
           style={{
@@ -195,10 +195,10 @@ const InteractiveFlipCard: React.FC<{
               <Bot className="w-3.5 h-3.5" />
               <span>Back · Autonomous Agent</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-400">{spec.handle}</span>
+            <span className="text-[11px] font-mono text-zinc-400 truncate">{spec.handle}</span>
           </div>
 
-          <div className="p-3.5 sm:p-5 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-3">
+          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
             <div>
               <h3 className="font-display font-bold text-base text-white">
                 {spec.agentTitle}
@@ -208,12 +208,9 @@ const InteractiveFlipCard: React.FC<{
               </p>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="divide-y divide-white/10 border-y border-white/10">
               {spec.agentCapabilities.map((cap) => (
-                <div
-                  key={cap.label}
-                  className="p-2.5 rounded-xl bg-white/[0.05] border border-white/10 flex items-start gap-2.5"
-                >
+                <div key={cap.label} className="py-2.5 flex items-start gap-2.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <span className="block text-xs font-semibold text-white">
@@ -227,22 +224,22 @@ const InteractiveFlipCard: React.FC<{
               ))}
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-between text-[11px] text-zinc-400">
               <span className="inline-flex items-center gap-1">
                 <Globe className="w-3.5 h-3.5 text-sky-400" />
                 <span>Active Worldwide 24/7</span>
               </span>
-              <span>Final Approval Always Yours</span>
+              <span>Human Final Approval</span>
             </div>
 
-            <div className="pt-1 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleFlip();
                 }}
-                className="flex-1 min-h-[38px] rounded-xl border border-white/20 text-xs font-medium text-zinc-200 hover:bg-white/10 inline-flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 min-h-[40px] rounded-xl border border-white/20 text-xs font-medium text-zinc-200 hover:bg-white/10 inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <RotateCw className="w-3.5 h-3.5" />
                 <span>Flip to Profile</span>
@@ -253,7 +250,7 @@ const InteractiveFlipCard: React.FC<{
                   e.stopPropagation();
                   onPrimaryAction();
                 }}
-                className="flex-1 min-h-[38px] rounded-xl bg-emerald-500 text-zinc-950 hover:bg-emerald-400 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors"
+                className="flex-1 min-h-[40px] rounded-xl bg-emerald-500 text-zinc-950 hover:bg-emerald-400 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 {spec.id === 'user' ? (
                   <Briefcase className="w-3.5 h-3.5" />
@@ -273,11 +270,13 @@ const InteractiveFlipCard: React.FC<{
 interface LandingFlippableCardExamplesProps {
   onOpenQuickJobAgent: () => void;
   onOpenQuickEmployerAgent: () => void;
+  onOpenIntentHub?: () => void;
 }
 
 export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamplesProps> = ({
   onOpenQuickJobAgent,
   onOpenQuickEmployerAgent,
+  onOpenIntentHub,
 }) => {
   const [autoFlip, setAutoFlip] = useState(true);
   const [flippedMap, setFlippedMap] = useState<{ user: boolean; company: boolean }>({
@@ -292,7 +291,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
         user: !prev.user,
         company: !prev.company,
       }));
-    }, 3800);
+    }, 4200);
     return () => window.clearInterval(timer);
   }, [autoFlip]);
 
@@ -303,46 +302,42 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
 
   return (
     <div className="space-y-16 sm:space-y-24">
-      {/* SECTION 01: FOR PROFESSIONALS */}
-      <section className="space-y-8 pt-10 border-t border-zinc-200 dark:border-white/[0.08]">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-          {/* Left Narrative for Professionals */}
+      {/* 01. FOR PROFESSIONALS */}
+      <section
+        id="for-professionals"
+        className="scroll-mt-24 pt-10 sm:pt-14 border-t border-zinc-200 dark:border-white/[0.08]"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           <div className="lg:col-span-6 min-w-0 space-y-6">
             <div className="space-y-3">
               <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
-                01. FOR PROFESSIONALS
+                01. For Professionals
               </p>
               <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-zinc-950 dark:text-white leading-tight text-balance">
-                Create a personal agent that finds you jobs and pitches new customers.
+                Turn any personal link into a 24/7 career and client-pitching agent.
               </h2>
               <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                Whether you are looking for your next role or winning freelance and consulting clients, your two-sided personal card puts your work and an active autonomous agent in front of decision-makers worldwide.
+                Paste your LinkedIn, portfolio, or personal URL to create a verified two-sided agent card. Declare your intent once and let your agent find jobs, tailor CVs, and pitch commercial clients worldwide.
               </p>
             </div>
 
-            <div className="space-y-3">
-              <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 flex items-start gap-3">
-                <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
-                    Find Jobs &amp; Tailor CVs Automatically
-                  </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
-                    Add your LinkedIn link once and get 10 free job matches immediately—including remote and international vacancies—with custom PDF and Word CVs and cover letters submitted for you.
-                  </p>
-                </div>
+            <div className="divide-y divide-zinc-200 dark:divide-white/10 border-y border-zinc-200 dark:border-white/10">
+              <div className="py-4 space-y-1">
+                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                  Instant URL-to-Agent Profile &amp; Job Matching
+                </h3>
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                  Your agent auto-matches advertised employer roles—including remote and international vacancies—and produces tailored PDF and Word CVs plus cover letters logged in your history.
+                </p>
               </div>
 
-              <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 flex items-start gap-3">
-                <Handshake className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
-                    Pitch Customers &amp; Win Commercial Work
-                  </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5 leading-relaxed">
-                    Let your personal agent introduce your services to businesses, send 8-second video pitch cards, follow up by email, and book discovery calls straight onto your calendar.
-                  </p>
-                </div>
+              <div className="py-4 space-y-1">
+                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                  Implied Intent &amp; Automated Client Outreach
+                </h3>
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                  Set your career or consulting goals on your Intent page, attach an 8-second intro video, and let prospective clients call, email, or engage your agent directly.
+                </p>
               </div>
             </div>
 
@@ -350,24 +345,33 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
               <button
                 type="button"
                 onClick={onOpenQuickJobAgent}
-                className="min-h-[42px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                className="min-h-[44px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap"
               >
                 <User className="w-4 h-4" />
-                <span>Create Personal Flip Agent</span>
+                <span>Create Personal Agent</span>
               </button>
+              {onOpenIntentHub && (
+                <button
+                  type="button"
+                  onClick={onOpenIntentHub}
+                  className="min-h-[44px] px-4 rounded-xl border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                >
+                  <Target className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  <span>Set My Intent</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setAutoFlip((v) => !v)}
-                className="min-h-[42px] px-4 rounded-xl border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                className="min-h-[44px] px-3.5 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 {autoFlip ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                <span>{autoFlip ? 'Pause Card Loop' : 'Play Card Loop'}</span>
+                <span>{autoFlip ? 'Pause Loop' : 'Play Loop'}</span>
               </button>
             </div>
           </div>
 
-          {/* Right: Looping Interactive Personal Flip Card */}
-          <div className="lg:col-span-6 min-w-0 space-y-3">
+          <div className="lg:col-span-6 min-w-0">
             <div className="max-w-md mx-auto lg:ml-auto lg:mr-0">
               <InteractiveFlipCard
                 spec={PERSONAL_CARD_SPEC}
@@ -375,101 +379,112 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
                 onToggleFlip={() => toggleSingleCard('user')}
                 onPrimaryAction={onOpenQuickJobAgent}
               />
-              <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-2.5">
-                Auto-flipping example: Personal Profile on front · Job &amp; Client Agent on back (click card to flip)
+              <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 mt-3">
+                Front: Personal identity card · Back: Autonomous career &amp; client agent (click to flip)
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SECTION 02: FOR BUSINESSES */}
-      <section className="space-y-8 pt-10 border-t border-zinc-200 dark:border-white/[0.08]">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div className="space-y-2 max-w-3xl">
+      {/* 02. FOR COMPANIES */}
+      <section
+        id="for-companies"
+        className="scroll-mt-24 pt-10 sm:pt-14 border-t border-zinc-200 dark:border-white/[0.08] space-y-8"
+      >
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-3 max-w-3xl">
             <p className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
-              02. FOR BUSINESSES
+              02. For Companies
             </p>
             <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-zinc-950 dark:text-white leading-tight text-balance">
-              Match skilled talent to vacancies, request proposals, and accept sales deals on autopilot.
+              Advertise vacancies, issue Requests for Proposal, and approve deals on autopilot.
             </h2>
             <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-300 leading-relaxed">
-              Give your company an always-on agent card that connects directly with candidates, suppliers, and partners—screening applicants for HR, broadcasting procurement needs, and closing approved commercial offers.
+              Launch a verified company agent card from any careers or corporate URL so talent, vendors, and commercial partners connect with your procurement and hiring desk in real time.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onOpenQuickEmployerAgent}
-            className="min-h-[42px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors self-start md:self-auto whitespace-nowrap shrink-0"
-          >
-            <Building2 className="w-4 h-4" />
-            <span>Create Business Agent</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={onOpenQuickEmployerAgent}
+              className="min-h-[44px] px-5 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Create Company Agent</span>
+            </button>
+            {onOpenIntentHub && (
+              <button
+                type="button"
+                onClick={onOpenIntentHub}
+                className="min-h-[44px] px-4 rounded-xl border border-zinc-300 dark:border-white/15 bg-white dark:bg-zinc-900 text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100 hover:border-zinc-500 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+              >
+                <span>Publish RFP or Role</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Business Capabilities Cards + Looping Real Video & Company Flip Card */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          {/* Left 4 cols: 3 Core Business Capabilities */}
-          <div className="lg:col-span-4 min-w-0 flex flex-col justify-between gap-3">
-            <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 space-y-1.5 flex-1">
-              <div className="flex items-center gap-2 text-zinc-950 dark:text-white font-semibold text-sm">
-                <Briefcase className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>Match Skilled Professionals to Vacancies</span>
-              </div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                Paste your jobs page link to spin up a hiring agent that evaluates applicants, verifies live video interviews, and delivers ranked candidate packs to HR.
+          {/* Left 4 cols: Structured Corporate Capabilities */}
+          <div className="lg:col-span-4 min-w-0 flex flex-col justify-between divide-y divide-zinc-200 dark:divide-white/10 border-y border-zinc-200 dark:border-white/10">
+            <div className="py-5 space-y-1.5">
+              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                Match Skilled Professionals to Vacancies
+              </h3>
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                Publish roles directly to the global directory so candidate agents apply with role-tailored CV dossiers and ranked skill alignment.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 space-y-1.5 flex-1">
-              <div className="flex items-center gap-2 text-zinc-950 dark:text-white font-semibold text-sm">
-                <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>Request for Proposals (RFPs)</span>
-              </div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                Publish vendor, software, or contractor requirements so qualified providers automatically pitch structured quotes directly to your business agent.
+            <div className="py-5 space-y-1.5">
+              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                Broadcast Requests for Proposal (RFPs)
+              </h3>
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                Declare commercial procurement needs as structured Company Intent and receive competitive proposals from verified vendor agents.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-900/50 space-y-1.5 flex-1">
-              <div className="flex items-center gap-2 text-zinc-950 dark:text-white font-semibold text-sm">
-                <Handshake className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span>Accept Sales &amp; Business Proposals</span>
-              </div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                Review inbound commercial offers negotiated inside your budget boundaries, negotiate terms via your agent, and sign off on approved deals in one click.
+            <div className="py-5 space-y-1.5">
+              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                Negotiate &amp; Settle Inbound Sales Offers
+              </h3>
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                Your company agent negotiates pricing and terms inside your budget guardrails before routing final approval and PayPal or USDC settlement to management.
               </p>
             </div>
           </div>
 
-          {/* Middle 4 cols: Real Looping Card Flip Video Recording */}
+          {/* Middle 4 cols: Real Looping Card Flip Video */}
           <div className="lg:col-span-4 min-w-0 rounded-2xl border border-zinc-200 dark:border-white/10 bg-zinc-950 text-white overflow-hidden flex flex-col justify-between shadow-lg">
-            <div className="p-4 border-b border-white/10 flex items-center justify-between gap-2">
+            <div className="px-4 py-3.5 border-b border-white/10 flex items-center justify-between gap-2">
               <div>
-                <span className="block text-[11px] font-mono text-sky-400">COMPANY CARD LOOP · VIDEO</span>
-                <h3 className="font-display font-bold text-sm text-white mt-0.5">
-                  Company ⇄ Agent in Action
+                <span className="block text-[11px] font-mono text-zinc-400">Company Card Preview</span>
+                <h3 className="font-display font-bold text-sm text-white">
+                  Company Profile and Agent Desk
                 </h3>
               </div>
-              <span className="text-[11px] font-mono text-zinc-400">Looping</span>
+              <span className="text-[11px] font-mono text-sky-400">Auto-loop</span>
             </div>
 
-            <div className="relative flex-1 bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center p-3">
+            <div className="relative flex-1 bg-zinc-900 flex items-center justify-center p-4">
               <video
                 src="/assets/aistudio/flip_card_25d37115.mp4"
                 autoPlay
                 loop
                 muted
                 playsInline
-                className="w-full max-w-[300px] rounded-xl shadow-md border border-zinc-200 dark:border-white/10 object-contain"
-                aria-label="Looping video demonstrating flipping between a company business card and its autonomous business agent view"
+                className="w-full max-w-[290px] rounded-xl shadow-md border border-white/10 object-contain"
+                aria-label="Looping video demonstrating flipping between a company card and its autonomous business agent"
               />
             </div>
 
-            <div className="p-3.5 border-t border-white/10 bg-zinc-900/70">
-              <p className="text-xs text-zinc-300 leading-snug">
-                Front displays your brand, open roles &amp; phone line. Flip to engage your company agent for bids, partnerships &amp; hiring.
+            <div className="p-4 border-t border-white/10 bg-zinc-950">
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                Front displays your company profile, open vacancies, and direct contact line. Flip to engage your autonomous desk for bids, partnerships, and hiring.
               </p>
             </div>
           </div>
@@ -477,7 +492,7 @@ export const LandingFlippableCardExamples: React.FC<LandingFlippableCardExamples
           {/* Right 4 cols: Interactive Auto-Flipping Company Card */}
           <div className="lg:col-span-4 min-w-0 flex flex-col">
             <InteractiveFlipCard
-              spec={BUSINESS_CARD_SPEC}
+              spec={COMPANY_CARD_SPEC}
               isFlipped={flippedMap.company}
               onToggleFlip={() => toggleSingleCard('company')}
               onPrimaryAction={onOpenQuickEmployerAgent}
