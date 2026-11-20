@@ -14,7 +14,9 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { AgentDoc, CurrencyMode, formatMoney } from '../types/firestore';
+import { AgentDoc, CurrencyMode, X402AccountEntitlement, formatMoney } from '../types/firestore';
+import { X402SettleResult, x402FetchWithAutoPay } from '../lib/x402Client';
+import { getOrCreateDeviceId } from '../lib/passkeyAuth';
 import { SwipeScrollArea } from './SwipeScrollArea';
 import { emitToast } from '../lib/toast';
 
@@ -52,6 +54,9 @@ interface AgentMailInboxModuleProps {
   onUpdateAgent: (agent: AgentDoc) => Promise<void>;
   currency: CurrencyMode;
   ownerUid: string;
+  x402Entitlement?: X402AccountEntitlement;
+  onX402Settled?: (result: X402SettleResult) => void;
+  onOpenX402EmailPack?: () => void;
 }
 
 function safeFormatTime(ts: string): string {
@@ -70,6 +75,10 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
   agents,
   onUpdateAgent,
   currency,
+  ownerUid,
+  x402Entitlement,
+  onX402Settled,
+  onOpenX402EmailPack,
 }) => {
   const [loading, setLoading] = useState(true);
   const [loadingMsgDetail, setLoadingMsgDetail] = useState(false);
@@ -191,14 +200,26 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
   const handleProvisionAgentInbox = async (agent: AgentDoc) => {
     setProvisioningHandle(agent.handle);
     try {
-      const res = await fetch('/api/agentmail/inboxes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          handle: agent.handle,
-          displayName: agent.displayName,
-        }),
-      });
+      const deviceId = getOrCreateDeviceId();
+      const res = await x402FetchWithAutoPay(
+        '/api/agentmail/inboxes',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            handle: agent.handle,
+            displayName: agent.displayName,
+            ownerUid,
+            deviceId,
+          }),
+        },
+        {
+          entitlement: x402Entitlement,
+          payerHandle: agent.handle,
+          ownerUid,
+          onSettled: onX402Settled,
+        }
+      );
       const data = await res.json();
       if (!res.ok || !data?.inbox?.email) {
         emitToast(data?.details || data?.error || `Could not provision email for ${agent.handle}`, 'warning');
@@ -261,17 +282,29 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
 
     setSending(true);
     try {
-      const res = await fetch('/api/agentmail/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          inbox: activeInboxEmail,
-          to: toField.trim(),
-          subject: subjectField.trim(),
-          text: textField.trim(),
-          replyToMessageId: replyToMessageId || undefined,
-        }),
-      });
+      const deviceId = getOrCreateDeviceId();
+      const res = await x402FetchWithAutoPay(
+        '/api/agentmail/send',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inbox: activeInboxEmail,
+            to: toField.trim(),
+            subject: subjectField.trim(),
+            text: textField.trim(),
+            replyToMessageId: replyToMessageId || undefined,
+            ownerUid,
+            deviceId,
+          }),
+        },
+        {
+          entitlement: x402Entitlement,
+          payerHandle: nonEmergencyAgents[0]?.handle || 'alex.founder.agent',
+          ownerUid,
+          onSettled: onX402Settled,
+        }
+      );
 
       if (res.ok) {
         emitToast(`Email sent from ${activeInboxEmail} to ${toField}`, 'success');
@@ -378,6 +411,23 @@ export const AgentMailInboxModule: React.FC<AgentMailInboxModuleProps> = ({
                     : `Live Org · ${inboxes.length} inbox${inboxes.length === 1 ? '' : 'es'}`
                   : 'Sandbox Mode'}
               </span>
+              {x402Entitlement && (
+                <span className="text-[11px] font-mono tabular-nums text-zinc-600 dark:text-zinc-400">
+                  {x402Entitlement.outboundEmailCredits} sends left
+                  {onOpenX402EmailPack && (
+                    <>
+                      {' · '}
+                      <button
+                        type="button"
+                        onClick={onOpenX402EmailPack}
+                        className="text-sky-700 dark:text-sky-400 font-semibold hover:underline"
+                      >
+                        +500 ($9 x402)
+                      </button>
+                    </>
+                  )}
+                </span>
+              )}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-zinc-600 dark:text-zinc-400">Active Inbox:</span>

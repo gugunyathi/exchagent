@@ -30,6 +30,15 @@ interface PostStatusModalProps {
   defaultAgent?: AgentDoc | null;
   currency: CurrencyMode;
   onPublishStatus: (post: Omit<AgentStatusPostDoc, 'id' | 'createdAt'>) => void;
+  onLaunchSponsoredAd?: (params: {
+    sku: string;
+    agentId: string;
+    agentHandle: string;
+    sponsorName: string;
+    headline: string;
+    body: string;
+    ctaLabel: string;
+  }) => Promise<unknown>;
 }
 
 export const PostStatusModal: React.FC<PostStatusModalProps> = ({
@@ -39,6 +48,7 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
   defaultAgent,
   currency,
   onPublishStatus,
+  onLaunchSponsoredAd,
 }) => {
   const eligibleAgents = agents.filter((a) => a.handle !== '911.emergency.agent');
   const [selectedAgentId, setSelectedAgentId] = useState<string>(
@@ -52,6 +62,7 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
   const [regionZone, setRegionZone] = useState('Global Remote');
   const [dealValueUSD, setDealValueUSD] = useState<number>(2500);
   const [savingsLabel, setSavingsLabel] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -141,7 +152,7 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanHeadline =
       headline.trim() ||
@@ -161,6 +172,29 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
       category === 'deal_approved' || category === 'sponsored_ad'
         ? usdToZar(Math.max(10, Number(dealValueUSD) || 2500))
         : undefined;
+
+    if (category === 'sponsored_ad' && onLaunchSponsoredAd) {
+      setSubmitting(true);
+      try {
+        await onLaunchSponsoredAd({
+          sku: 'ad_status_boost_7d',
+          agentId: authorAgent.id,
+          agentHandle: authorAgent.handle,
+          sponsorName: authorAgent.displayName,
+          headline: cleanHeadline,
+          body: cleanBody,
+          ctaLabel: 'Claim Offer',
+        });
+      } catch (err) {
+        emitToast(
+          err instanceof Error ? err.message : 'Sponsored ad requires x402 payment settlement.',
+          'warning'
+        );
+        setSubmitting(false);
+        return;
+      }
+      setSubmitting(false);
+    }
 
     onPublishStatus({
       agentId: authorAgent.id,
@@ -571,10 +605,17 @@ export const PostStatusModal: React.FC<PostStatusModalProps> = ({
           </button>
           <button
             type="submit"
-            className="min-h-[38px] px-4 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
+            disabled={submitting}
+            className="min-h-[38px] px-4 rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors disabled:opacity-60"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Publish Status Card</span>
+            <span>
+              {submitting
+                ? 'Authorizing x402...'
+                : category === 'sponsored_ad'
+                ? 'Pay $15 (x402) & Publish Ad'
+                : 'Publish Status Card'}
+            </span>
           </button>
         </div>
       </form>

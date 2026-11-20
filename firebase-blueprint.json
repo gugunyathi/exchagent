@@ -144,6 +144,163 @@
         "sharedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["ownerUid", "handle", "displayName", "type", "source", "favorite", "sharedAt"]
+    },
+    "AgentActionHistory": {
+      "title": "AgentActionHistory",
+      "description": "Durable timeline of actions performed by human users, HR staff, and personal or company agents.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentHandle": { "type": "string", "maxLength": 64 },
+        "actorType": { "type": "string", "enum": ["personal_agent", "company_agent", "hr_staff", "user"] },
+        "actorName": { "type": "string", "maxLength": 120 },
+        "actionType": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 4000 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "agentId", "agentHandle", "actorType", "actorName", "actionType", "title", "details", "timestamp"]
+    },
+    "UserAgentActivity": {
+      "title": "UserAgentActivity",
+      "description": "Real-time user and agent activity stream across +Network autopilot, proximity radar, matching, and auth.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "agentHandle": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "enum": ["auth", "autopilot", "proximity", "match", "negotiation", "recruitment", "comms", "registry", "session", "system"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "detail": { "type": "string", "maxLength": 2000 },
+        "valueZAR": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "category", "title", "detail", "timestamp"]
+    },
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Active user and device session binding remembered agents, active workspace tab, and autopilot status.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "authMode": { "type": "string", "enum": ["google", "passkey_sim", "guest"] },
+        "userDisplayName": { "type": "string", "maxLength": 120 },
+        "agentIds": { "type": "array" },
+        "agentHandles": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "idle", "signed_out"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "deviceId", "authMode", "userDisplayName", "agentIds", "agentHandles", "createdAt", "lastActiveAt"]
+    },
+    "DevicePasskey": {
+      "title": "DevicePasskey",
+      "description": "WebAuthn or ECDSA P-256 device passkey remembering bound user × agents across sessions.",
+      "type": "object",
+      "properties": {
+        "credentialId": { "type": "string", "maxLength": 256 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "deviceId": { "type": "string", "maxLength": 128 },
+        "algorithm": { "type": "string", "enum": ["WEBAUTHN_FIDO2", "DEVICE_KEY_P256"] },
+        "rememberedAgentIds": { "type": "array" },
+        "rememberedAgentHandles": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastUsedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["credentialId", "ownerUid", "deviceId", "algorithm", "rememberedAgentIds", "rememberedAgentHandles", "createdAt", "lastUsedAt"]
+    },
+    "JobPosting": {
+      "title": "JobPosting",
+      "description": "Open employer vacancy published by a hiring company agent.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "companyAgentHandle": { "type": "string", "maxLength": 64 },
+        "companyName": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "maxLength": 160 },
+        "status": { "type": "string", "enum": ["OPEN", "INTERVIEWING", "FILLED", "PAUSED"] }
+      },
+      "required": ["companyAgentHandle", "companyName", "title", "status"]
+    },
+    "StatusPost": {
+      "title": "StatusPost",
+      "description": "Public status cards announcing verified hires and closed A2A deals.",
+      "type": "object",
+      "properties": {
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentHandle": { "type": "string", "maxLength": 64 },
+        "headline": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["agentId", "agentHandle", "headline", "body", "createdAt"]
+    },
+    "X402PaymentReceipt": {
+      "title": "X402PaymentReceipt",
+      "description": "Cryptographically verified HTTP 402 payment receipt settled by a human or autonomous agent.",
+      "type": "object",
+      "properties": {
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "nonce": { "type": "string", "maxLength": 128 },
+        "sku": { "type": "string", "maxLength": 80 },
+        "category": { "type": "string", "enum": ["matches_pack", "ad_boost", "domain_name", "email_inbox", "rfp_boost", "autopilot_pass", "video_audit", "api_pack", "placement_escrow", "wallet_topup"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "payerType": { "type": "string", "enum": ["human", "agent"] },
+        "payerHandle": { "type": "string", "maxLength": 64 },
+        "rail": { "type": "string", "enum": ["paypal_vault", "x402_base", "x402_arc", "x402_solana"] },
+        "amountUSD": { "type": "number" },
+        "amountZAR": { "type": "number" },
+        "txHash": { "type": "string", "maxLength": 160 },
+        "x402Token": { "type": "string", "maxLength": 256 },
+        "status": { "type": "string", "enum": ["SETTLED"] },
+        "settledAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["paymentId", "nonce", "sku", "category", "title", "ownerUid", "payerType", "payerHandle", "rail", "amountUSD", "amountZAR", "txHash", "x402Token", "status", "settledAt"]
+    },
+    "AdCampaign": {
+      "title": "AdCampaign",
+      "description": "Sponsored agent promotion across Status Circles, Directory Featured Slots, and Geo/BLE Radar Beacons.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "agentId": { "type": "string", "maxLength": 128 },
+        "agentHandle": { "type": "string", "maxLength": 64 },
+        "sponsorName": { "type": "string", "maxLength": 120 },
+        "placement": { "type": "string", "enum": ["status_circle", "directory_featured", "radar_beacon"] },
+        "headline": { "type": "string", "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 2000 },
+        "ctaLabel": { "type": "string", "maxLength": 64 },
+        "budgetUSD": { "type": "number" },
+        "impressions": { "type": "number" },
+        "clicks": { "type": "number" },
+        "receiptId": { "type": "string", "maxLength": 128 },
+        "txHash": { "type": "string", "maxLength": 160 },
+        "status": { "type": "string", "enum": ["ACTIVE", "PAUSED", "EXPIRED"] },
+        "startsAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "agentHandle", "sponsorName", "placement", "headline", "body", "ctaLabel", "budgetUSD", "impressions", "clicks", "receiptId", "txHash", "status", "startsAt", "expiresAt"]
+    },
+    "X402AccountEntitlement": {
+      "title": "X402AccountEntitlement",
+      "description": "Account quota for 10 free matches, bonus credits, AgentMail allowances, and pre-funded x402 wallet guardrails.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "freeMatchesUsed": { "type": "number" },
+        "freeMatchLimit": { "type": "number" },
+        "bonusMatchCredits": { "type": "number" },
+        "walletBalanceUSD": { "type": "number" },
+        "autoPayEnabled": { "type": "boolean" },
+        "maxAutoPayPerCallUSD": { "type": "number" },
+        "totalSpentUSD": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "freeMatchesUsed", "freeMatchLimit", "bonusMatchCredits", "walletBalanceUSD", "autoPayEnabled", "maxAutoPayPerCallUSD", "totalSpentUSD", "updatedAt"]
     }
   },
   "firestore": {
@@ -178,6 +335,42 @@
     "/contacts/{contactId}": {
       "schema": { "$ref": "#/entities/Contact" },
       "description": "Per-user personal contacts for shared agent and business cards."
+    },
+    "/agent_histories/{historyId}": {
+      "schema": { "$ref": "#/entities/AgentActionHistory" },
+      "description": "Per-user and per-agent audit history entries."
+    },
+    "/agent_activities/{activityId}": {
+      "schema": { "$ref": "#/entities/UserAgentActivity" },
+      "description": "Real-time user and autonomous agent activity events."
+    },
+    "/user_sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Device-bound user session metadata remembering active and created agents."
+    },
+    "/device_passkeys/{passkeyId}": {
+      "schema": { "$ref": "#/entities/DevicePasskey" },
+      "description": "Device passkey public-key credentials and bound user × agents memory."
+    },
+    "/jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/JobPosting" },
+      "description": "Published employer vacancies for autonomous candidate matching."
+    },
+    "/status_posts/{postId}": {
+      "schema": { "$ref": "#/entities/StatusPost" },
+      "description": "Directory status feed posts for hires and closed deals."
+    },
+    "/x402_receipts/{receiptId}": {
+      "schema": { "$ref": "#/entities/X402PaymentReceipt" },
+      "description": "Immutable HTTP 402 payment receipts across human and autonomous agent payers."
+    },
+    "/ad_campaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/AdCampaign" },
+      "description": "Active and paused sponsored promotion campaigns created via x402."
+    },
+    "/x402_entitlements/{entitlementId}": {
+      "schema": { "$ref": "#/entities/X402AccountEntitlement" },
+      "description": "Per-owner quota entitlements (10 free matches, email packs, auto-pay wallet)."
     }
   }
 }

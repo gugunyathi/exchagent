@@ -1,4 +1,10 @@
 import express, { Request, Response } from 'express';
+import {
+  createX402ChallengeRecord,
+  getOrCreateEntitlement,
+  saveSoon,
+  verifyX402ReceiptToken,
+} from './dbStore';
 
 const AGENTMAIL_API_BASE = 'https://api.agentmail.to/v0';
 const DEFAULT_INBOX_EMAIL = 'exchagent@agentmail.to';
@@ -205,15 +211,47 @@ export function createAgentMailRouter() {
     }
   });
 
-  // Provision a live @agentmail.to inbox (dedicated if org-scoped key, or RFC 5233 routed exchagent+<slug>@agentmail.to if inbox-scoped)
+  // Provision a live @agentmail.to inbox (1st subaddressed inbox free, extra/dedicated requires x402)
   router.post('/api/agentmail/inboxes', async (req: Request, res: Response) => {
     const apiKey = process.env.AGENTMAIL_API_KEY;
-    const { username, handle, displayName } = req.body || {};
+    const { username, handle, displayName, ownerUid, deviceId, requestDedicated = false } = req.body || {};
 
     const cleanUsername = sanitizeAgentUsername(String(username || handle || ''));
     if (!cleanUsername) {
       return res.status(400).json({ error: 'A valid username or agent handle is required.' });
     }
+
+    const ent = getOrCreateEntitlement(
+      ownerUid ? String(ownerUid) : undefined,
+      deviceId ? String(deviceId) : undefined
+    );
+    const x402Token = String(req.headers['x-402-payment-token'] || '');
+    const verifiedReceipt = verifyX402ReceiptToken(x402Token);
+    const inboxLimit = ent.inboxesIncludedFree + ent.bonusInboxes;
+    const needsPaidInbox = Boolean(requestDedicated) || ent.inboxesUsed >= inboxLimit;
+
+    if (needsPaidInbox && !verifiedReceipt) {
+      const challenge = createX402ChallengeRecord({
+        sku: 'email_dedicated_inbox',
+        category: 'email_inbox',
+        title: `Dedicated @agentmail.to Inbox (${cleanUsername})`,
+        description: `Includes 1 free routed inbox (${ent.inboxesUsed}/${inboxLimit} used). Settle $4.00/mo via x402 to provision an additional dedicated agent inbox.`,
+        amountUSD: 4.0,
+        metadata: { username: cleanUsername, requestDedicated: Boolean(requestDedicated) },
+      });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Free inbox allowance used. x402 payment required for additional or dedicated @agentmail.to inbox.',
+          protocol: 'x402',
+          challenge,
+        });
+    }
+
+    ent.inboxesUsed += 1;
+    ent.updatedAt = new Date().toISOString();
+    saveSoon();
 
     if (!apiKey) {
       const simulatedEmail = `exchagent+${cleanUsername}@agentmail.to`;
@@ -222,6 +260,8 @@ export function createAgentMailRouter() {
         simulated: true,
         provisioningMode: 'subaddress_routed',
         routedVia: DEFAULT_INBOX_EMAIL,
+        inboxesUsed: ent.inboxesUsed,
+        inboxLimit: ent.inboxesIncludedFree + ent.bonusInboxes,
         inbox: {
           inbox_id: simulatedEmail,
           email: simulatedEmail,
@@ -485,10 +525,10 @@ export function createAgentMailRouter() {
     }
   });
 
-  // Send or reply via AgentMail v0 (routes sub-addresses via exchagent@agentmail.to with Reply-To preserved)
+  // Send or reply via AgentMail v0 (25 free outbound sends included, then x402 outreach pack)
   router.post('/api/agentmail/send', async (req: Request, res: Response) => {
     const apiKey = process.env.AGENTMAIL_API_KEY;
-    const { inbox, fromInbox, to, subject, text, html, replyToMessageId } = req.body || {};
+    const { inbox, fromInbox, to, subject, text, html, replyToMessageId, ownerUid, deviceId } = req.body || {};
     const activeInbox = String(inbox || fromInbox || DEFAULT_INBOX_EMAIL).trim() || DEFAULT_INBOX_EMAIL;
     const { transportInbox, subaddressTag } = resolveTransportInbox(activeInbox);
 
@@ -496,11 +536,45 @@ export function createAgentMailRouter() {
       return res.status(400).json({ error: 'Missing required fields: to, subject, text' });
     }
 
+    const ent = getOrCreateEntitlement(
+      ownerUid ? String(ownerUid) : undefined,
+      deviceId ? String(deviceId) : undefined
+    );
+    const x402Token = String(req.headers['x-402-payment-token'] || '');
+    const verifiedReceipt = verifyX402ReceiptToken(x402Token);
+
+    if (ent.outboundEmailCredits <= 0 && !verifiedReceipt) {
+      const challenge = createX402ChallengeRecord({
+        sku: 'email_outreach_500',
+        category: 'email_inbox',
+        title: '500 Autonomous AgentMail Outreach Credits',
+        description: 'All free outbound email credits used. Settle $9.00 via x402 to unlock 500 autonomous email dispatches.',
+        amountUSD: 9.0,
+        metadata: { to: String(to), inbox: activeInbox },
+      });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Outbound AgentMail credit quota exhausted. x402 settlement required.',
+          protocol: 'x402',
+          outboundCreditsRemaining: 0,
+          challenge,
+        });
+    }
+
+    if (ent.outboundEmailCredits > 0) {
+      ent.outboundEmailCredits -= 1;
+      ent.updatedAt = new Date().toISOString();
+      saveSoon();
+    }
+
     if (!apiKey) {
       return res.json({
         success: true,
         simulated: true,
         inbox: activeInbox,
+        outboundCreditsRemaining: ent.outboundEmailCredits,
         message: {
           id: `msg_sent_${Date.now()}`,
           from: activeInbox,

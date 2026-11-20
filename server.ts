@@ -26,6 +26,8 @@ import {
   ZAR_PER_USD,
   ProximityPeerDoc,
   AutonomousMatchItem,
+  DevicePasskeyRecord,
+  UserSessionRecord,
 } from './src/types/firestore';
 import {
   CURRENCY_CATALOG,
@@ -36,6 +38,30 @@ import {
 } from './src/lib/fx';
 import { createPoppyRouter } from './server/poppyRouter';
 import { createAgentMailRouter } from './server/agentmailRouter';
+import { createX402Router } from './server/x402Router';
+import {
+  getDbState,
+  syncSliceToDb,
+  appendHistory,
+  appendActivity,
+  createChallenge,
+  consumeChallenge,
+  verifyEcdsaP256Signature,
+  signSessionToken,
+  verifySessionToken,
+  upsertPasskey,
+  removePasskey,
+  upsertSession,
+  linkAgentsToDeviceAndUser,
+  saveNow,
+  saveSoon,
+  getOrCreateEntitlement,
+  getMatchQuotaSnapshot,
+  consumeMatchQuota,
+  createX402ChallengeRecord,
+  verifyX402ReceiptToken,
+  listX402RevenueSummary,
+} from './server/dbStore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -249,6 +275,19 @@ async function startServer() {
         namesClaim: '/api/names/claim',
         emailTriage: '/api/email/triage',
         voiceTurn: '/api/voice/turn',
+        dbBootstrap: '/api/db/bootstrap',
+        dbSync: '/api/db/sync',
+        histories: '/api/histories',
+        activities: '/api/activities',
+        sessions: '/api/sessions',
+        passkeyRegisterOptions: '/api/auth/passkey/register-options',
+        passkeyLoginOptions: '/api/auth/passkey/login-options',
+        authSession: '/api/auth/session',
+        x402Catalog: '/api/x402/catalog',
+        x402Challenge: '/api/x402/challenge',
+        x402Settle: '/api/x402/settle',
+        x402WalletTopup: '/api/x402/wallet/topup',
+        ads: '/api/ads',
         openapi: '/api/skill.json',
       },
       popiaCompliant: true,
@@ -260,6 +299,9 @@ async function startServer() {
 
   // Mount AgentMail Inbox & Messaging Router (exchagent@agentmail.to)
   app.use(createAgentMailRouter());
+
+  // Mount Universal x402 Payment Protocol & Sponsored Ads Router
+  app.use(createX402Router());
 
   app.get('/llms.txt', (_req, res) => {
     res.type('text/plain').send(
@@ -278,6 +320,9 @@ async function startServer() {
         '- GET /api/names/search?q=<handle> — Check .agent handle pricing, civic protection, and auction status',
         '- POST /api/email/triage — Autonomous Gemini email engage triage & auto-reply',
         '- POST /api/voice/turn — Voice/chat agent dialer including 911 civic priority dispatch',
+        '- GET/POST /api/db/bootstrap & /api/db/sync — Full database hydration and delta sync',
+        '- GET/POST /api/histories & /api/activities — Persistent user & agent histories and activity stream',
+        '- GET/POST /api/sessions & /api/auth/passkey/* — Device-bound passkey auth & user × agents memory',
         '- GET /api/skill.json — OpenAPI 3.1 tool schema for Claude, Gemini, and GPT agents',
       ].join('\n')
     );
@@ -387,6 +432,18 @@ async function startServer() {
           path: '/api/voice/turn',
           requiredBody: ['targetHandle', 'userMessage'],
         },
+        {
+          id: 'auth.passkey_and_sessions',
+          method: 'GET',
+          path: '/api/auth/session',
+          query: ['deviceId'],
+        },
+        {
+          id: 'db.histories_and_activities',
+          method: 'GET',
+          path: '/api/activities',
+          query: ['ownerUid', 'deviceId', 'agentHandle', 'category'],
+        },
       ],
     });
   });
@@ -462,13 +519,687 @@ async function startServer() {
     });
   });
 
-  // Directory endpoint
+  // ============================================================================
+  // Passkey Authentication, Device Session Memory & Persistent Database API
+  // ============================================================================
+
+  app.post('/api/auth/passkey/register-options', (req, res) => {
+    const { deviceId, ownerUid, displayName = 'SWITCHZ Operator', email = '' } = req.body || {};
+    const cleanDeviceId = String(deviceId || '').trim();
+    if (!cleanDeviceId) {
+      return res.status(400).json({ error: 'deviceId is required.' });
+    }
+    const resolvedUid =
+      ownerUid && String(ownerUid) !== 'seed-persona-alex'
+        ? String(ownerUid)
+        : `pk_${crypto.randomBytes(6).toString('hex')}`;
+    const challenge = createChallenge({
+      mode: 'register',
+      ownerUid: resolvedUid,
+      deviceId: cleanDeviceId,
+      displayName: String(displayName),
+      email: String(email),
+    });
+    return res.json({
+      challenge,
+      userId: resolvedUid,
+      rpName: 'SWITCHZ Agent Directory',
+      expiresInSeconds: 300,
+    });
+  });
+
+  app.post('/api/auth/passkey/register-verify', (req, res) => {
+    const {
+      challenge,
+      deviceId,
+      deviceLabel = 'Authorized Device',
+      ownerUid,
+      displayName = 'SWITCHZ Member',
+      email = '',
+      credentialId,
+      publicKeySpki = '',
+      algorithm = 'DEVICE_KEY_P256',
+      transports = ['internal'],
+      clientDataJSON = '',
+      signature = '',
+      agentIds = [],
+      agentHandles = [],
+    } = req.body || {};
+
+    if (!challenge || !deviceId || !credentialId) {
+      return res.status(400).json({ error: 'challenge, deviceId, and credentialId are required.' });
+    }
+
+    const challengeEntry = consumeChallenge(String(challenge));
+    if (!challengeEntry || challengeEntry.mode !== 'register' || challengeEntry.deviceId !== String(deviceId)) {
+      return res.status(401).json({ error: 'Invalid or expired passkey registration challenge.' });
+    }
+
+    if (algorithm === 'DEVICE_KEY_P256') {
+      if (!publicKeySpki || !signature || !verifyEcdsaP256Signature(String(publicKeySpki), String(challenge), String(signature))) {
+        return res.status(401).json({ error: 'Invalid ECDSA P-256 device passkey proof.' });
+      }
+    } else if (clientDataJSON) {
+      try {
+        const clientData = JSON.parse(Buffer.from(String(clientDataJSON), 'base64url').toString('utf8')) as {
+          type?: string;
+          challenge?: string;
+        };
+        if (clientData.type !== 'webauthn.create' || clientData.challenge !== String(challenge)) {
+          return res.status(401).json({ error: 'WebAuthn clientDataJSON challenge mismatch.' });
+        }
+      } catch {
+        return res.status(401).json({ error: 'Malformed WebAuthn clientDataJSON.' });
+      }
+    }
+
+    const resolvedUid = String(challengeEntry.ownerUid || ownerUid || `pk_${crypto.randomBytes(6).toString('hex')}`);
+    const now = new Date().toISOString();
+    const db = getDbState();
+
+    // Remember existing user agents + any device-created agents passed by client
+    const ownerAgents = db.agents.filter(
+      (a) => a.ownerUid === resolvedUid && a.handle !== '911.emergency.agent'
+    );
+    const mergedAgentIds = Array.from(
+      new Set([...ownerAgents.map((a) => a.id), ...(Array.isArray(agentIds) ? agentIds.map(String) : [])])
+    );
+    const mergedAgentHandles = Array.from(
+      new Set([
+        ...ownerAgents.map((a) => a.handle),
+        ...(Array.isArray(agentHandles) ? agentHandles.map(String) : []),
+      ])
+    );
+
+    const passkeyRecord: DevicePasskeyRecord = {
+      credentialId: String(credentialId),
+      ownerUid: resolvedUid,
+      userDisplayName: String(displayName || 'SWITCHZ Member'),
+      userEmail: String(email || `${resolvedUid}@switchboard.agent`),
+      deviceId: String(deviceId),
+      deviceLabel: String(deviceLabel),
+      publicKeySpki: String(publicKeySpki),
+      algorithm: algorithm === 'WEBAUTHN_FIDO2' ? 'WEBAUTHN_FIDO2' : 'DEVICE_KEY_P256',
+      transports: Array.isArray(transports) ? transports.map(String) : ['internal'],
+      counter: 1,
+      rememberedAgentIds: mergedAgentIds,
+      rememberedAgentHandles: mergedAgentHandles,
+      createdAt: now,
+      lastUsedAt: now,
+    };
+    upsertPasskey(passkeyRecord);
+
+    const sessionId = `sess_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const sessionRecord: UserSessionRecord = {
+      id: sessionId,
+      ownerUid: resolvedUid,
+      userDisplayName: passkeyRecord.userDisplayName,
+      userEmail: passkeyRecord.userEmail,
+      authMode: 'passkey_sim',
+      deviceId: String(deviceId),
+      deviceLabel: String(deviceLabel),
+      passkeyCredentialId: passkeyRecord.credentialId,
+      agentIds: mergedAgentIds,
+      agentHandles: mergedAgentHandles,
+      activeAgentId: mergedAgentIds[0],
+      activeAgentHandle: mergedAgentHandles[0],
+      status: 'active',
+      createdAt: now,
+      lastActiveAt: now,
+    };
+    upsertSession(sessionRecord);
+
+    const linked = linkAgentsToDeviceAndUser({
+      ownerUid: resolvedUid,
+      deviceId: String(deviceId),
+      credentialId: passkeyRecord.credentialId,
+      sessionId,
+      agentIds: mergedAgentIds,
+      agentHandles: mergedAgentHandles,
+    });
+
+    const sessionToken = signSessionToken({
+      sessionId,
+      ownerUid: resolvedUid,
+      deviceId: String(deviceId),
+      credentialId: passkeyRecord.credentialId,
+      expMs: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    });
+
+    appendActivity({
+      ownerUid: resolvedUid,
+      deviceId: String(deviceId),
+      agentHandle: mergedAgentHandles[0],
+      category: 'auth',
+      title: `Registered Passkey on ${deviceLabel}`,
+      detail: `Passkey bound for ${passkeyRecord.userDisplayName} remembering ${mergedAgentHandles.length} agent(s).`,
+    });
+
+    return res.json({
+      verified: true,
+      sessionToken,
+      session: linked.session || sessionRecord,
+      passkey: linked.passkey || passkeyRecord,
+      rememberedAgents: linked.rememberedAgents,
+      user: {
+        uid: resolvedUid,
+        displayName: passkeyRecord.userDisplayName,
+        email: passkeyRecord.userEmail,
+        mode: 'passkey_sim',
+      },
+    });
+  });
+
+  app.post('/api/auth/passkey/login-options', (req, res) => {
+    const { deviceId, credentialId } = req.body || {};
+    const cleanDeviceId = String(deviceId || '').trim();
+    const db = getDbState();
+    const matching = db.passkeys.filter((p) => {
+      if (credentialId && p.credentialId === String(credentialId)) return true;
+      if (cleanDeviceId && p.deviceId === cleanDeviceId) return true;
+      return false;
+    });
+
+    if (matching.length === 0) {
+      return res.status(404).json({
+        error: 'No passkey registered on this device yet. Register a device passkey first.',
+      });
+    }
+
+    const challenge = createChallenge({
+      mode: 'login',
+      deviceId: cleanDeviceId || matching[0].deviceId,
+      ownerUid: matching[0].ownerUid,
+    });
+
+    return res.json({
+      challenge,
+      allowCredentials: matching.map((p) => ({
+        credentialId: p.credentialId,
+        algorithm: p.algorithm,
+        deviceLabel: p.deviceLabel,
+        userDisplayName: p.userDisplayName,
+        rememberedCount: p.rememberedAgentHandles.length,
+      })),
+    });
+  });
+
+  app.post('/api/auth/passkey/login-verify', (req, res) => {
+    const {
+      challenge,
+      deviceId,
+      credentialId,
+      signature = '',
+      clientDataJSON = '',
+    } = req.body || {};
+
+    if (!challenge || !credentialId) {
+      return res.status(400).json({ error: 'challenge and credentialId are required.' });
+    }
+
+    const challengeEntry = consumeChallenge(String(challenge));
+    if (!challengeEntry || challengeEntry.mode !== 'login') {
+      return res.status(401).json({ error: 'Invalid or expired passkey sign-in challenge.' });
+    }
+
+    const db = getDbState();
+    const existingPasskey = db.passkeys.find((p) => p.credentialId === String(credentialId));
+    if (!existingPasskey) {
+      return res.status(404).json({ error: 'Passkey credential not found on server.' });
+    }
+
+    if (existingPasskey.algorithm === 'DEVICE_KEY_P256') {
+      if (!signature || !verifyEcdsaP256Signature(existingPasskey.publicKeySpki, String(challenge), String(signature))) {
+        return res.status(401).json({ error: 'Passkey signature verification failed.' });
+      }
+    } else if (clientDataJSON) {
+      try {
+        const clientData = JSON.parse(Buffer.from(String(clientDataJSON), 'base64url').toString('utf8')) as {
+          type?: string;
+          challenge?: string;
+        };
+        if (clientData.type !== 'webauthn.get' || clientData.challenge !== String(challenge)) {
+          return res.status(401).json({ error: 'WebAuthn challenge mismatch.' });
+        }
+      } catch {
+        return res.status(401).json({ error: 'Malformed WebAuthn assertion payload.' });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const updatedPasskey: DevicePasskeyRecord = {
+      ...existingPasskey,
+      counter: existingPasskey.counter + 1,
+      lastUsedAt: now,
+    };
+    upsertPasskey(updatedPasskey);
+
+    const sessionId = `sess_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const sessionRecord: UserSessionRecord = {
+      id: sessionId,
+      ownerUid: updatedPasskey.ownerUid,
+      userDisplayName: updatedPasskey.userDisplayName,
+      userEmail: updatedPasskey.userEmail,
+      authMode: 'passkey_sim',
+      deviceId: String(deviceId || updatedPasskey.deviceId),
+      deviceLabel: updatedPasskey.deviceLabel,
+      passkeyCredentialId: updatedPasskey.credentialId,
+      agentIds: updatedPasskey.rememberedAgentIds,
+      agentHandles: updatedPasskey.rememberedAgentHandles,
+      activeAgentId: updatedPasskey.rememberedAgentIds[0],
+      activeAgentHandle: updatedPasskey.rememberedAgentHandles[0],
+      status: 'active',
+      createdAt: now,
+      lastActiveAt: now,
+    };
+    upsertSession(sessionRecord);
+
+    const linked = linkAgentsToDeviceAndUser({
+      ownerUid: updatedPasskey.ownerUid,
+      deviceId: String(deviceId || updatedPasskey.deviceId),
+      credentialId: updatedPasskey.credentialId,
+      sessionId,
+      agentIds: updatedPasskey.rememberedAgentIds,
+      agentHandles: updatedPasskey.rememberedAgentHandles,
+    });
+
+    const sessionToken = signSessionToken({
+      sessionId,
+      ownerUid: updatedPasskey.ownerUid,
+      deviceId: String(deviceId || updatedPasskey.deviceId),
+      credentialId: updatedPasskey.credentialId,
+      expMs: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    });
+
+    appendActivity({
+      ownerUid: updatedPasskey.ownerUid,
+      deviceId: String(deviceId || updatedPasskey.deviceId),
+      agentHandle: updatedPasskey.rememberedAgentHandles[0],
+      category: 'auth',
+      title: `Authorized via Passkey (${updatedPasskey.userDisplayName})`,
+      detail: `Restored session remembering ${linked.rememberedAgents.length} agent(s).`,
+    });
+
+    return res.json({
+      verified: true,
+      sessionToken,
+      session: linked.session || sessionRecord,
+      passkey: linked.passkey || updatedPasskey,
+      rememberedAgents: linked.rememberedAgents,
+      user: {
+        uid: updatedPasskey.ownerUid,
+        displayName: updatedPasskey.userDisplayName,
+        email: updatedPasskey.userEmail,
+        mode: 'passkey_sim',
+      },
+    });
+  });
+
+  app.get('/api/auth/passkeys', (req, res) => {
+    const deviceId = String(req.query.deviceId || '').trim();
+    const ownerUid = String(req.query.ownerUid || '').trim();
+    const db = getDbState();
+    const passkeys = db.passkeys.filter((p) => {
+      if (deviceId && p.deviceId === deviceId) return true;
+      if (ownerUid && p.ownerUid === ownerUid) return true;
+      return !deviceId && !ownerUid;
+    });
+    return res.json({ count: passkeys.length, passkeys });
+  });
+
+  app.delete('/api/auth/passkeys/:credentialId', (req, res) => {
+    const credId = String(req.params.credentialId || '');
+    const removed = removePasskey(credId);
+    if (!removed) {
+      return res.status(404).json({ error: 'Passkey not found.' });
+    }
+    appendActivity({
+      category: 'auth',
+      title: 'Revoked Device Passkey',
+      detail: `Credential ${credId.slice(0, 14)}… removed from backend registry.`,
+    });
+    return res.json({ removed: true, credentialId: credId });
+  });
+
+  app.get('/api/auth/session', (req, res) => {
+    const deviceId = String(req.query.deviceId || '').trim();
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const db = getDbState();
+    const devicePasskeys = deviceId
+      ? db.passkeys.filter((p) => p.deviceId === deviceId)
+      : [];
+
+    if (!token) {
+      return res.json({
+        authenticated: false,
+        session: null,
+        passkeys: devicePasskeys,
+        rememberedAgents: [],
+      });
+    }
+
+    const decoded = verifySessionToken(token);
+    if (!decoded) {
+      return res.json({
+        authenticated: false,
+        session: null,
+        passkeys: devicePasskeys,
+        rememberedAgents: [],
+      });
+    }
+
+    const matchedSession = db.sessions.find(
+      (s) => s.id === decoded.sessionId && s.status !== 'signed_out'
+    );
+    if (!matchedSession) {
+      return res.json({
+        authenticated: false,
+        session: null,
+        passkeys: devicePasskeys,
+        rememberedAgents: [],
+      });
+    }
+
+    matchedSession.lastActiveAt = new Date().toISOString();
+    upsertSession(matchedSession);
+
+    const linked = linkAgentsToDeviceAndUser({
+      ownerUid: matchedSession.ownerUid,
+      deviceId: matchedSession.deviceId,
+      credentialId: decoded.credentialId,
+      sessionId: matchedSession.id,
+      agentIds: matchedSession.agentIds,
+      agentHandles: matchedSession.agentHandles,
+    });
+
+    const userPasskeys = db.passkeys.filter(
+      (p) => p.ownerUid === matchedSession.ownerUid || (deviceId && p.deviceId === deviceId)
+    );
+
+    return res.json({
+      authenticated: true,
+      session: linked.session || matchedSession,
+      passkeys: userPasskeys,
+      rememberedAgents: linked.rememberedAgents,
+    });
+  });
+
+  app.post('/api/auth/session/link-agents', (req, res) => {
+    const {
+      ownerUid,
+      deviceId,
+      credentialId,
+      sessionId,
+      agentIds = [],
+      agentHandles = [],
+      activeAgentId,
+      activeAgentHandle,
+    } = req.body || {};
+
+    if (!ownerUid && !deviceId) {
+      return res.status(400).json({ error: 'ownerUid or deviceId is required.' });
+    }
+
+    const result = linkAgentsToDeviceAndUser({
+      ownerUid: String(ownerUid || 'seed-persona-alex'),
+      deviceId: String(deviceId || ''),
+      credentialId: credentialId ? String(credentialId) : undefined,
+      sessionId: sessionId ? String(sessionId) : undefined,
+      agentIds: Array.isArray(agentIds) ? agentIds.map(String) : [],
+      agentHandles: Array.isArray(agentHandles) ? agentHandles.map(String) : [],
+      activeAgentId: activeAgentId ? String(activeAgentId) : undefined,
+      activeAgentHandle: activeAgentHandle ? String(activeAgentHandle) : undefined,
+    });
+
+    return res.json(result);
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    const { sessionId, deviceId } = req.body || {};
+    const db = getDbState();
+    const now = new Date().toISOString();
+    let updatedCount = 0;
+    for (const s of db.sessions) {
+      if ((sessionId && s.id === sessionId) || (!sessionId && deviceId && s.deviceId === deviceId)) {
+        if (s.status !== 'signed_out') {
+          s.status = 'signed_out';
+          s.lastActiveAt = now;
+          updatedCount++;
+        }
+      }
+    }
+    if (updatedCount > 0) saveNow();
+    return res.json({ ok: true, signedOutSessions: updatedCount });
+  });
+
+  app.get('/api/db/bootstrap', (req, res) => {
+    const deviceId = String(req.query.deviceId || '').trim();
+    const ownerUid = String(req.query.ownerUid || '').trim();
+    const db = getDbState();
+
+    const passkeys = db.passkeys.filter(
+      (p) => (deviceId && p.deviceId === deviceId) || (ownerUid && p.ownerUid === ownerUid)
+    );
+    const sessions = db.sessions
+      .filter((s) => (deviceId && s.deviceId === deviceId) || (ownerUid && s.ownerUid === ownerUid))
+      .slice(0, 20);
+    const x402Entitlement = getOrCreateEntitlement(ownerUid || undefined, deviceId || undefined);
+
+    return res.json({
+      version: db.version,
+      updatedAt: db.updatedAt,
+      agents: db.agents,
+      rfps: db.rfps,
+      jobs: db.jobs,
+      matches: db.matches,
+      applicationPackages: db.applicationPackages,
+      agentActionHistory: db.agentActionHistory,
+      activities: db.activities,
+      negotiations: db.negotiations,
+      settlements: db.settlements,
+      bookings: db.bookings,
+      emails: db.emails,
+      voiceSessions: db.voiceSessions,
+      claimedHandles: db.claimedHandles,
+      auctions: db.auctions,
+      secondaryListings: db.secondaryListings,
+      poppyOperations: db.poppyOperations,
+      poppyConsents: db.poppyConsents,
+      poppyAuditLogs: db.poppyAuditLogs,
+      statusPosts: db.statusPosts,
+      contacts: db.contacts,
+      passkeys,
+      sessions,
+      x402Receipts: db.x402Receipts,
+      x402Entitlement,
+      x402Quota: getMatchQuotaSnapshot(x402Entitlement),
+      adCampaigns: db.adCampaigns,
+      x402RevenueSummary: listX402RevenueSummary(),
+    });
+  });
+
+  app.post('/api/db/sync', (req, res) => {
+    const body = req.body || {};
+    const result = syncSliceToDb(body);
+    if (body.deviceId && body.ownerUid && Array.isArray(body.agents)) {
+      const owned = body.agents.filter(
+        (a: { ownerUid?: string; handle?: string }) =>
+          a.ownerUid === body.ownerUid && a.handle !== '911.emergency.agent'
+      );
+      if (owned.length > 0) {
+        linkAgentsToDeviceAndUser({
+          ownerUid: String(body.ownerUid),
+          deviceId: String(body.deviceId),
+          agentIds: owned.map((a: { id: string }) => a.id),
+          agentHandles: owned.map((a: { handle: string }) => a.handle),
+        });
+      }
+    }
+    return res.json({ status: 'SYNCED', ...result });
+  });
+
+  app.get('/api/histories', (req, res) => {
+    const agentId = String(req.query.agentId || '').trim();
+    const agentHandle = String(req.query.agentHandle || '').trim().toLowerCase();
+    const actionType = String(req.query.actionType || '').trim();
+    const limit = Math.min(250, Math.max(1, Number(req.query.limit) || 100));
+
+    const items = getDbState().agentActionHistory.filter((h) => {
+      if (agentId && h.agentId !== agentId) return false;
+      if (agentHandle && h.agentHandle.toLowerCase() !== agentHandle) return false;
+      if (actionType && h.actionType !== actionType) return false;
+      return true;
+    });
+
+    return res.json({ count: items.length, histories: items.slice(0, limit) });
+  });
+
+  app.post('/api/histories', (req, res) => {
+    const body = req.body || {};
+    if (!body.agentHandle || !body.title) {
+      return res.status(400).json({ error: 'agentHandle and title are required.' });
+    }
+    const created = appendHistory({
+      id: body.id,
+      agentId: String(body.agentId || body.agentHandle),
+      agentHandle: String(body.agentHandle),
+      ownerUid: body.ownerUid ? String(body.ownerUid) : undefined,
+      deviceId: body.deviceId ? String(body.deviceId) : undefined,
+      actorType: body.actorType || 'personal_agent',
+      actorName: String(body.actorName || body.agentHandle),
+      actionType: body.actionType || 'AUTO_MATCH',
+      title: String(body.title),
+      details: String(body.details || ''),
+      relatedJobId: body.relatedJobId,
+      relatedJobTitle: body.relatedJobTitle,
+      relatedPackageId: body.relatedPackageId,
+      targetHandle: body.targetHandle,
+      channel: String(body.channel || 'SWITCHZ Engine'),
+      timestamp: body.timestamp,
+    });
+    return res.status(201).json({ history: created });
+  });
+
+  app.get('/api/activities', (req, res) => {
+    const ownerUid = String(req.query.ownerUid || '').trim();
+    const deviceId = String(req.query.deviceId || '').trim();
+    const agentHandle = String(req.query.agentHandle || '').trim().toLowerCase();
+    const category = String(req.query.category || '').trim();
+    const limit = Math.min(300, Math.max(1, Number(req.query.limit) || 120));
+
+    const items = getDbState().activities.filter((a) => {
+      if (ownerUid && a.ownerUid && a.ownerUid !== ownerUid) return false;
+      if (deviceId && a.deviceId && a.deviceId !== deviceId) return false;
+      if (agentHandle && a.agentHandle?.toLowerCase() !== agentHandle) return false;
+      if (category && a.category !== category) return false;
+      return true;
+    });
+
+    return res.json({ count: items.length, activities: items.slice(0, limit) });
+  });
+
+  app.post('/api/activities', (req, res) => {
+    const body = req.body || {};
+    if (!body.title) {
+      return res.status(400).json({ error: 'title is required.' });
+    }
+    const created = appendActivity({
+      id: body.id,
+      ownerUid: body.ownerUid ? String(body.ownerUid) : undefined,
+      deviceId: body.deviceId ? String(body.deviceId) : undefined,
+      sessionId: body.sessionId ? String(body.sessionId) : undefined,
+      agentId: body.agentId ? String(body.agentId) : undefined,
+      agentHandle: body.agentHandle ? String(body.agentHandle) : undefined,
+      targetHandle: body.targetHandle ? String(body.targetHandle) : undefined,
+      category: body.category || 'system',
+      title: String(body.title),
+      detail: String(body.detail || ''),
+      valueZAR: typeof body.valueZAR === 'number' ? body.valueZAR : undefined,
+      metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+      timestamp: body.timestamp,
+    });
+    return res.status(201).json({ activity: created });
+  });
+
+  app.get('/api/sessions', (req, res) => {
+    const ownerUid = String(req.query.ownerUid || '').trim();
+    const deviceId = String(req.query.deviceId || '').trim();
+    const sessions = getDbState().sessions.filter((s) => {
+      if (ownerUid && s.ownerUid !== ownerUid) return false;
+      if (deviceId && s.deviceId !== deviceId) return false;
+      return true;
+    });
+    return res.json({ count: sessions.length, sessions: sessions.slice(0, 50) });
+  });
+
+  app.post('/api/sessions', (req, res) => {
+    const body = req.body || {};
+    const ownerUid = String(body.ownerUid || 'seed-persona-alex');
+    const deviceId = String(body.deviceId || 'web-device');
+    const now = new Date().toISOString();
+    const db = getDbState();
+
+    const existing =
+      (body.id && db.sessions.find((s) => s.id === body.id)) ||
+      db.sessions.find(
+        (s) => s.ownerUid === ownerUid && s.deviceId === deviceId && s.status === 'active'
+      );
+
+    const record: UserSessionRecord = existing
+      ? {
+          ...existing,
+          userDisplayName: String(body.userDisplayName || existing.userDisplayName),
+          userEmail: String(body.userEmail || existing.userEmail),
+          authMode: body.authMode || existing.authMode,
+          activeAgentId: body.activeAgentId || existing.activeAgentId,
+          activeAgentHandle: body.activeAgentHandle || existing.activeAgentHandle,
+          lastTab: body.lastTab || existing.lastTab,
+          networkAutopilotEnabled:
+            typeof body.networkAutopilotEnabled === 'boolean'
+              ? body.networkAutopilotEnabled
+              : existing.networkAutopilotEnabled,
+          locationLabel: body.locationLabel || existing.locationLabel,
+          agentIds: Array.isArray(body.agentIds)
+            ? Array.from(new Set([...existing.agentIds, ...body.agentIds.map(String)]))
+            : existing.agentIds,
+          agentHandles: Array.isArray(body.agentHandles)
+            ? Array.from(new Set([...existing.agentHandles, ...body.agentHandles.map(String)]))
+            : existing.agentHandles,
+          lastActiveAt: now,
+        }
+      : {
+          id: String(body.id || `sess_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`),
+          ownerUid,
+          userDisplayName: String(body.userDisplayName || 'SWITCHZ Member'),
+          userEmail: String(body.userEmail || ''),
+          authMode: body.authMode || 'guest',
+          deviceId,
+          deviceLabel: String(body.deviceLabel || 'Web Browser'),
+          passkeyCredentialId: body.passkeyCredentialId ? String(body.passkeyCredentialId) : undefined,
+          agentIds: Array.isArray(body.agentIds) ? body.agentIds.map(String) : [],
+          agentHandles: Array.isArray(body.agentHandles) ? body.agentHandles.map(String) : [],
+          activeAgentId: body.activeAgentId ? String(body.activeAgentId) : undefined,
+          activeAgentHandle: body.activeAgentHandle ? String(body.activeAgentHandle) : undefined,
+          lastTab: body.lastTab ? String(body.lastTab) : undefined,
+          networkAutopilotEnabled: Boolean(body.networkAutopilotEnabled),
+          locationLabel: body.locationLabel ? String(body.locationLabel) : undefined,
+          status: 'active',
+          createdAt: now,
+          lastActiveAt: now,
+        };
+
+    upsertSession(record);
+    return res.json({ session: record });
+  });
+
+  // Directory endpoint (backed by live persisted DB state)
   app.get('/api/agents/directory', (req, res) => {
     const type = String(req.query.type || '');
     const q = String(req.query.q || '').toLowerCase();
     const discoverable = req.query.discoverable === 'true';
 
-    const filtered = SEED_AGENTS.filter((a) => {
+    const filtered = getDbState().agents.filter((a) => {
       if (type && a.type !== type) return false;
       if (discoverable && !a.discoverableByPassersby) return false;
       if (
@@ -640,10 +1371,51 @@ async function startServer() {
       budgetZAR = 180000,
       category = 'Clean Energy & Telecom',
       broadcastChannels = ['directory', 'google_maps_billboard', 'ble_beacon'],
+      priorityBoost = false,
+      ownerUid,
+      deviceId,
     } = req.body || {};
 
+    if (priorityBoost) {
+      const x402Header = String(req.headers['x-402-payment-token'] || '');
+      const verifiedToken = verifyX402ReceiptToken(x402Header);
+      const ent = getOrCreateEntitlement(
+        ownerUid ? String(ownerUid) : undefined,
+        deviceId ? String(deviceId) : undefined
+      );
+      if (!verifiedToken && ent.priorityRfpCredits <= 0) {
+        const challenge = createX402ChallengeRecord({
+          sku: 'rfp_priority_broadcast',
+          category: 'rfp_boost',
+          title: `Priority Reverse-RFP Boost: ${title}`,
+          description: 'Pin RFP across Verified Business Agents, Google Maps Billboards & Event Beacons for 7 days.',
+          amountUSD: 25.0,
+          metadata: { title: String(title), category: String(category), budgetZAR: Number(budgetZAR) || 0 },
+        });
+        return res
+          .status(402)
+          .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+          .json({
+            error: 'Payment Required (x402 Priority Reverse-RFP Broadcast)',
+            protocol: 'x402',
+            challenge,
+          });
+      }
+      if (!verifiedToken && ent.priorityRfpCredits > 0) {
+        ent.priorityRfpCredits -= 1;
+        ent.updatedAt = new Date().toISOString();
+        saveSoon();
+      }
+    }
+
     const ai = getGeminiClient();
-    const candidates = SEED_AGENTS.filter((a) => a.handle !== '911.emergency.agent').slice(0, 3);
+    const candidates = getDbState().agents.filter((a) => a.handle !== '911.emergency.agent').slice(0, 3);
+    appendActivity({
+      category: 'negotiation',
+      title: `${priorityBoost ? 'Priority ' : ''}Reverse-RFP Broadcast: ${title}`,
+      detail: `Dispatched to ${candidates.length} agents via ${broadcastChannels.join(', ')}.`,
+      valueZAR: Number(budgetZAR) || undefined,
+    });
 
     if (ai) {
       try {
@@ -702,8 +1474,15 @@ async function startServer() {
   // Passerby Spatial Handshake Evaluator
   app.post('/api/rfp/match', async (req, res) => {
     const { userHandle = 'alex.founder.agent', targetHandle, locationLabel, distanceMeters } = req.body || {};
-    const agent = SEED_AGENTS.find((a) => a.handle === targetHandle);
+    const agent = getDbState().agents.find((a) => a.handle === targetHandle);
     const incentive = agent?.passerbyIncentive || 'Instant 15% Passerby Flash Offer via x402 Base';
+    appendActivity({
+      agentHandle: String(userHandle),
+      targetHandle: targetHandle ? String(targetHandle) : undefined,
+      category: 'proximity',
+      title: `Spatial Handshake with ${targetHandle}`,
+      detail: `Matched within ${distanceMeters}m at ${locationLabel || 'Radar'}.`,
+    });
     const ai = getGeminiClient();
 
     if (ai) {
@@ -995,6 +1774,16 @@ async function startServer() {
     };
     proximityExchangeLogs.unshift(record);
     if (proximityExchangeLogs.length > 100) proximityExchangeLogs.length = 100;
+    appendActivity({
+      agentHandle: String(fromHandle),
+      targetHandle: String(toHandle),
+      category: 'proximity',
+      title:
+        record.mode === 'share_and_negotiate'
+          ? `Proximity Share & Negotiate with ${record.toHandle}`
+          : `Proximity Card Exchanged with ${record.toHandle}`,
+      detail: `Exchanged over ${record.transport} in room ${record.roomCode}.`,
+    });
 
     return res.json({
       status: 'EXCHANGED',
@@ -1181,17 +1970,57 @@ async function startServer() {
 
   // Unified Autonomous Intent & Mutual Opportunity Matcher (Personal & Company Agents)
   app.post('/api/agents/autonomous-match', async (req, res) => {
+    const dbSnap = getDbState();
     const {
       sourceAgent,
-      agents = SEED_AGENTS,
-      jobs = SEED_JOBS,
-      rfps = SEED_RFPS,
+      agents = dbSnap.agents,
+      jobs = dbSnap.jobs,
+      rfps = dbSnap.rfps,
       peers = SEED_EVENT_PEERS,
+      ownerUid,
+      deviceId,
+      requestedCount = 5,
     } = req.body || {};
 
     if (!sourceAgent || !sourceAgent.handle) {
       return res.status(400).json({ error: 'sourceAgent with handle is required.' });
     }
+
+    const resolvedUid = ownerUid ? String(ownerUid) : sourceAgent.ownerUid ? String(sourceAgent.ownerUid) : undefined;
+    const resolvedDeviceId = deviceId ? String(deviceId) : sourceAgent.createdByDeviceId ? String(sourceAgent.createdByDeviceId) : undefined;
+    const x402Header = String(req.headers['x-402-payment-token'] || '');
+    const verifiedToken = verifyX402ReceiptToken(x402Header);
+
+    let quotaResult = consumeMatchQuota({
+      ownerUid: resolvedUid,
+      deviceId: resolvedDeviceId,
+      requestedCount: Number(requestedCount) || 5,
+    });
+
+    if (!quotaResult.allowed && !verifiedToken) {
+      const challenge = createX402ChallengeRecord({
+        sku: 'matches_pack_25',
+        category: 'matches_pack',
+        title: '+25 AI Match Unlocks (Above 10 Free Matches)',
+        description: `All ${quotaResult.quota.freeLimit} free matches have been used. Settle $4.99 via x402 (USDC or PayPal Vault) to unlock 25 more autonomous matches.`,
+        amountUSD: 4.99,
+        metadata: {
+          agentHandle: String(sourceAgent.handle),
+          requestedCount: Number(requestedCount) || 5,
+        },
+      });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Free 10-match quota reached. x402 payment required to unlock additional autonomous matches.',
+          protocol: 'x402',
+          quota: quotaResult.quota,
+          challenge,
+        });
+    }
+
+    const activeQuota = getMatchQuotaSnapshot(getOrCreateEntitlement(resolvedUid, resolvedDeviceId));
 
     const sourceTokens: string[] = Array.from(
       new Set<string>(
@@ -1414,10 +2243,11 @@ async function startServer() {
         return res.json({
           engine: 'gemini-4-hydrogen',
           generatedAt: nowIso,
+          quota: activeQuota,
           executiveSummary:
             parsed.executiveSummary ||
             `Matched ${merged.length} autonomous opportunities aligned with ${sourceAgent.displayName}'s implied intent.`,
-          matches: merged,
+          matches: merged.slice(0, Math.max(1, quotaResult.consumed || 10)),
         });
       } catch (err) {
         console.warn('Autonomous match Gemini fallback:', err instanceof Error ? err.message : err);
@@ -1427,8 +2257,9 @@ async function startServer() {
     return res.json({
       engine: 'switchz-autonomous-intent-matcher',
       generatedAt: nowIso,
+      quota: activeQuota,
       executiveSummary: `Matched ${sortedDeterministic.length} vacancies, RFPs, agents & proximity peers aligned with ${sourceAgent.displayName}'s implied intent.`,
-      matches: sortedDeterministic,
+      matches: sortedDeterministic.slice(0, Math.max(1, quotaResult.consumed || 10)),
     });
   });
 
@@ -1443,10 +2274,11 @@ async function startServer() {
     const billingCycle: HandleBillingCycle =
       req.query.billingCycle === 'annual' ? 'annual' : 'monthly';
 
+    const db = getDbState();
     const quote = quoteHandlePricing(q, { entityType, billingCycle });
-    const claimed = SEED_CLAIMED_HANDLES.find((h) => h.handle === quote.normalizedHandle);
-    const auction = SEED_AUCTIONS.find((a) => a.handle === quote.normalizedHandle);
-    const listing = SEED_SECONDARY_LISTINGS.find((l) => l.handle === quote.normalizedHandle);
+    const claimed = db.claimedHandles.find((h) => h.handle === quote.normalizedHandle);
+    const auction = db.auctions.find((a) => a.handle === quote.normalizedHandle);
+    const listing = db.secondaryListings.find((l) => l.handle === quote.normalizedHandle);
 
     res.json({
       quote,
@@ -1500,21 +2332,76 @@ async function startServer() {
       : buyerType === 'bot'
       ? quote.botX402PriceUSD
       : quote.humanPriceUSD;
-    const x402Header = req.headers['x-402-payment-token'];
+    const x402Header = String(req.headers['x-402-payment-token'] || '');
+    const verifiedReceipt = verifyX402ReceiptToken(x402Header);
 
-    if (requiredUSD > 0 && !x402Header) {
-      return res.status(402).json({
-        error: 'Payment Required (x402 Protocol)',
-        protocol: 'x402',
+    if (requiredUSD > 0 && !verifiedReceipt) {
+      const challenge = createX402ChallengeRecord({
+        sku: quote.entityType === 'business' ? 'domain_business_mo' : 'domain_personal_mo',
+        category: 'domain_name',
+        title: `Register ${quote.normalizedHandle} (${quote.tierLabel})`,
+        description: quote.billingNote,
         amountUSD: requiredUSD,
-        amountZAR: Math.round(requiredUSD * ZAR_PER_USD),
-        entityType: quote.entityType,
-        billingCycle: quote.billingCycle,
-        isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
-        accepts: ['Base USDC', 'Arc', 'Solana USDC', 'PayPal Vault'],
-        hint: 'Include X-402-Payment-Token header or settle via Switchboard UI (or choose a free random handle).',
+        metadata: {
+          handle: quote.normalizedHandle,
+          entityType: quote.entityType,
+          billingCycle: quote.billingCycle,
+          isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
+        },
       });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Payment Required (x402 Protocol)',
+          protocol: 'x402',
+          amountUSD: requiredUSD,
+          amountZAR: Math.round(requiredUSD * ZAR_PER_USD),
+          entityType: quote.entityType,
+          billingCycle: quote.billingCycle,
+          isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
+          accepts: ['Base USDC', 'Arc', 'Solana USDC', 'PayPal Vault'],
+          challenge,
+          hint: 'Include verified X-402-Payment-Token header or settle via Switchboard x402 checkout (or choose a free random handle).',
+        });
     }
+
+    const db = getDbState();
+    const charLen = quote.normalizedHandle.replace('.agent', '').length;
+    const claimedAt = new Date().toISOString();
+    if (!db.claimedHandles.some((c) => c.handle === quote.normalizedHandle)) {
+      db.claimedHandles.unshift({
+        id: `h_${Date.now()}`,
+        handle: quote.normalizedHandle,
+        category: quote.isSystemRandom
+          ? 'standard'
+          : charLen <= 3
+          ? 'short_handle'
+          : quote.entityType === 'business'
+          ? 'brand'
+          : 'standard',
+        charLength: charLen,
+        entityType: quote.entityType,
+        billingCycle: quote.billingCycle === 'free' ? 'free_random' : quote.billingCycle,
+        ownerUid: req.body?.ownerUid ? String(req.body.ownerUid) : 'api-caller',
+        ownerDisplayName: String(req.body?.ownerName || quote.normalizedHandle),
+        tierPriceUSD: requiredUSD,
+        paidVia: quote.isSystemRandom
+          ? 'free_random'
+          : verifiedReceipt?.rail === 'paypal_vault'
+          ? 'paypal_vault'
+          : 'x402_usdc',
+        status: 'ACTIVE',
+        claimedAt,
+      });
+      saveNow();
+    }
+    appendActivity({
+      agentHandle: quote.normalizedHandle,
+      category: 'registry',
+      title: `Claimed .agent Handle: ${quote.normalizedHandle}`,
+      detail: `${quote.tierLabel} ($${requiredUSD} USD, ${quote.billingCycle})${verifiedReceipt ? ` · ${verifiedReceipt.txHash}` : ''}.`,
+    });
 
     return res.json({
       status: 'CLAIMED',
@@ -1525,8 +2412,56 @@ async function startServer() {
       isSystemRandom: quote.isSystemRandom,
       isSeparateDomainPurchase: quote.isSeparateDomainPurchase,
       paidUSD: requiredUSD,
-      claimedAt: new Date().toISOString(),
+      receipt: verifiedReceipt || null,
+      claimedAt,
     });
+  });
+
+  app.post('/api/names/buyout', (req, res) => {
+    const { listingId, buyerUid = 'api-buyer', buyerName = 'Buyer' } = req.body || {};
+    const db = getDbState();
+    const listing = db.secondaryListings.find((l) => l.id === String(listingId));
+    if (!listing) return res.status(404).json({ error: 'Secondary listing not found.' });
+    if (listing.status !== 'AVAILABLE') {
+      return res.status(409).json({ error: 'Listing already sold.' });
+    }
+
+    const x402Header = String(req.headers['x-402-payment-token'] || '');
+    const verifiedReceipt = verifyX402ReceiptToken(x402Header);
+    if (!verifiedReceipt) {
+      const challenge = createX402ChallengeRecord({
+        sku: 'domain_secondary_buyout',
+        category: 'domain_name',
+        title: `Buyout ${listing.handle} (${listing.category})`,
+        description: `Secondary marketplace domain transfer from ${listing.sellerHandle}.`,
+        amountUSD: listing.buyoutPriceUSD,
+        metadata: { listingId: listing.id, handle: listing.handle },
+      });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Payment Required (x402 Domain Escrow)',
+          challenge,
+        });
+    }
+
+    listing.status = 'SOLD';
+    const claimed = {
+      id: `h_buy_${Date.now()}`,
+      handle: listing.handle,
+      category: 'brand' as const,
+      charLength: listing.handle.replace('.agent', '').length,
+      ownerUid: String(buyerUid),
+      ownerDisplayName: String(buyerName),
+      tierPriceUSD: listing.buyoutPriceUSD,
+      paidVia: 'x402_usdc' as const,
+      status: 'ACTIVE' as const,
+      claimedAt: new Date().toISOString(),
+    };
+    db.claimedHandles.unshift(claimed);
+    saveNow();
+    return res.json({ status: 'SOLD', listing, claimedHandle: claimed, receipt: verifiedReceipt });
   });
 
   app.post('/api/names/bid', (req, res) => {
@@ -1534,12 +2469,34 @@ async function startServer() {
     if (!handle || typeof amountUSD !== 'number') {
       return res.status(400).json({ error: 'handle and numeric amountUSD required' });
     }
+    const db = getDbState();
+    const now = new Date().toISOString();
+    const auc = db.auctions.find((a) => a.handle.toLowerCase() === String(handle).toLowerCase());
+    if (auc && amountUSD > auc.currentBidUSD) {
+      auc.currentBidUSD = amountUSD;
+      auc.highestBidderHandle = String(bidderHandle);
+      auc.bidsCount += 1;
+      auc.bids.unshift({
+        bidderUid: String(req.body?.ownerUid || 'api-bidder'),
+        bidderHandle: String(bidderHandle),
+        amountUSD,
+        timestamp: now,
+      });
+      saveNow();
+    }
+    appendActivity({
+      agentHandle: String(bidderHandle),
+      targetHandle: String(handle),
+      category: 'registry',
+      title: `Auction Bid Placed on ${handle} ($${amountUSD})`,
+      detail: `Bid submitted by ${bidderHandle}.`,
+    });
     res.json({
       status: 'BID_ACCEPTED',
       handle,
       amountUSD,
       bidderHandle,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     });
   });
 
@@ -1679,7 +2636,15 @@ async function startServer() {
       });
     }
 
-    const agent = SEED_AGENTS.find((a) => a.handle === targetHandle || a.shortcode === dialedNumber || a.voiceNumber === dialedNumber);
+    const agent = getDbState().agents.find(
+      (a) => a.handle === targetHandle || a.shortcode === dialedNumber || a.voiceNumber === dialedNumber
+    );
+    appendActivity({
+      agentHandle: agent?.handle || String(targetHandle),
+      category: 'comms',
+      title: `Voice/Chat Dialer Turn (${dialedNumber})`,
+      detail: `Conversation turn processed for ${targetHandle}.`,
+    });
 
     if (ai) {
       try {

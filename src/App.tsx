@@ -72,6 +72,8 @@ import { AgentProfileHistoryModal } from './components/AgentProfileHistoryModal'
 import { CompanyHrPortalModal } from './components/CompanyHrPortalModal';
 import { PostStatusModal } from './components/PostStatusModal';
 import { NetworkAutopilotModal } from './components/NetworkAutopilotModal';
+import { X402PaymentModal } from './components/X402PaymentModal';
+import { X402_REVENUE_CATALOG } from './types/firestore';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { BurgerMenuDrawer, DrawerRouteTarget } from './components/BurgerMenuDrawer';
 import { SwipeScrollArea } from './components/SwipeScrollArea';
@@ -311,7 +313,24 @@ export default function App() {
     onSettleDeal: store.settleDeal,
     onAddPasserbyEvent: store.addPasserbyEvent,
     onLogAgentHistory: store.logAgentHistory,
+    onRecordActivity: store.logActivity,
   });
+
+  useEffect(() => {
+    store.syncUserSession({
+      activeTab,
+      activeAgentId: activeUserAgent?.id,
+      activeAgentHandle: activeUserAgent?.handle,
+      networkAutopilotEnabled: networkAutopilot.config.enabled,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeTab,
+    activeUserAgent?.id,
+    activeUserAgent?.handle,
+    networkAutopilot.config.enabled,
+    store.currentUser.uid,
+  ]);
 
   const handleOpenProfileHistory = React.useCallback((agent: AgentDoc, packageId?: string) => {
     setProfileHistoryState({ open: true, agent, packageId: packageId || null });
@@ -957,6 +976,11 @@ export default function App() {
                 onOpenSpatialRadar={() =>
                   navigateRoute({ surface: 'desktop', tab: 'spatial', spatialSub: 'maps' })
                 }
+                x402Quota={store.x402Quota}
+                onUnlockMoreMatches={() => {
+                  const sku = X402_REVENUE_CATALOG.find((s) => s.sku === 'matches_pack_25');
+                  if (sku) void store.openX402Checkout(sku);
+                }}
               />
             )}
 
@@ -1033,6 +1057,8 @@ export default function App() {
                 onClaimHandle={store.claimHandleRecord}
                 onPlaceBid={store.placeAuctionBid}
                 onBuyoutListing={store.buyoutSecondaryListing}
+                x402Entitlement={store.x402Entitlement}
+                onX402Settled={store.applyX402SettlementResult}
               />
             )}
 
@@ -1160,6 +1186,12 @@ export default function App() {
                     onUpdateAgent={store.addOrUpdateAgent}
                     currency={store.currency}
                     ownerUid={store.currentUser.uid}
+                    x402Entitlement={store.x402Entitlement}
+                    onX402Settled={store.applyX402SettlementResult}
+                    onOpenX402EmailPack={() => {
+                      const sku = X402_REVENUE_CATALOG.find((s) => s.sku === 'email_outreach_500');
+                      if (sku) void store.openX402Checkout(sku);
+                    }}
                   />
                 ) : (
                   <OmnichannelCommsModule
@@ -1257,6 +1289,17 @@ export default function App() {
                     hasGoogleMapsKey={Boolean(store.googleMapsApiKey)}
                     hasMapboxKey={Boolean(store.mapboxAccessToken)}
                     workspaceConnected={Boolean(store.workspaceToken)}
+                    agents={store.agents}
+                    x402Entitlement={store.x402Entitlement}
+                    x402Quota={store.x402Quota}
+                    x402Receipts={store.x402Receipts}
+                    adCampaigns={store.adCampaigns}
+                    x402RevenueSummary={store.x402RevenueSummary}
+                    fxRates={store.fxRates}
+                    onBuyX402Sku={(sku) => store.openX402Checkout(sku)}
+                    onTopUpWallet={store.topUpWalletAndSettings}
+                    onCreateSponsoredAd={store.createSponsoredAd}
+                    onAdEvent={store.recordAdEvent}
                   />
                 )}
               </div>
@@ -1550,6 +1593,11 @@ export default function App() {
         onResetDemo={store.resetDemoData}
         onOpenQuickJobAgent={() => setQuickJobModalOpen(true)}
         onOpenQuickEmployerAgent={() => setQuickEmployerModalOpen(true)}
+        devicePasskeys={store.devicePasskeys}
+        rememberedAgentHandles={store.rememberedAgentHandles}
+        onRegisterPasskey={store.registerPasskey}
+        onLoginWithPasskey={store.loginWithPasskey}
+        onRevokePasskey={store.revokePasskey}
       />
 
       {/* Cmd/Ctrl+K Quick Jump Command Palette */}
@@ -1998,6 +2046,14 @@ export default function App() {
           handleOpenProfileHistory(agent, pkgId);
         }}
         onOpenLegal={handleOpenLegalDoc}
+        x402Quota={store.x402Quota}
+        x402Entitlement={store.x402Entitlement}
+        onSyncQuota={store.syncQuotaFromServer}
+        onX402Settled={store.applyX402SettlementResult}
+        onOpenX402Upgrade={() => {
+          const sku = X402_REVENUE_CATALOG.find((s) => s.sku === 'matches_pack_25');
+          if (sku) void store.openX402Checkout(sku);
+        }}
       />
 
       <QuickEmployerAgentModal
@@ -2078,6 +2134,21 @@ export default function App() {
         defaultAgent={activeUserAgent}
         currency={store.currency}
         onPublishStatus={store.createStatusPost}
+        onLaunchSponsoredAd={store.createSponsoredAd}
+      />
+
+      <X402PaymentModal
+        challenge={store.pendingX402Challenge}
+        entitlement={store.x402Entitlement}
+        settling={store.settlingX402}
+        currency={store.currency}
+        fxRates={store.fxRates}
+        defaultAgentHandle={activeUserAgent?.handle || 'alex.founder.agent'}
+        onSettle={store.settlePendingX402}
+        onCancel={store.cancelPendingX402}
+        onEnableAutoPay={(enabled, maxUsd) =>
+          store.topUpWalletAndSettings({ autoPayEnabled: enabled, maxAutoPayPerCallUSD: maxUsd })
+        }
       />
 
       <NetworkAutopilotModal

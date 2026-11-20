@@ -6,13 +6,20 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import {
+  AdCampaignDoc,
+  AgentDoc,
   SettlementDoc,
   PoppyOperation,
   PoppyAuditLogEntry,
   CurrencyMode,
   PaymentRail,
+  X402AccountEntitlement,
+  X402PaymentReceipt,
   formatMoney,
 } from '../types/firestore';
+import { DEFAULT_RATES_PER_USD, LocalCurrencyCode } from '../lib/fx';
+import { X402QuotaSnapshot, X402RevenueSummary } from '../lib/x402Client';
+import { X402RevenueHub } from './X402RevenueHub';
 import { SwipeScrollArea } from './SwipeScrollArea';
 
 interface DeveloperLedgerModuleProps {
@@ -24,6 +31,38 @@ interface DeveloperLedgerModuleProps {
   hasGoogleMapsKey: boolean;
   hasMapboxKey?: boolean;
   workspaceConnected: boolean;
+  agents?: AgentDoc[];
+  x402Entitlement?: X402AccountEntitlement;
+  x402Quota?: X402QuotaSnapshot;
+  x402Receipts?: X402PaymentReceipt[];
+  adCampaigns?: AdCampaignDoc[];
+  x402RevenueSummary?: X402RevenueSummary;
+  fxRates?: Record<LocalCurrencyCode, number>;
+  initialSubTab?: 'ledger' | 'poppy_audit' | 'x402_revenue' | 'openapi';
+  onBuyX402Sku?: (params: {
+    sku: string;
+    category: string;
+    title: string;
+    description: string;
+    amountUSD: number;
+  }) => Promise<unknown>;
+  onTopUpWallet?: (params: {
+    amountUSD?: number;
+    rail?: PaymentRail;
+    autoPayEnabled?: boolean;
+    maxAutoPayPerCallUSD?: number;
+  }) => Promise<unknown>;
+  onCreateSponsoredAd?: (params: {
+    sku: string;
+    agentId: string;
+    agentHandle: string;
+    sponsorName: string;
+    headline: string;
+    body: string;
+    ctaLabel: string;
+    targetUrl?: string;
+  }) => Promise<unknown>;
+  onAdEvent?: (adId: string, event: 'impression' | 'click' | 'pause' | 'resume') => void;
 }
 
 export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
@@ -35,10 +74,22 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
   hasGoogleMapsKey,
   hasMapboxKey = false,
   workspaceConnected,
+  agents = [],
+  x402Entitlement,
+  x402Quota,
+  x402Receipts = [],
+  adCampaigns = [],
+  x402RevenueSummary,
+  fxRates = DEFAULT_RATES_PER_USD,
+  initialSubTab = 'x402_revenue',
+  onBuyX402Sku,
+  onTopUpWallet,
+  onCreateSponsoredAd,
+  onAdEvent,
 }) => {
-  const [subTab, setSubTab] = useState<'ledger' | 'poppy_audit' | 'openapi'>('ledger');
+  const [subTab, setSubTab] = useState<'ledger' | 'poppy_audit' | 'x402_revenue' | 'openapi'>(initialSubTab);
   const [railFilter, setRailFilter] = useState<'all' | PaymentRail>('all');
-  const [selectedEndpoint, setSelectedEndpoint] = useState<string>('/.well-known/poppy.json');
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string>('/api/x402/catalog');
   const [apiResponse, setApiResponse] = useState<string>('');
   const [loadingApi, setLoadingApi] = useState(false);
 
@@ -84,6 +135,16 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
           innerClassName="inline-flex items-center gap-1 p-1 pr-7 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-300 dark:border-white/10"
         >
           <button
+            onClick={() => setSubTab('x402_revenue')}
+            className={`min-h-[36px] px-3.5 rounded-lg text-xs whitespace-nowrap shrink-0 transition-colors ${
+              subTab === 'x402_revenue'
+                ? 'bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950 font-semibold shadow-sm'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 font-medium'
+            }`}
+          >
+            x402 Revenue ({x402Receipts.length})
+          </button>
+          <button
             onClick={() => setSubTab('ledger')}
             className={`min-h-[36px] px-3.5 rounded-lg text-xs whitespace-nowrap shrink-0 transition-colors ${
               subTab === 'ledger'
@@ -116,7 +177,24 @@ export const DeveloperLedgerModule: React.FC<DeveloperLedgerModuleProps> = ({
         </SwipeScrollArea>
       </div>
 
-      {subTab === 'ledger' ? (
+      {subTab === 'x402_revenue' && x402Entitlement && x402Quota && x402RevenueSummary ? (
+        <X402RevenueHub
+          agents={agents}
+          entitlement={x402Entitlement}
+          quota={x402Quota}
+          receipts={x402Receipts}
+          adCampaigns={adCampaigns}
+          revenueSummary={x402RevenueSummary}
+          currency={currency}
+          fxRates={fxRates}
+          onBuySku={async (sku) => (onBuyX402Sku ? onBuyX402Sku(sku) : null)}
+          onTopUpWallet={async (params) => (onTopUpWallet ? onTopUpWallet(params) : null)}
+          onCreateSponsoredAd={async (params) =>
+            onCreateSponsoredAd ? onCreateSponsoredAd(params) : null
+          }
+          onAdEvent={(id, evt) => onAdEvent?.(id, evt)}
+        />
+      ) : subTab === 'ledger' ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="glass-panel rounded-xl p-3.5">

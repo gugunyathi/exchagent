@@ -28,8 +28,11 @@ import {
   ShieldCheck,
   FileText,
   Target,
+  Fingerprint,
+  Trash2,
+  PlusCircle,
 } from 'lucide-react';
-import { CurrencyMode, SurfaceMode, formatMoney } from '../types/firestore';
+import { CurrencyMode, DevicePasskeyRecord, SurfaceMode, formatMoney } from '../types/firestore';
 import { LegalDocTab, COMPANY_LEGAL_DETAILS } from '../data/legalDocuments';
 import { CURRENCY_LIST, LocalCurrencyCode, formatLocalRateBanner } from '../lib/fx';
 import { SwipeScrollArea } from './SwipeScrollArea';
@@ -78,6 +81,11 @@ interface BurgerMenuDrawerProps {
   onResetDemo: () => void;
   onOpenQuickJobAgent?: () => void;
   onOpenQuickEmployerAgent?: () => void;
+  devicePasskeys?: DevicePasskeyRecord[];
+  rememberedAgentHandles?: string[];
+  onRegisterPasskey?: (params: { displayName: string; email: string }) => Promise<unknown>;
+  onLoginWithPasskey?: (credentialId?: string) => Promise<unknown>;
+  onRevokePasskey?: (credentialId: string) => Promise<unknown>;
 }
 
 export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
@@ -109,8 +117,59 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
   onResetDemo,
   onOpenQuickJobAgent,
   onOpenQuickEmployerAgent,
+  devicePasskeys = [],
+  rememberedAgentHandles = [],
+  onRegisterPasskey,
+  onLoginWithPasskey,
+  onRevokePasskey,
 }) => {
+  const [passkeyFormOpen, setPasskeyFormOpen] = React.useState(false);
+  const [passkeyName, setPasskeyName] = React.useState('Gugu Nyathi');
+  const [passkeyEmail, setPasskeyEmail] = React.useState('');
+  const [passkeyBusy, setPasskeyBusy] = React.useState(false);
+
   if (!open) return null;
+
+  const handleRegisterPasskeySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onRegisterPasskey) {
+      onLoginPasskey();
+      return;
+    }
+    setPasskeyBusy(true);
+    try {
+      await onRegisterPasskey({
+        displayName: passkeyName.trim() || 'SWITCHZ Member',
+        email: passkeyEmail.trim(),
+      });
+      setPasskeyFormOpen(false);
+    } catch (err) {
+      emitToast(
+        err instanceof Error ? err.message : 'Unable to register device passkey.',
+        'warning'
+      );
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const handleQuickAuthorizePasskey = async (credentialId?: string) => {
+    if (!onLoginWithPasskey) {
+      onLoginPasskey();
+      return;
+    }
+    setPasskeyBusy(true);
+    try {
+      await onLoginWithPasskey(credentialId);
+    } catch (err) {
+      emitToast(
+        err instanceof Error ? err.message : 'Unable to authorize device passkey.',
+        'warning'
+      );
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
 
   const navItems: Array<{
     id: string;
@@ -198,7 +257,7 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
     },
     {
       id: 'ledger',
-      label: 'Audit Ledger',
+      label: 'Ledger & x402',
       icon: Terminal,
       target: { tab: 'toolkit', sub: 'ledger' },
       active: surface === 'desktop' && activeTab === 'toolkit' && toolkitSubView === 'ledger',
@@ -450,40 +509,179 @@ export const BurgerMenuDrawer: React.FC<BurgerMenuDrawerProps> = ({
             </p>
           </div>
 
-          {/* Auth & Reset */}
-          <div className="space-y-2 pt-3 border-t border-zinc-200 dark:border-white/[0.08]">
+          {/* Passkey Device Authorization & Account Memory */}
+          <div className="space-y-2.5 pt-3 border-t border-zinc-200 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between gap-2 px-1">
+              <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide inline-flex items-center gap-1.5">
+                <Fingerprint className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                Passkey &amp; Session
+              </p>
+              {rememberedAgentHandles.length > 0 && (
+                <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                  {rememberedAgentHandles.length} Agent{rememberedAgentHandles.length === 1 ? '' : 's'} Saved
+                </span>
+              )}
+            </div>
+
             {userMode === 'guest' ? (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => onLoginGoogle().catch(() => {})}
-                  className="min-h-[38px] rounded-xl bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-white"
-                >
-                  Google Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onLoginPasskey()}
-                  className="min-h-[38px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-800 dark:text-zinc-200 inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  Passkey
-                </button>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onLoginGoogle().catch(() => {})}
+                    className="min-h-[38px] rounded-xl bg-zinc-950 dark:bg-zinc-50 text-white dark:text-zinc-950 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-white"
+                  >
+                    Google Sign In
+                  </button>
+                  <button
+                    type="button"
+                    disabled={passkeyBusy}
+                    onClick={() => {
+                      if (devicePasskeys.length > 0) {
+                        handleQuickAuthorizePasskey(devicePasskeys[0].credentialId);
+                      } else {
+                        setPasskeyFormOpen((v) => !v);
+                      }
+                    }}
+                    className="min-h-[38px] rounded-xl bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-white/15 text-xs font-medium text-zinc-800 dark:text-zinc-200 inline-flex items-center justify-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                    {devicePasskeys.length > 0 ? 'Unlock Passkey' : 'Setup Passkey'}
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-white/[0.08] px-3 py-2">
-                <span className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold truncate">
-                  {userDisplayName}
-                </span>
+              <div className="flex items-center justify-between rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 px-3 py-2">
+                <div className="min-w-0">
+                  <span className="block text-xs text-emerald-800 dark:text-emerald-300 font-semibold truncate">
+                    {userDisplayName}
+                  </span>
+                  <span className="block text-[10px] font-mono text-emerald-700/80 dark:text-emerald-400/80">
+                    {userMode === 'passkey_sim' ? 'Device Passkey Authorized' : 'Google Cloud Session'}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => onLogout()}
-                  className="p-1 text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+                  className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-white hover:bg-white/70 dark:hover:bg-zinc-800"
                   aria-label="Sign out"
+                  title="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
+            )}
+
+            {/* Existing Passkeys bound to this device */}
+            {devicePasskeys.length > 0 && (
+              <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/[0.08] p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                    Device Passkeys ({devicePasskeys.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPasskeyFormOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 text-[10.5px] font-medium text-sky-700 dark:text-sky-400 hover:underline"
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    New Passkey
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {devicePasskeys.map((pk) => (
+                    <div
+                      key={pk.credentialId}
+                      className="flex items-center justify-between gap-2 rounded-lg bg-white dark:bg-zinc-950/80 border border-zinc-200 dark:border-white/[0.06] px-2 py-1.5"
+                    >
+                      <button
+                        type="button"
+                        disabled={passkeyBusy}
+                        onClick={() => handleQuickAuthorizePasskey(pk.credentialId)}
+                        className="flex-1 min-w-0 text-left"
+                        title="Authorize with this passkey and restore remembered agents"
+                      >
+                        <p className="text-[11px] font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                          {pk.userDisplayName}
+                        </p>
+                        <p className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 truncate">
+                          {pk.deviceLabel} · {pk.rememberedAgentHandles.length} agent(s)
+                        </p>
+                      </button>
+                      {onRevokePasskey && (
+                        <button
+                          type="button"
+                          onClick={() => onRevokePasskey(pk.credentialId)}
+                          className="p-1 text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400"
+                          title="Revoke device passkey"
+                          aria-label="Revoke passkey"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {rememberedAgentHandles.length > 0 && (
+                  <div className="pt-1 border-t border-zinc-200/80 dark:border-white/[0.06]">
+                    <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mb-1">
+                      Remembered on this device:
+                    </p>
+                    <p className="text-[10.5px] font-mono text-zinc-800 dark:text-zinc-200 break-all leading-relaxed">
+                      {rememberedAgentHandles.slice(0, 6).join(' · ')}
+                      {rememberedAgentHandles.length > 6
+                        ? ` +${rememberedAgentHandles.length - 6} more`
+                        : ''}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Add / Register Passkey inline form */}
+            {(passkeyFormOpen || (devicePasskeys.length === 0 && userMode !== 'guest')) && (
+              <form
+                onSubmit={handleRegisterPasskeySubmit}
+                className="rounded-xl bg-zinc-50 dark:bg-zinc-900/90 border border-sky-200 dark:border-sky-500/30 p-2.5 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-zinc-900 dark:text-zinc-100">
+                    Bind Passkey to Device Agents
+                  </span>
+                  {passkeyFormOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setPasskeyFormOpen(false)}
+                      className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={passkeyName}
+                  onChange={(e) => setPasskeyName(e.target.value)}
+                  placeholder="Your full name"
+                  className="w-full min-h-[34px] rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-white"
+                />
+                <input
+                  type="email"
+                  value={passkeyEmail}
+                  onChange={(e) => setPasskeyEmail(e.target.value)}
+                  placeholder="Email (optional)"
+                  className="w-full min-h-[34px] rounded-lg bg-white dark:bg-zinc-950 border border-zinc-300 dark:border-white/15 px-2.5 text-xs text-zinc-900 dark:text-white"
+                />
+                <button
+                  type="submit"
+                  disabled={passkeyBusy}
+                  className="w-full min-h-[34px] rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Fingerprint className="w-3.5 h-3.5" />
+                  {passkeyBusy ? 'Binding Device Key…' : 'Register & Remember Agents'}
+                </button>
+              </form>
             )}
 
             <button

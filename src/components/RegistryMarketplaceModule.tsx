@@ -15,7 +15,9 @@ import {
   AuctionDoc,
   SecondaryListingDoc,
   CurrencyMode,
+  X402AccountEntitlement,
 } from '../types/firestore';
+import { X402SettleResult, x402FetchWithAutoPay } from '../lib/x402Client';
 import {
   CURRENCY_LIST,
   LocalCurrencyCode,
@@ -44,6 +46,8 @@ interface RegistryMarketplaceModuleProps {
   detectingLocation: boolean;
   ownerUid: string;
   ownerName: string;
+  x402Entitlement?: X402AccountEntitlement;
+  onX402Settled?: (result: X402SettleResult) => void;
   onSelectCurrency: (currency: CurrencyMode) => void;
   onSelectLocalCurrency: (currency: LocalCurrencyCode) => void;
   onDetectLocation: () => void;
@@ -137,6 +141,8 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   onClaimHandle,
   onPlaceBid,
   onBuyoutListing,
+  x402Entitlement,
+  onX402Settled,
 }) => {
   const [subTab, setSubTab] = useState<'search' | 'auctions' | 'marketplace' | 'leaderboard'>('search');
   const [queryInput, setQueryInput] = useState('');
@@ -145,6 +151,7 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
   const [billingCycle, setBillingCycle] = useState<HandleBillingCycle>('monthly');
   const [tiersExpanded, setTiersExpanded] = useState(true);
   const [bidAmountById, setBidAmountById] = useState<Record<string, number>>({});
+  const [claimingHandle, setClaimingHandle] = useState(false);
 
   const defaultPreviewInput = entityType === 'business' ? 'businessagent1761' : 'personalagent1643';
   const quote = quoteHandlePricing(queryInput || defaultPreviewInput, { entityType, billingCycle });
@@ -170,43 +177,77 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
 
   const handleClaim = async () => {
     const targetHandleInput = queryInput.trim() || defaultPreviewInput;
-    if (quote.isProtectedCivic || quote.isAuctionRequired || existingClaim) return;
+    if (quote.isProtectedCivic || quote.isAuctionRequired || existingClaim || claimingHandle) return;
 
-    const priceUSD = quote.isSystemRandom
-      ? 0
-      : buyerType === 'bot'
-      ? quote.botX402PriceUSD
-      : quote.humanPriceUSD;
-    const record: AgentHandleDoc = {
-      id: `h_${Date.now()}`,
-      handle: quoteHandlePricing(targetHandleInput, { entityType, billingCycle }).normalizedHandle,
-      category: quote.charLength <= 4 ? 'short_handle' : 'standard',
-      charLength: quote.charLength,
-      entityType: quote.entityType,
-      billingCycle: quote.isSystemRandom
-        ? 'free_random'
-        : quote.isSeparateDomainPurchase
-        ? 'one_time'
-        : billingCycle,
-      ownerUid,
-      ownerDisplayName: ownerName,
-      tierPriceUSD: priceUSD,
-      paidVia: quote.isSystemRandom
-        ? 'free_random'
-        : buyerType === 'bot' || priceUSD > 0
-        ? 'x402_usdc'
-        : 'free_human',
-      status: 'ACTIVE',
-      claimedAt: new Date().toISOString(),
-    };
-    onClaimHandle(record);
-    const cycleSuffix =
-      quote.isSystemRandom
-        ? 'Free System Handle'
-        : quote.isSeparateDomainPurchase
-        ? `${formatPrimaryPrice(priceUSD)} one-time domain`
-        : `${formatPrimaryPrice(priceUSD)}${billingCycle === 'annual' ? '/yr' : '/mo'}`;
-    emitToast(`Claimed ${record.handle} (${cycleSuffix})`, 'success');
+    setClaimingHandle(true);
+    try {
+      const claimRes = await x402FetchWithAutoPay(
+        '/api/names/claim',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            handle: targetHandleInput,
+            buyerType,
+            entityType,
+            billingCycle,
+            ownerUid,
+            ownerName,
+          }),
+        },
+        {
+          entitlement: x402Entitlement,
+          payerHandle: ownerName || 'alex.founder.agent',
+          ownerUid,
+          onSettled: onX402Settled,
+        }
+      );
+
+      if (!claimRes.ok) {
+        const errBody = await claimRes.json().catch(() => ({}));
+        emitToast(errBody?.error || 'Payment required to register custom .agent domain.', 'warning');
+        return;
+      }
+
+      const data = await claimRes.json();
+      const priceUSD = quote.isSystemRandom
+        ? 0
+        : buyerType === 'bot'
+        ? quote.botX402PriceUSD
+        : quote.humanPriceUSD;
+      const record: AgentHandleDoc = {
+        id: `h_${Date.now()}`,
+        handle: data.handle || quoteHandlePricing(targetHandleInput, { entityType, billingCycle }).normalizedHandle,
+        category: quote.charLength <= 4 ? 'short_handle' : 'standard',
+        charLength: quote.charLength,
+        entityType: quote.entityType,
+        billingCycle: quote.isSystemRandom
+          ? 'free_random'
+          : quote.isSeparateDomainPurchase
+          ? 'one_time'
+          : billingCycle,
+        ownerUid,
+        ownerDisplayName: ownerName,
+        tierPriceUSD: priceUSD,
+        paidVia: quote.isSystemRandom
+          ? 'free_random'
+          : data?.receipt?.rail === 'paypal_vault'
+          ? 'paypal_vault'
+          : 'x402_usdc',
+        status: 'ACTIVE',
+        claimedAt: new Date().toISOString(),
+      };
+      onClaimHandle(record);
+      const cycleSuffix =
+        quote.isSystemRandom
+          ? 'Free System Handle'
+          : quote.isSeparateDomainPurchase
+          ? `${formatPrimaryPrice(priceUSD)} one-time domain`
+          : `${formatPrimaryPrice(priceUSD)}${billingCycle === 'annual' ? '/yr' : '/mo'}`;
+      emitToast(`Claimed ${record.handle} (${cycleSuffix})`, 'success');
+    } finally {
+      setClaimingHandle(false);
+    }
   };
 
   const ownerMap: Record<string, { owner: string; count: number; totalValueUSD: number; handles: string[] }> = {};
@@ -697,11 +738,39 @@ export const RegistryMarketplaceModule: React.FC<RegistryMarketplaceModuleProps>
                   </div>
                   <button
                     type="button"
-                    disabled={item.status !== 'AVAILABLE'}
-                    onClick={() => {
-                      const bought = onBuyoutListing(item.id, ownerName);
-                      if (bought) {
-                        emitToast(`Bought ${bought.handle} via x402 escrow`, 'success');
+                    disabled={item.status !== 'AVAILABLE' || claimingHandle}
+                    onClick={async () => {
+                      setClaimingHandle(true);
+                      try {
+                        const buyRes = await x402FetchWithAutoPay(
+                          '/api/names/buyout',
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              listingId: item.id,
+                              buyerUid: ownerUid,
+                              buyerName: ownerName,
+                            }),
+                          },
+                          {
+                            entitlement: x402Entitlement,
+                            payerHandle: ownerName || 'alex.founder.agent',
+                            ownerUid,
+                            onSettled: onX402Settled,
+                          }
+                        );
+                        if (!buyRes.ok) {
+                          const errBody = await buyRes.json().catch(() => ({}));
+                          emitToast(errBody?.error || 'x402 escrow payment required for buyout.', 'warning');
+                          return;
+                        }
+                        const bought = onBuyoutListing(item.id, ownerName);
+                        if (bought) {
+                          emitToast(`Bought ${bought.handle} via x402 escrow`, 'success');
+                        }
+                      } finally {
+                        setClaimingHandle(false);
                       }
                     }}
                     className="min-h-[36px] inline-flex items-center gap-1.5 rounded-xl bg-zinc-950 dark:bg-zinc-50 px-3.5 text-xs font-semibold text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-white disabled:opacity-40 whitespace-nowrap transition-colors"

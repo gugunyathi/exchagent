@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { User } from 'firebase/auth';
 import {
   collection,
@@ -44,8 +44,28 @@ import {
   AgentStatusPostDoc,
   AgentIntentProfile,
   AutonomousMatchItem,
+  DevicePasskeyRecord,
+  UserSessionRecord,
+  UserAgentActivityEntry,
+  ActivityCategory,
+  FREE_MATCH_LIMIT,
+  X402AccountEntitlement,
+  X402ChallengePayload,
+  X402PaymentReceipt,
+  AdCampaignDoc,
   zarToUsd,
 } from '../types/firestore';
+import {
+  X402QuotaSnapshot,
+  X402RevenueSummary,
+  X402SettleResult,
+  fetchX402Catalog,
+  registerX402ChallengeBridge,
+  requestX402Challenge,
+  settleX402Challenge,
+  topUpX402Wallet,
+  x402FetchWithAutoPay,
+} from '../lib/x402Client';
 import {
   DEFAULT_RATES_PER_USD,
   LocalCurrencyCode,
@@ -90,6 +110,18 @@ import {
   OperationType,
 } from '../lib/firebase';
 import { executeSimulatedSettlement } from '../services/paymentRails';
+import {
+  getOrCreateDeviceId,
+  getFriendlyDeviceLabel,
+  getStoredSessionMeta,
+  registerDevicePasskey,
+  authenticateWithDevicePasskey,
+  restoreBackendSession,
+  linkAgentsToDeviceSession,
+  fetchDevicePasskeys,
+  revokeDevicePasskey,
+  logoutBackendSession,
+} from '../lib/passkeyAuth';
 
 const STORAGE_KEY = 'switchboard_agentpages_state_v3';
 
@@ -113,6 +145,7 @@ interface PersistedSlice {
   seededContactOwners?: string[];
   applicationPackages?: AgentApplicationPackage[];
   agentActionHistory?: AgentActionHistoryEntry[];
+  activities?: UserAgentActivityEntry[];
   matchedUserOwners?: string[];
   statusPosts?: AgentStatusPostDoc[];
 }
@@ -123,6 +156,19 @@ function mergeById<T extends { id: string }>(loaded: T[] | undefined, seeded: T[
   loaded.forEach((item) => map.set(item.id, item));
   seeded.forEach((item) => {
     if (!map.has(item.id)) map.set(item.id, item);
+  });
+  return Array.from(map.values());
+}
+
+function mergeRemoteByKey<T>(existing: T[], incoming: T[], keyFn: (item: T) => string): T[] {
+  const map = new Map<string, T>();
+  existing.forEach((item) => {
+    const k = keyFn(item);
+    if (k) map.set(k, item);
+  });
+  incoming.forEach((item) => {
+    const k = keyFn(item);
+    if (k) map.set(k, item);
   });
   return Array.from(map.values());
 }
@@ -171,6 +217,7 @@ function loadInitialSlice(): Required<PersistedSlice> {
           : ['seed-persona-alex'],
         applicationPackages: mergeById(parsed.applicationPackages, SEED_APPLICATION_PACKAGES),
         agentActionHistory: mergeById(parsed.agentActionHistory, SEED_AGENT_HISTORY),
+        activities: Array.isArray(parsed.activities) ? parsed.activities : [],
         matchedUserOwners: parsed.matchedUserOwners?.length
           ? parsed.matchedUserOwners
           : ['seed-persona-alex'],
@@ -200,6 +247,7 @@ function loadInitialSlice(): Required<PersistedSlice> {
     seededContactOwners: ['seed-persona-alex'],
     applicationPackages: SEED_APPLICATION_PACKAGES,
     agentActionHistory: SEED_AGENT_HISTORY,
+    activities: [],
     matchedUserOwners: ['seed-persona-alex'],
     statusPosts: SEED_STATUS_POSTS,
   };
@@ -237,8 +285,20 @@ export function useSwitchboardStore() {
   const [agentActionHistory, setAgentActionHistory] = useState<AgentActionHistoryEntry[]>(
     initial.agentActionHistory
   );
+  const [activities, setActivities] = useState<UserAgentActivityEntry[]>(initial.activities);
   const [matchedUserOwners, setMatchedUserOwners] = useState<string[]>(initial.matchedUserOwners);
   const [statusPosts, setStatusPosts] = useState<AgentStatusPostDoc[]>(initial.statusPosts);
+
+  const [devicePasskeys, setDevicePasskeys] = useState<DevicePasskeyRecord[]>([]);
+  const [activeSession, setActiveSession] = useState<UserSessionRecord | null>(null);
+  const [rememberedAgentIds, setRememberedAgentIds] = useState<string[]>([]);
+  const [rememberedAgentHandles, setRememberedAgentHandles] = useState<string[]>([]);
+  const backendHydratedRef = useRef(false);
+  const skipNextBackendSyncRef = useRef(false);
+  const sessionSyncThrottleRef = useRef<{ lastKey: string; lastAt: number }>({
+    lastKey: '',
+    lastAt: 0,
+  });
 
   const [aiOpportunities, setAiOpportunities] = useState<AiOpportunitySuggestion[]>([]);
   const [aiOpportunitiesMeta, setAiOpportunitiesMeta] = useState<{
@@ -257,6 +317,49 @@ export function useSwitchboardStore() {
     executiveSummary?: string;
     sourceHandle?: string;
   } | null>(null);
+
+  const [x402Receipts, setX402Receipts] = useState<X402PaymentReceipt[]>([]);
+  const [x402Entitlement, setX402Entitlement] = useState<X402AccountEntitlement>({
+    key: 'seed-persona-alex',
+    ownerUid: 'seed-persona-alex',
+    freeMatchesUsed: 0,
+    freeMatchLimit: FREE_MATCH_LIMIT,
+    bonusMatchCredits: 0,
+    inboxesIncludedFree: 1,
+    inboxesUsed: 0,
+    bonusInboxes: 0,
+    outboundEmailCredits: 25,
+    priorityRfpCredits: 0,
+    videoAuditCredits: 1,
+    apiCredits: 100,
+    walletBalanceUSD: 25,
+    autoPayEnabled: false,
+    maxAutoPayPerCallUSD: 25,
+    totalSpentUSD: 0,
+    updatedAt: new Date().toISOString(),
+  });
+  const [x402Quota, setX402Quota] = useState<X402QuotaSnapshot>({
+    freeLimit: FREE_MATCH_LIMIT,
+    freeUsed: 0,
+    freeRemaining: FREE_MATCH_LIMIT,
+    bonusCredits: 0,
+    totalRemaining: FREE_MATCH_LIMIT,
+    unlimitedActive: false,
+  });
+  const [adCampaigns, setAdCampaigns] = useState<AdCampaignDoc[]>([]);
+  const [x402RevenueSummary, setX402RevenueSummary] = useState<X402RevenueSummary>({
+    totalReceipts: 0,
+    totalVolumeUSD: 0,
+    byCategory: {},
+    humanPaidUSD: 0,
+    agentPaidUSD: 0,
+    activeAdCampaigns: 0,
+    totalAdImpressions: 0,
+    totalAdClicks: 0,
+  });
+  const [pendingX402Challenge, setPendingX402Challenge] = useState<X402ChallengePayload | null>(null);
+  const [settlingX402, setSettlingX402] = useState(false);
+  const pendingX402ResolveRef = useRef<((res: X402SettleResult | null) => void) | null>(null);
 
   const [surface, setSurface] = useState<SurfaceMode>('desktop');
   const [currency, setCurrencyState] = useState<CurrencyMode>('USD');
@@ -376,6 +479,7 @@ export function useSwitchboardStore() {
         seededContactOwners,
         applicationPackages,
         agentActionHistory,
+        activities,
         matchedUserOwners,
         statusPosts,
       };
@@ -403,9 +507,160 @@ export function useSwitchboardStore() {
     seededContactOwners,
     applicationPackages,
     agentActionHistory,
+    activities,
     matchedUserOwners,
     statusPosts,
   ]);
+
+  // Hydrate full database + restore verified Passkey Session & User×Agents memory from Express backend
+  useEffect(() => {
+    let cancelled = false;
+    const deviceId = getOrCreateDeviceId();
+
+    const hydrateBackend = async () => {
+      try {
+        const [restored, pks] = await Promise.all([
+          restoreBackendSession(),
+          fetchDevicePasskeys(),
+        ]);
+        if (cancelled) return;
+
+        const restoredUid = restored?.session?.ownerUid || '';
+        const bootstrapUrl = `/api/db/bootstrap?deviceId=${encodeURIComponent(deviceId)}${
+          restoredUid ? `&ownerUid=${encodeURIComponent(restoredUid)}` : ''
+        }`;
+        const bootRes = await fetch(bootstrapUrl);
+        const boot = bootRes.ok ? await bootRes.json() : null;
+        if (cancelled) return;
+
+        if (boot) {
+          skipNextBackendSyncRef.current = true;
+          if (Array.isArray(boot.agents)) setAgents((prev) => mergeRemoteByKey(prev, boot.agents, (x) => x.id));
+          if (Array.isArray(boot.rfps)) setRfps((prev) => mergeRemoteByKey(prev, boot.rfps, (x) => x.id));
+          if (Array.isArray(boot.jobs)) setJobs((prev) => mergeRemoteByKey(prev, boot.jobs, (x) => x.id));
+          if (Array.isArray(boot.matches)) setMatches((prev) => mergeRemoteByKey(prev, boot.matches, (x) => x.id));
+          if (Array.isArray(boot.applicationPackages)) {
+            setApplicationPackages((prev) => mergeRemoteByKey(prev, boot.applicationPackages, (x) => x.id));
+          }
+          if (Array.isArray(boot.agentActionHistory)) {
+            setAgentActionHistory((prev) =>
+              mergeRemoteByKey(boot.agentActionHistory, prev, (x) => x.id).slice(0, 250)
+            );
+          }
+          if (Array.isArray(boot.activities)) {
+            setActivities((prev) =>
+              mergeRemoteByKey(boot.activities, prev, (x) => x.id).slice(0, 300)
+            );
+          }
+          if (Array.isArray(boot.negotiations)) {
+            setNegotiations((prev) => mergeRemoteByKey(prev, boot.negotiations, (x) => x.id));
+          }
+          if (Array.isArray(boot.settlements)) {
+            setSettlements((prev) => mergeRemoteByKey(prev, boot.settlements, (x) => x.id));
+          }
+          if (Array.isArray(boot.bookings)) {
+            setBookings((prev) => mergeRemoteByKey(prev, boot.bookings, (x) => x.id));
+          }
+          if (Array.isArray(boot.emails)) {
+            setEmails((prev) => mergeRemoteByKey(prev, boot.emails, (x) => x.id));
+          }
+          if (Array.isArray(boot.voiceSessions)) {
+            setVoiceSessions((prev) => mergeRemoteByKey(prev, boot.voiceSessions, (x) => x.id));
+          }
+          if (Array.isArray(boot.claimedHandles)) {
+            setClaimedHandles((prev) => mergeRemoteByKey(prev, boot.claimedHandles, (x) => x.id));
+          }
+          if (Array.isArray(boot.auctions)) {
+            setAuctions((prev) => mergeRemoteByKey(prev, boot.auctions, (x) => x.id));
+          }
+          if (Array.isArray(boot.secondaryListings)) {
+            setSecondaryListings((prev) => mergeRemoteByKey(prev, boot.secondaryListings, (x) => x.id));
+          }
+          if (Array.isArray(boot.poppyOperations)) {
+            setPoppyOperations((prev) =>
+              mergeRemoteByKey(prev, boot.poppyOperations, (x) => x.operation_id)
+            );
+          }
+          if (Array.isArray(boot.poppyConsents)) {
+            setPoppyConsents((prev) => mergeRemoteByKey(prev, boot.poppyConsents, (x) => x.id));
+          }
+          if (Array.isArray(boot.poppyAuditLogs)) {
+            setPoppyAuditLogs((prev) =>
+              mergeRemoteByKey(boot.poppyAuditLogs, prev, (x) => x.id).slice(0, 200)
+            );
+          }
+          if (Array.isArray(boot.statusPosts)) {
+            setStatusPosts((prev) => mergeRemoteByKey(boot.statusPosts, prev, (x) => x.id).slice(0, 80));
+          }
+          if (Array.isArray(boot.contacts)) {
+            setContacts((prev) => mergeRemoteByKey(prev, boot.contacts, (x) => x.id));
+          }
+          if (Array.isArray(boot.x402Receipts)) {
+            setX402Receipts(boot.x402Receipts);
+          }
+          if (boot.x402Entitlement) {
+            setX402Entitlement(boot.x402Entitlement);
+          }
+          if (boot.x402Quota) {
+            setX402Quota(boot.x402Quota);
+          }
+          if (Array.isArray(boot.adCampaigns)) {
+            setAdCampaigns(boot.adCampaigns);
+          }
+          if (boot.x402RevenueSummary) {
+            setX402RevenueSummary(boot.x402RevenueSummary);
+          }
+        }
+
+        const mergedPasskeys = mergeRemoteByKey(
+          pks || [],
+          Array.isArray(boot?.passkeys) ? (boot.passkeys as DevicePasskeyRecord[]) : [],
+          (k) => k.credentialId
+        );
+        setDevicePasskeys(mergedPasskeys);
+
+        const idSet = new Set<string>();
+        const handleSet = new Set<string>();
+        mergedPasskeys.forEach((pk) => {
+          pk.rememberedAgentIds?.forEach((id) => idSet.add(id));
+          pk.rememberedAgentHandles?.forEach((h) => handleSet.add(h));
+        });
+
+        if (restored?.session) {
+          setActiveSession(restored.session);
+          setPasskeyUser({
+            uid: restored.session.ownerUid,
+            displayName: restored.session.userDisplayName || 'SWITCHZ Member',
+            email: restored.session.userEmail || 'passkey@switchboard.agent',
+            mode: 'passkey_sim',
+          });
+          if (restored.rememberedAgents?.length) {
+            setAgents((prev) => mergeRemoteByKey(prev, restored.rememberedAgents, (x) => x.id));
+            restored.rememberedAgents.forEach((a) => {
+              idSet.add(a.id);
+              handleSet.add(a.handle);
+            });
+          }
+          restored.session.agentIds?.forEach((id) => idSet.add(id));
+          restored.session.agentHandles?.forEach((h) => handleSet.add(h));
+        }
+
+        setRememberedAgentIds(Array.from(idSet));
+        setRememberedAgentHandles(Array.from(handleSet));
+      } catch {
+        // offline or fallback mode remains active
+      } finally {
+        if (!cancelled) {
+          backendHydratedRef.current = true;
+        }
+      }
+    };
+
+    hydrateBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Boot connection check, public config & live FX rates
   useEffect(() => {
@@ -512,6 +767,68 @@ export function useSwitchboardStore() {
             }
           },
           () => {}
+        )
+      );
+
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, 'agent_histories'), where('ownerUid', '==', firebaseUser.uid)),
+          (snap) => {
+            if (!snap.empty) {
+              const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AgentActionHistoryEntry));
+              setAgentActionHistory((prev) => mergeRemoteByKey(prev, docs, (h) => h.id).slice(0, 250));
+            }
+          },
+          (err) => {
+            try {
+              handleFirestoreError(err, OperationType.LIST, 'agent_histories');
+            } catch {
+              // fallback to local + Express backend
+            }
+          }
+        )
+      );
+
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, 'agent_activities'), where('ownerUid', '==', firebaseUser.uid)),
+          (snap) => {
+            if (!snap.empty) {
+              const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserAgentActivityEntry));
+              setActivities((prev) => mergeRemoteByKey(prev, docs, (a) => a.id).slice(0, 300));
+            }
+          },
+          (err) => {
+            try {
+              handleFirestoreError(err, OperationType.LIST, 'agent_activities');
+            } catch {
+              // fallback to local + Express backend
+            }
+          }
+        )
+      );
+
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, 'user_sessions'), where('ownerUid', '==', firebaseUser.uid)),
+          (snap) => {
+            if (!snap.empty) {
+              const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as UserSessionRecord));
+              const latest = docs.sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))[0];
+              if (latest) {
+                setActiveSession((prev) =>
+                  prev && prev.lastActiveAt > latest.lastActiveAt ? prev : latest
+                );
+              }
+            }
+          },
+          (err) => {
+            try {
+              handleFirestoreError(err, OperationType.LIST, 'user_sessions');
+            } catch {
+              // fallback to Express backend session
+            }
+          }
         )
       );
     } catch {
@@ -662,49 +979,410 @@ export function useSwitchboardStore() {
     }
   }, [currentUser.uid, currentUser.displayName, matchedUserOwners, agents, jobs, matches, userLocation.lat, userLocation.lng, locationLabel]);
 
+  // Debounced background sync to Express backend DB (.data/switchz-db.json)
+  useEffect(() => {
+    if (!backendHydratedRef.current) return;
+    if (skipNextBackendSyncRef.current) {
+      skipNextBackendSyncRef.current = false;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const deviceId = getOrCreateDeviceId();
+      fetch('/api/db/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId,
+          ownerUid: currentUser.uid,
+          agents,
+          rfps,
+          jobs,
+          matches,
+          applicationPackages,
+          agentActionHistory,
+          activities,
+          negotiations,
+          settlements,
+          bookings,
+          emails,
+          voiceSessions,
+          claimedHandles,
+          auctions,
+          secondaryListings,
+          poppyOperations,
+          poppyConsents,
+          poppyAuditLogs,
+          statusPosts,
+          contacts,
+        }),
+      }).catch(() => {});
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    currentUser.uid,
+    agents,
+    rfps,
+    jobs,
+    matches,
+    applicationPackages,
+    agentActionHistory,
+    activities,
+    negotiations,
+    settlements,
+    bookings,
+    emails,
+    voiceSessions,
+    claimedHandles,
+    auctions,
+    secondaryListings,
+    poppyOperations,
+    poppyConsents,
+    poppyAuditLogs,
+    statusPosts,
+    contacts,
+  ]);
+
+  const logActivity = useCallback(
+    (
+      entry: Omit<UserAgentActivityEntry, 'id' | 'timestamp'> & {
+        id?: string;
+        timestamp?: string;
+        category?: ActivityCategory;
+      }
+    ) => {
+      const deviceId = getOrCreateDeviceId();
+      const record: UserAgentActivityEntry = {
+        ...entry,
+        id: entry.id || `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        ownerUid: entry.ownerUid || currentUser.uid,
+        deviceId: entry.deviceId || deviceId,
+        sessionId: entry.sessionId || activeSession?.id,
+        category: entry.category || 'system',
+        timestamp: entry.timestamp || new Date().toISOString(),
+      };
+      setActivities((prev) => [record, ...prev].slice(0, 300));
+
+      fetch('/api/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+      }).catch(() => {});
+
+      if (db && firebaseUser && firestoreOnline) {
+        setDoc(doc(db, 'agent_activities', record.id), {
+          ...record,
+          ownerUid: firebaseUser.uid,
+        }).catch(() => {});
+      }
+      return record;
+    },
+    [activeSession?.id, currentUser.uid, firebaseUser, firestoreOnline]
+  );
+
+  const syncUserSession = useCallback(
+    async (params?: {
+      activeTab?: string;
+      activeAgentId?: string;
+      activeAgentHandle?: string;
+      networkAutopilotEnabled?: boolean;
+      force?: boolean;
+    }) => {
+      const deviceId = getOrCreateDeviceId();
+      const meta = getStoredSessionMeta();
+      const ownedAgents = agents.filter(
+        (a) =>
+          (a.ownerUid === currentUser.uid || a.createdByDeviceId === deviceId) &&
+          a.handle !== '911.emergency.agent'
+      );
+      const agentIds = Array.from(
+        new Set([...ownedAgents.map((a) => a.id), ...(params?.activeAgentId ? [params.activeAgentId] : [])])
+      );
+      const agentHandles = Array.from(
+        new Set([
+          ...ownedAgents.map((a) => a.handle),
+          ...(params?.activeAgentHandle ? [params.activeAgentHandle] : []),
+        ])
+      );
+
+      const throttleKey = `${currentUser.uid}|${params?.activeTab || ''}|${params?.activeAgentId || ''}|${Boolean(
+        params?.networkAutopilotEnabled
+      )}|${agentIds.length}`;
+      const nowMs = Date.now();
+      if (
+        !params?.force &&
+        sessionSyncThrottleRef.current.lastKey === throttleKey &&
+        nowMs - sessionSyncThrottleRef.current.lastAt < 15_000
+      ) {
+        return activeSession;
+      }
+      sessionSyncThrottleRef.current = { lastKey: throttleKey, lastAt: nowMs };
+
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: activeSession?.ownerUid === currentUser.uid ? activeSession.id : undefined,
+            ownerUid: currentUser.uid,
+            userDisplayName: currentUser.displayName,
+            userEmail: currentUser.email,
+            authMode: currentUser.mode,
+            deviceId,
+            deviceLabel: getFriendlyDeviceLabel(),
+            passkeyCredentialId: meta?.credentialId,
+            agentIds,
+            agentHandles,
+            activeAgentId: params?.activeAgentId || agentIds[0],
+            activeAgentHandle: params?.activeAgentHandle || agentHandles[0],
+            lastTab: params?.activeTab,
+            networkAutopilotEnabled: params?.networkAutopilotEnabled,
+            locationLabel,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.session) {
+            const sess = data.session as UserSessionRecord;
+            setActiveSession(sess);
+            if (db && firebaseUser && firestoreOnline) {
+              setDoc(doc(db, 'user_sessions', sess.id), {
+                ...sess,
+                ownerUid: firebaseUser.uid,
+              }).catch(() => {});
+            }
+            return sess;
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+      return null;
+    },
+    [
+      activeSession,
+      agents,
+      currentUser.displayName,
+      currentUser.email,
+      currentUser.mode,
+      currentUser.uid,
+      firebaseUser,
+      firestoreOnline,
+      locationLabel,
+    ]
+  );
+
   const loginGoogle = useCallback(async () => {
     const res = await signInWithGoogleWorkspace();
     setFirebaseUser(res.user);
     setWorkspaceToken(res.accessToken);
+    logActivity({
+      ownerUid: res.user.uid,
+      category: 'auth',
+      title: `Signed in with Google (${res.user.displayName || res.user.email || 'Operator'})`,
+      detail: 'Cloud Firestore & Google Workspace OAuth session initialized.',
+    });
     return res;
+  }, [logActivity]);
+
+  const registerPasskey = useCallback(
+    async (params: { displayName: string; email: string }) => {
+      const deviceId = getOrCreateDeviceId();
+      const deviceAgents = agents.filter(
+        (a) =>
+          a.handle !== '911.emergency.agent' &&
+          (a.ownerUid === currentUser.uid || a.createdByDeviceId === deviceId)
+      );
+      const auth = await registerDevicePasskey({
+        displayName: params.displayName.trim() || 'SWITCHZ Member',
+        email: params.email.trim(),
+        ownerUid: currentUser.uid !== 'seed-persona-alex' ? currentUser.uid : undefined,
+        agentIds: deviceAgents.map((a) => a.id),
+        agentHandles: deviceAgents.map((a) => a.handle),
+      });
+
+      setPasskeyUser(auth.user);
+      setActiveSession(auth.session);
+      setDevicePasskeys((prev) =>
+        mergeRemoteByKey([auth.passkey], prev, (k) => k.credentialId)
+      );
+      if (auth.rememberedAgents?.length) {
+        setAgents((prev) => mergeRemoteByKey(prev, auth.rememberedAgents, (x) => x.id));
+      }
+      setRememberedAgentIds((prev) =>
+        Array.from(new Set([...prev, ...auth.passkey.rememberedAgentIds]))
+      );
+      setRememberedAgentHandles((prev) =>
+        Array.from(new Set([...prev, ...auth.passkey.rememberedAgentHandles]))
+      );
+
+      logActivity({
+        ownerUid: auth.user.uid,
+        category: 'auth',
+        title: `Device Passkey Registered (${auth.passkey.deviceLabel})`,
+        detail: `Bound ${auth.passkey.rememberedAgentHandles.length} agent(s) to ${auth.user.displayName} on this device.`,
+      });
+      emitToast(
+        `Passkey registered! Remembering ${auth.passkey.rememberedAgentHandles.length} agent(s) on this device.`,
+        'success'
+      );
+      return auth;
+    },
+    [agents, currentUser.uid, logActivity]
+  );
+
+  const loginWithPasskey = useCallback(
+    async (credentialId?: string) => {
+      const auth = await authenticateWithDevicePasskey(credentialId);
+      setPasskeyUser(auth.user);
+      setActiveSession(auth.session);
+      setDevicePasskeys((prev) =>
+        mergeRemoteByKey([auth.passkey], prev, (k) => k.credentialId)
+      );
+      if (auth.rememberedAgents?.length) {
+        setAgents((prev) => mergeRemoteByKey(prev, auth.rememberedAgents, (x) => x.id));
+      }
+      setRememberedAgentIds(auth.passkey.rememberedAgentIds || []);
+      setRememberedAgentHandles(auth.passkey.rememberedAgentHandles || []);
+
+      // Pull full backend DB state scoped for authorized user + device
+      try {
+        const deviceId = getOrCreateDeviceId();
+        const res = await fetch(
+          `/api/db/bootstrap?deviceId=${encodeURIComponent(deviceId)}&ownerUid=${encodeURIComponent(
+            auth.user.uid
+          )}`
+        );
+        if (res.ok) {
+          const boot = await res.json();
+          if (Array.isArray(boot.agentActionHistory)) {
+            setAgentActionHistory((prev) =>
+              mergeRemoteByKey(boot.agentActionHistory, prev, (x) => x.id).slice(0, 250)
+            );
+          }
+          if (Array.isArray(boot.activities)) {
+            setActivities((prev) =>
+              mergeRemoteByKey(boot.activities, prev, (x) => x.id).slice(0, 300)
+            );
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+
+      emitToast(
+        `Passkey authorized — restored ${auth.rememberedAgents.length} agent(s) for ${auth.user.displayName}`,
+        'success'
+      );
+      return auth;
+    },
+    []
+  );
+
+  const revokePasskey = useCallback(async (credentialId: string) => {
+    const ok = await revokeDevicePasskey(credentialId);
+    if (ok) {
+      setDevicePasskeys((prev) => prev.filter((p) => p.credentialId !== credentialId));
+      const meta = getStoredSessionMeta();
+      if (!meta) {
+        setPasskeyUser(null);
+        setActiveSession(null);
+      }
+      emitToast('Device passkey revoked', 'info');
+    }
+    return ok;
   }, []);
 
-  const loginPasskeySim = useCallback((displayName = 'Gugu Nyathi (Passkey Verified)') => {
-    setPasskeyUser({
-      uid: `passkey_${Date.now()}`,
-      displayName,
-      email: 'passkey@switchboard.agent',
-      mode: 'passkey_sim',
-    });
-  }, []);
+  const loginPasskeySim = useCallback(
+    async (displayName = 'SWITCHZ Passkey Member') => {
+      try {
+        if (devicePasskeys.length > 0) {
+          await loginWithPasskey(devicePasskeys[0].credentialId);
+          return;
+        }
+        await registerPasskey({
+          displayName,
+          email: currentUser.email || '',
+        });
+      } catch (err) {
+        emitToast(
+          err instanceof Error ? err.message : 'Passkey authentication could not complete.',
+          'warning'
+        );
+      }
+    },
+    [currentUser.email, devicePasskeys, loginWithPasskey, registerPasskey]
+  );
 
   const logout = useCallback(async () => {
-    await signOutFirebase();
+    await Promise.all([signOutFirebase(), logoutBackendSession()]);
     setFirebaseUser(null);
     setWorkspaceToken(null);
     setPasskeyUser(null);
+    setActiveSession(null);
+    emitToast('Signed out (device passkey memory kept ready for 1-tap restore)', 'info');
   }, []);
 
   const addOrUpdateAgent = useCallback(
     async (agent: AgentDoc) => {
+      const deviceId = getOrCreateDeviceId();
+      const resolvedOwner =
+        agent.ownerUid && agent.ownerUid !== 'seed-persona-alex'
+          ? agent.ownerUid
+          : currentUser.uid;
+      const nextAgent: AgentDoc = {
+        ...agent,
+        ownerUid: resolvedOwner,
+        createdByDeviceId: agent.createdByDeviceId || deviceId,
+      };
+
       setAgents((prev) => {
-        const idx = prev.findIndex((a) => a.id === agent.id || a.handle === agent.handle);
+        const idx = prev.findIndex((a) => a.id === nextAgent.id || a.handle === nextAgent.handle);
         if (idx >= 0) {
           const copy = [...prev];
-          copy[idx] = agent;
+          copy[idx] = nextAgent;
           return copy;
         }
-        return [agent, ...prev];
+        return [nextAgent, ...prev];
       });
+
+      setRememberedAgentIds((prev) =>
+        prev.includes(nextAgent.id) ? prev : [nextAgent.id, ...prev]
+      );
+      setRememberedAgentHandles((prev) =>
+        prev.includes(nextAgent.handle) ? prev : [nextAgent.handle, ...prev]
+      );
+
+      linkAgentsToDeviceSession({
+        ownerUid: resolvedOwner,
+        agentIds: [nextAgent.id],
+        agentHandles: [nextAgent.handle],
+        activeAgentId: nextAgent.id,
+        activeAgentHandle: nextAgent.handle,
+      }).catch(() => {});
+
+      logActivity({
+        ownerUid: resolvedOwner,
+        agentId: nextAgent.id,
+        agentHandle: nextAgent.handle,
+        category: 'registry',
+        title: `Saved Agent Card: ${nextAgent.displayName}`,
+        detail: `${nextAgent.handle} bound to ${currentUser.displayName} & device memory.`,
+      });
+
       if (db && firebaseUser && firestoreOnline) {
         try {
-          await setDoc(doc(db, 'agents', agent.id), { ...agent, ownerUid: firebaseUser.uid });
+          await setDoc(doc(db, 'agents', nextAgent.id), {
+            ...nextAgent,
+            ownerUid: firebaseUser.uid,
+          });
         } catch (err) {
           console.warn('Firestore agent sync skipped:', err);
         }
       }
     },
-    [firebaseUser, firestoreOnline]
+    [currentUser.displayName, currentUser.uid, firebaseUser, firestoreOnline, logActivity]
   );
 
   const toggleAgentDiscoverability = useCallback(
@@ -1333,15 +2011,31 @@ export function useSwitchboardStore() {
 
   const logAgentHistory = useCallback(
     (entry: Omit<AgentActionHistoryEntry, 'id' | 'timestamp'>) => {
+      const deviceId = getOrCreateDeviceId();
       const record: AgentActionHistoryEntry = {
         ...entry,
         id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        ownerUid: entry.ownerUid || currentUser.uid,
+        deviceId: entry.deviceId || deviceId,
         timestamp: new Date().toISOString(),
       };
-      setAgentActionHistory((prev) => [record, ...prev].slice(0, 120));
+      setAgentActionHistory((prev) => [record, ...prev].slice(0, 250));
+
+      fetch('/api/histories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+      }).catch(() => {});
+
+      if (db && firebaseUser && firestoreOnline) {
+        setDoc(doc(db, 'agent_histories', record.id), {
+          ...record,
+          ownerUid: firebaseUser.uid,
+        }).catch(() => {});
+      }
       return record;
     },
-    []
+    [currentUser.uid, firebaseUser, firestoreOnline]
   );
 
   const tailorAndSubmitApplication = useCallback(
@@ -2024,24 +2718,248 @@ export function useSwitchboardStore() {
     emitToast(`RFP marked ${status}`, 'info');
   }, []);
 
+  const applyX402SettlementResult = useCallback((result: X402SettleResult) => {
+    setX402Entitlement(result.entitlement);
+    setX402Quota(result.quota);
+    setX402RevenueSummary(result.summary);
+    setX402Receipts((prev) => mergeRemoteByKey([result.receipt], prev, (r) => r.id).slice(0, 100));
+    if (result.adCampaign) {
+      setAdCampaigns((prev) => mergeRemoteByKey([result.adCampaign!], prev, (a) => a.id));
+    }
+  }, []);
+
+  const refreshX402Catalog = useCallback(async () => {
+    const data = await fetchX402Catalog(currentUser.uid);
+    if (!data) return null;
+    setX402Entitlement(data.entitlement);
+    setX402Quota(data.quota);
+    setX402RevenueSummary(data.summary);
+    if (Array.isArray(data.recentReceipts)) {
+      setX402Receipts((prev) => mergeRemoteByKey(data.recentReceipts, prev, (r) => r.id).slice(0, 100));
+    }
+    if (Array.isArray(data.activeAds)) {
+      setAdCampaigns((prev) => mergeRemoteByKey(data.activeAds, prev, (a) => a.id));
+    }
+    return data;
+  }, [currentUser.uid]);
+
+  const openX402ChallengeModal = useCallback((challenge: X402ChallengePayload) => {
+    return new Promise<X402SettleResult | null>((resolve) => {
+      if (pendingX402ResolveRef.current) {
+        pendingX402ResolveRef.current(null);
+      }
+      pendingX402ResolveRef.current = resolve;
+      setPendingX402Challenge(challenge);
+    });
+  }, []);
+
+  useEffect(() => {
+    registerX402ChallengeBridge(openX402ChallengeModal);
+    return () => registerX402ChallengeBridge(null);
+  }, [openX402ChallengeModal]);
+
+  const openX402Checkout = useCallback(
+    async (params: {
+      sku?: string;
+      category?: string;
+      title?: string;
+      description?: string;
+      amountUSD?: number;
+      metadata?: Record<string, string | number | boolean>;
+    }) => {
+      const challenge = await requestX402Challenge(params);
+      return openX402ChallengeModal(challenge);
+    },
+    [openX402ChallengeModal]
+  );
+
+  const settlePendingX402 = useCallback(
+    async (opts: {
+      rail: PaymentRail;
+      payerType: 'human' | 'agent';
+      payerHandle?: string;
+      useWalletBalance?: boolean;
+    }) => {
+      if (!pendingX402Challenge) return null;
+      setSettlingX402(true);
+      try {
+        const primaryAgent =
+          agents.find((a) => a.ownerUid === currentUser.uid && a.handle !== '911.emergency.agent') ||
+          agents.find((a) => a.handle !== '911.emergency.agent');
+        const settled = await settleX402Challenge({
+          challenge: pendingX402Challenge,
+          rail: opts.rail,
+          payerType: opts.payerType,
+          payerHandle: opts.payerHandle || primaryAgent?.handle || 'alex.founder.agent',
+          payerName: currentUser.displayName,
+          ownerUid: currentUser.uid,
+          useWalletBalance: opts.useWalletBalance,
+        });
+        applyX402SettlementResult(settled);
+        emitToast(`x402 Settled: ${pendingX402Challenge.title} ($${settled.receipt.amountUSD.toFixed(2)})`, 'success');
+        const resolver = pendingX402ResolveRef.current;
+        pendingX402ResolveRef.current = null;
+        setPendingX402Challenge(null);
+        resolver?.(settled);
+        return settled;
+      } catch (err) {
+        emitToast(err instanceof Error ? err.message : 'x402 settlement failed', 'warning');
+        throw err;
+      } finally {
+        setSettlingX402(false);
+      }
+    },
+    [agents, applyX402SettlementResult, currentUser.displayName, currentUser.uid, pendingX402Challenge]
+  );
+
+  const cancelPendingX402 = useCallback(() => {
+    const resolver = pendingX402ResolveRef.current;
+    pendingX402ResolveRef.current = null;
+    setPendingX402Challenge(null);
+    resolver?.(null);
+  }, []);
+
+  const topUpWalletAndSettings = useCallback(
+    async (params: {
+      amountUSD?: number;
+      rail?: PaymentRail;
+      autoPayEnabled?: boolean;
+      maxAutoPayPerCallUSD?: number;
+    }) => {
+      const primaryAgent = agents.find(
+        (a) => a.ownerUid === currentUser.uid && a.handle !== '911.emergency.agent'
+      );
+      const data = await topUpX402Wallet({
+        ...params,
+        ownerUid: currentUser.uid,
+        payerHandle: primaryAgent?.handle || 'alex.founder.agent',
+      });
+      setX402Entitlement(data.entitlement);
+      setX402Quota(data.quota);
+      if (data.receipt) {
+        setX402Receipts((prev) => [data.receipt!, ...prev]);
+        emitToast(`Added $${data.receipt.amountUSD.toFixed(2)} USDC to Agent x402 Wallet`, 'success');
+      } else {
+        emitToast('Saved Agent Auto-Pay guardrails', 'success');
+      }
+      refreshX402Catalog();
+      return data;
+    },
+    [agents, currentUser.uid, refreshX402Catalog]
+  );
+
+  const createSponsoredAd = useCallback(
+    async (params: {
+      sku: string;
+      agentId: string;
+      agentHandle: string;
+      sponsorName: string;
+      headline: string;
+      body: string;
+      ctaLabel: string;
+      targetUrl?: string;
+    }) => {
+      const deviceId = getOrCreateDeviceId();
+      const res = await x402FetchWithAutoPay(
+        '/api/ads/create',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...params,
+            ownerUid: currentUser.uid,
+            deviceId,
+          }),
+        },
+        {
+          entitlement: x402Entitlement,
+          payerHandle: params.agentHandle,
+          ownerUid: currentUser.uid,
+          onSettled: applyX402SettlementResult,
+        }
+      );
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || 'Sponsored ad payment required to launch.');
+      }
+      const data = await res.json();
+      if (data?.campaign) {
+        setAdCampaigns((prev) => mergeRemoteByKey([data.campaign as AdCampaignDoc], prev, (a) => a.id));
+        emitToast(`Sponsored campaign live: ${data.campaign.headline}`, 'success');
+      }
+      refreshX402Catalog();
+      return data?.campaign as AdCampaignDoc | undefined;
+    },
+    [applyX402SettlementResult, currentUser.uid, refreshX402Catalog, x402Entitlement]
+  );
+
+  const recordAdEvent = useCallback(
+    async (adId: string, event: 'impression' | 'click' | 'pause' | 'resume') => {
+      setAdCampaigns((prev) =>
+        prev.map((c) => {
+          if (c.id !== adId) return c;
+          if (event === 'click') return { ...c, clicks: c.clicks + 1 };
+          if (event === 'pause') return { ...c, status: 'PAUSED' };
+          if (event === 'resume') return { ...c, status: 'ACTIVE' };
+          return { ...c, impressions: c.impressions + 1 };
+        })
+      );
+      try {
+        const res = await fetch(`/api/ads/${encodeURIComponent(adId)}/event`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.campaign) {
+            setAdCampaigns((prev) =>
+              prev.map((c) => (c.id === adId ? (data.campaign as AdCampaignDoc) : c))
+            );
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    },
+    []
+  );
+
+  const syncQuotaFromServer = useCallback((quota?: X402QuotaSnapshot | null) => {
+    if (quota) setX402Quota(quota);
+  }, []);
+
   const runAutonomousIntentMatch = useCallback(
     async (sourceAgent: AgentDoc, livePeers: ProximityPeerDoc[] = []) => {
       setAutonomousMatchLoading(true);
       try {
-        const res = await fetch('/api/agents/autonomous-match', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceAgent,
-            agents,
-            jobs,
-            rfps,
-            peers: livePeers,
-          }),
-        });
+        const deviceId = getOrCreateDeviceId();
+        const res = await x402FetchWithAutoPay(
+          '/api/agents/autonomous-match',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceAgent,
+              agents,
+              jobs,
+              rfps,
+              peers: livePeers,
+              ownerUid: currentUser.uid,
+              deviceId,
+            }),
+          },
+          {
+            entitlement: x402Entitlement,
+            payerHandle: sourceAgent.handle,
+            ownerUid: currentUser.uid,
+            onSettled: applyX402SettlementResult,
+          }
+        );
         const data = await res.json();
+        if (data?.quota) setX402Quota(data.quota);
         if (!res.ok) {
-          emitToast(data?.error || 'Autonomous matcher could not complete', 'warning');
+          emitToast(data?.error || 'Autonomous matcher requires x402 credit above 10 free matches', 'warning');
           return null;
         }
         const items = Array.isArray(data.matches) ? (data.matches as AutonomousMatchItem[]) : [];
@@ -2060,7 +2978,7 @@ export function useSwitchboardStore() {
         setAutonomousMatchLoading(false);
       }
     },
-    [agents, jobs, rfps]
+    [agents, applyX402SettlementResult, currentUser.uid, jobs, rfps, x402Entitlement]
   );
 
   const autoAddProximityPeers = useCallback(
@@ -2164,6 +3082,7 @@ export function useSwitchboardStore() {
     setSeededContactOwners(['seed-persona-alex']);
     setApplicationPackages(SEED_APPLICATION_PACKAGES);
     setAgentActionHistory(SEED_AGENT_HISTORY);
+    setActivities([]);
     setMatchedUserOwners(['seed-persona-alex']);
     setStatusPosts(SEED_STATUS_POSTS);
     setAiOpportunities([]);
@@ -2193,6 +3112,11 @@ export function useSwitchboardStore() {
     poppyAuditLogs,
     applicationPackages,
     agentActionHistory,
+    activities,
+    devicePasskeys,
+    activeSession,
+    rememberedAgentIds,
+    rememberedAgentHandles,
     statusPosts,
     contacts: userContacts,
     aiOpportunities,
@@ -2225,6 +3149,9 @@ export function useSwitchboardStore() {
     mapboxAccessToken,
     setMapboxAccessToken,
     loginGoogle,
+    registerPasskey,
+    loginWithPasskey,
+    revokePasskey,
     loginPasskeySim,
     logout,
     addOrUpdateAgent,
@@ -2255,6 +3182,8 @@ export function useSwitchboardStore() {
     addPreScreenReview,
     logPoppyAudit,
     logAgentHistory,
+    logActivity,
+    syncUserSession,
     tailorAndSubmitApplication,
     recordHrDocView,
     addHrReviewNote,
@@ -2271,6 +3200,23 @@ export function useSwitchboardStore() {
     updateRfpStatus,
     runAutonomousIntentMatch,
     autoAddProximityPeers,
+    x402Receipts,
+    x402Entitlement,
+    x402Quota,
+    adCampaigns,
+    x402RevenueSummary,
+    pendingX402Challenge,
+    settlingX402,
+    refreshX402Catalog,
+    openX402Checkout,
+    openX402ChallengeModal,
+    settlePendingX402,
+    cancelPendingX402,
+    topUpWalletAndSettings,
+    createSponsoredAd,
+    recordAdEvent,
+    applyX402SettlementResult,
+    syncQuotaFromServer,
     resetDemoData,
   };
 }

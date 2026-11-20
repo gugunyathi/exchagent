@@ -19,6 +19,19 @@ import {
   quoteHandlePricing,
   HandleBillingCycle,
 } from '../src/services/paymentRails';
+import {
+  getDbState,
+  upsertPoppyConversation,
+  upsertPoppyOperation,
+  appendPoppyAudit,
+  appendHistory,
+  appendActivity,
+  consumeMatchQuota,
+  createX402ChallengeRecord,
+  getMatchQuotaSnapshot,
+  getOrCreateEntitlement,
+  verifyX402ReceiptToken,
+} from './dbStore';
 
 const HMAC_SECRET = process.env.POPPY_HMAC_SECRET || 'switchboard-poppy-v1-ephemeral-secret';
 
@@ -49,13 +62,32 @@ async function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   ]);
 }
 
-// In-memory runtime stores for Poppy Protocol stateful interactions
+// Runtime caches hydrated from durable dbStore on router boot
 const conversations = new Map<string, PoppyConversation>();
 const requestIdCache = new Map<string, { bodyHash: string; status: number; response: unknown }>();
 const operationsStore = new Map<string, PoppyOperation>();
 const operationExecutionCache = new Map<string, { executedAt: string; reference: string; approver: 'user' | 'agent'; result: unknown }>();
 const browserSessionTokens = new Map<string, { targetUrl: string; authorized: boolean; handle: string; createdAt: string }>();
 const feedbackLog: Array<{ id: string; task: string; comment: string; receivedAt: string }> = [];
+
+function hydratePoppyCachesFromDb(): void {
+  const db = getDbState();
+  for (const conv of db.poppyConversations) {
+    conversations.set(conv.id, conv);
+  }
+  for (const op of db.poppyOperations) {
+    operationsStore.set(op.operation_id, op);
+    if (op.status === 'performed' && op.reference && op.executedAt) {
+      operationExecutionCache.set(op.operation_id, {
+        executedAt: op.executedAt,
+        reference: op.reference,
+        approver: op.approver || 'user',
+        result: op,
+      });
+    }
+  }
+}
+hydratePoppyCachesFromDb();
 
 function checkPoppyHeaders(req: Request, res: Response): { ok: true; extensions: Record<string, number> } | { ok: false } {
   const version = (req.headers['poppy-version'] as string) || '1.0';
@@ -92,33 +124,36 @@ export function createPoppyRouter(): express.Router {
   // 2. Per-Entity Dynamic Poppy Discovery (/u/:slug, /companies/:slug, /jobs/:id)
   router.get('/u/:slug/.well-known/poppy.json', (req, res) => {
     const slug = String(req.params.slug || '').toLowerCase();
+    const liveAgents = getDbState().agents;
     const agent =
-      SEED_AGENTS.find(
+      liveAgents.find(
         (a) =>
           a.type === 'persona' &&
           (a.handle.toLowerCase() === slug ||
             a.handle.toLowerCase().startsWith(slug) ||
             a.displayName.toLowerCase().replace(/\s+/g, '.') === slug)
-      ) || SEED_AGENTS[0];
+      ) || liveAgents[0] || SEED_AGENTS[0];
     res.json(buildEntityPoppyDoc(getOrigin(req), { entityType: 'user', agent }));
   });
 
   router.get('/companies/:slug/.well-known/poppy.json', (req, res) => {
     const slug = String(req.params.slug || '').toLowerCase();
+    const liveAgents = getDbState().agents;
     const agent =
-      SEED_AGENTS.find(
+      liveAgents.find(
         (a) =>
           a.type === 'business' &&
           (a.handle.toLowerCase() === slug ||
             a.handle.toLowerCase().includes(slug) ||
             a.organization.toLowerCase().replace(/\s+/g, '-') === slug)
-      ) || SEED_AGENTS[1];
+      ) || liveAgents[1] || SEED_AGENTS[1];
     res.json(buildEntityPoppyDoc(getOrigin(req), { entityType: 'company', agent }));
   });
 
   router.get('/jobs/:id/.well-known/poppy.json', (req, res) => {
     const jobId = String(req.params.id || '');
-    const job = SEED_JOBS.find((j) => j.id === jobId) || SEED_JOBS[0];
+    const liveJobs = getDbState().jobs;
+    const job = liveJobs.find((j) => j.id === jobId) || liveJobs[0] || SEED_JOBS[0];
     res.json(buildEntityPoppyDoc(getOrigin(req), { entityType: 'job', job }));
   });
 
@@ -336,6 +371,14 @@ export function createPoppyRouter(): express.Router {
     };
 
     conversations.set(convId, conv);
+    upsertPoppyConversation(conv);
+    appendActivity({
+      agentHandle: initiatorHandle,
+      targetHandle,
+      category: 'recruitment',
+      title: `Opened Poppy v1.0 conversation with ${targetHandle}`,
+      detail: `Protocol conversation ${convId} started.`,
+    });
     if (requestId) {
       const bodyHash = crypto.createHash('sha256').update(JSON.stringify(req.body || {})).digest('hex');
       requestIdCache.set(String(requestId), { bodyHash, status: 201, response: conv });
@@ -380,7 +423,7 @@ export function createPoppyRouter(): express.Router {
 
     // Build agent reply with active Poppy extensions
     const extensionsPayload: PoppyMessageExtensionPayload = {};
-    const targetAgent = SEED_AGENTS.find((a) => a.handle === conv.targetHandle);
+    const targetAgent = getDbState().agents.find((a) => a.handle === conv.targetHandle);
 
     if (hdr.extensions.disclosures || conv.negotiatedExtensions.disclosures) {
       extensionsPayload.disclosures = {
@@ -458,6 +501,7 @@ export function createPoppyRouter(): express.Router {
         actorHandle: conv.initiatorHandle,
       };
       operationsStore.set(opId, op);
+      upsertPoppyOperation(op);
       extensionsPayload.operations = {
         operation_id: opId,
         revision,
@@ -496,6 +540,7 @@ export function createPoppyRouter(): express.Router {
     };
     conv.events.push(replyEvt);
     conv.updatedAt = replyEvt.timestamp;
+    upsertPoppyConversation(conv);
 
     return res.json({
       conversation: conv,
@@ -551,6 +596,7 @@ export function createPoppyRouter(): express.Router {
     };
     conv.events.push(evt);
     conv.updatedAt = evt.timestamp;
+    upsertPoppyConversation(conv);
     return res.json({ status: conv.status, event: evt });
   });
 
@@ -569,6 +615,7 @@ export function createPoppyRouter(): express.Router {
     };
     conv.events.push(evt);
     conv.updatedAt = evt.timestamp;
+    upsertPoppyConversation(conv);
     return res.json({ status: conv.status, event: evt });
   });
 
@@ -586,6 +633,7 @@ export function createPoppyRouter(): express.Router {
     };
     conv.events.push(evt);
     conv.updatedAt = evt.timestamp;
+    upsertPoppyConversation(conv);
     return res.json({ status: conv.status, event: evt });
   });
 
@@ -617,6 +665,18 @@ export function createPoppyRouter(): express.Router {
       actorHandle,
     };
     operationsStore.set(opId, op);
+    upsertPoppyOperation(op);
+    appendPoppyAudit({
+      id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      actorHandle: String(actorHandle),
+      targetHandle: String(targetHandle),
+      action: 'OPERATIONS_V3_PROPOSED',
+      protocol: 'Poppy v1.0 + operations/v3',
+      operationId: opId,
+      details: summary,
+      popiaMinimized: true,
+      timestamp: op.createdAt,
+    });
 
     if (return403Challenge) {
       res.setHeader('Poppy-Operation', `id="${opId}"; rev="${revision}"`);
@@ -685,12 +745,34 @@ export function createPoppyRouter(): express.Router {
     op.reference = reference;
     op.executedAt = executedAt;
     operationsStore.set(op.operation_id, op);
+    upsertPoppyOperation(op);
 
     operationExecutionCache.set(op.operation_id, {
       executedAt,
       reference,
       approver: op.approver,
       result: op,
+    });
+
+    appendPoppyAudit({
+      id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      actorHandle: op.actorHandle || 'user.agent',
+      targetHandle: op.targetHandle || 'switchboard.agent',
+      action: 'OPERATIONS_V3_EXECUTED',
+      protocol: 'Poppy v1.0 + operations/v3',
+      operationId: op.operation_id,
+      reference,
+      details: `${op.summary} executed once (approver=${op.approver}).`,
+      popiaMinimized: true,
+      timestamp: executedAt,
+    });
+
+    appendActivity({
+      agentHandle: op.actorHandle || 'user.agent',
+      targetHandle: op.targetHandle,
+      category: 'recruitment',
+      title: `Executed Operations v3 (${op.actionType})`,
+      detail: `${op.summary} — Ref ${reference}`,
     });
 
     return res.json({
@@ -1184,7 +1266,7 @@ export function createPoppyRouter(): express.Router {
     });
   });
 
-  // 11. 1-Click Standard Job Search Agent from LinkedIn URL -> 10 Free Job Matches & Interview Pitches
+  // 11. 1-Click Standard Job Search Agent from LinkedIn URL -> Up to 10 Free Job Matches & Interview Pitches (x402 above 10)
   router.post('/api/recruitment/linkedin-quickstart', async (req, res) => {
     const {
       linkedinUrl = '',
@@ -1193,6 +1275,8 @@ export function createPoppyRouter(): express.Router {
       billingCycle: rawBillingCycle = 'monthly',
       customHandle = '',
       jobs: clientJobs,
+      ownerUid,
+      deviceId,
     } = req.body || {};
 
     const rawUrl = String(linkedinUrl || '').trim();
@@ -1271,8 +1355,62 @@ export function createPoppyRouter(): express.Router {
       ? `linkedin.com/in/${slugRaw.replace(/[^a-z0-9._-]/gi, '') || cleanSlug}`
       : cleanedPath;
 
-    const jobPool = (Array.isArray(clientJobs) && clientJobs.length >= 10 ? clientJobs : SEED_JOBS).slice(0, 14);
-    const targetCount = Math.min(10, jobPool.length);
+    const liveJobs = getDbState().jobs;
+    const jobPool = (Array.isArray(clientJobs) && clientJobs.length >= 10 ? clientJobs : liveJobs).slice(0, 14);
+    const requestedMatches = Math.min(10, jobPool.length);
+    const resolvedUid = ownerUid ? String(ownerUid) : undefined;
+    const resolvedDeviceId = deviceId ? String(deviceId) : undefined;
+    const x402Header = String(req.headers['x-402-payment-token'] || '');
+    const verifiedToken = verifyX402ReceiptToken(x402Header);
+
+    const quotaResult = consumeMatchQuota({
+      ownerUid: resolvedUid,
+      deviceId: resolvedDeviceId,
+      requestedCount: requestedMatches,
+    });
+
+    if (!quotaResult.allowed && !verifiedToken) {
+      const challenge = createX402ChallengeRecord({
+        sku: 'matches_pack_25',
+        category: 'matches_pack',
+        title: '+25 AI Match Unlocks (Above 10 Free Matches)',
+        description: `All ${quotaResult.quota.freeLimit} free AI job matches have been consumed on this account. Settle $4.99 via x402 to unlock 25 more matches.`,
+        amountUSD: 4.99,
+        metadata: {
+          handle: normalizedHandle,
+          linkedinUrl: normalizedLinkedinUrl,
+        },
+      });
+      return res
+        .status(402)
+        .set('X-Payment-Required', `x402 amount="${challenge.amountUSD}" currency="USDC"`)
+        .json({
+          error: 'Free 10-match quota reached. x402 payment required to run additional job matching.',
+          protocol: 'x402',
+          quota: quotaResult.quota,
+          challenge,
+        });
+    }
+
+    const targetCount = Math.max(1, quotaResult.consumed || requestedMatches);
+    const activeQuota = getMatchQuotaSnapshot(getOrCreateEntitlement(resolvedUid, resolvedDeviceId));
+
+    appendHistory({
+      agentId: `quickstart_${Date.now()}`,
+      agentHandle: normalizedHandle,
+      actorType: 'personal_agent',
+      actorName: inferredDisplayName,
+      actionType: 'AUTO_MATCH',
+      title: `URL Quickstart Agent Created (${normalizedHandle})`,
+      details: `Provisioned personal agent from ${normalizedLinkedinUrl} and scored top ${targetCount} jobs.`,
+      channel: '1-Click URL Quickstart',
+    });
+    appendActivity({
+      agentHandle: normalizedHandle,
+      category: 'recruitment',
+      title: `1-Click Personal Agent Created: ${normalizedHandle}`,
+      detail: `Generated from ${normalizedLinkedinUrl} with ${targetCount} ranked job matches.`,
+    });
 
     const ai = getGeminiClient();
     if (ai) {
@@ -1442,6 +1580,7 @@ export function createPoppyRouter(): express.Router {
           return res.json({
             engine: 'gemini-4-hydrogen',
             handleRegistration,
+            quota: activeQuota,
             profile: {
               displayName: String(parsed.profile.displayName || inferredDisplayName),
               handle: normalizedHandle,
@@ -1472,7 +1611,7 @@ export function createPoppyRouter(): express.Router {
                 updatedAt: new Date().toISOString(),
               },
             },
-            matches: normalizedMatches.sort((a, b) => b!.score - a!.score),
+            matches: normalizedMatches.sort((a, b) => b!.score - a!.score).slice(0, targetCount),
           });
         }
       } catch (err) {
@@ -1531,6 +1670,7 @@ export function createPoppyRouter(): express.Router {
     return res.json({
       engine: 'switchz-quickstart-engine',
       handleRegistration,
+      quota: activeQuota,
       profile: {
         displayName: inferredDisplayName,
         handle: normalizedHandle,
@@ -1560,7 +1700,7 @@ export function createPoppyRouter(): express.Router {
           updatedAt: new Date().toISOString(),
         },
       },
-      matches: fallbackMatches,
+      matches: fallbackMatches.slice(0, targetCount),
     });
   });
 
@@ -1618,9 +1758,10 @@ export function createPoppyRouter(): express.Router {
       }
     }
 
+    const liveAgents = getDbState().agents;
     const candidatePool = Array.isArray(clientCandidates) && clientCandidates.length > 0
       ? clientCandidates
-      : SEED_AGENTS.filter((a) => a.type === 'persona' && a.handle !== '911.emergency.agent');
+      : liveAgents.filter((a) => a.type === 'persona' && a.handle !== '911.emergency.agent');
 
     const ai = getGeminiClient();
 
@@ -2222,6 +2363,13 @@ Return JSON strictly matching the schema.`;
       }
     }
 
+    appendActivity({
+      agentHandle: candidateHandle,
+      targetHandle: companyHandle,
+      category: 'recruitment',
+      title: `Tailored CV & Cover Letter for ${jobTitle}`,
+      detail: `Prepared bespoke application package for ${companyName} (${targetRegion}).`,
+    });
     return res.json(buildDeterministicResult('switchboard-cv-tailor-engine'));
   });
 

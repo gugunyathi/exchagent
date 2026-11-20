@@ -24,18 +24,21 @@
 +-----------------------------------------------------------------------------+
 |                        Client SPA (React 19 + Vite 8 + PWA)                 |
 |  Landing & Legal Routes (/ , /term , /terms , /employeragreement)           |
-|  Agent Directory (/directory, /app) · Cards & Fullscreen Video/Gallery      |
-|  Poppy Hiring OS · A2A Arena · Spatial Radar (Google Maps -> Mapbox failover) |
+|  Agent Directory (/directory, /app) · +Network Autopilot (`useNetworkAutopilot`) |
+|  WebAuthn FIDO2 / ECDSA P-256 Passkey Vault (`src/lib/passkeyAuth.ts`)      |
 |  useSwitchboardStore  <--->  localStorage (switchboard_agentpages_state_v3) |
 +-------------+------------------------------------------+--------------------+
               | HTTP / SSE / REST JSON                   | Firebase SDK v13
               v                                          v
 +----------------------------------------+   +--------------------------------+
 |  Express 4 Backend (server.ts :3000)   |   | Firebase Auth & Firestore      |
-|  - Vite dev middleware / static dist/  |   | - Google Workspace OAuth       |
-|  - Gemini 4 Hydrogen (@google/genai)   |   | - 8 Rule-Protected Collections |
-|  - Poppy v1.0 Router (poppyRouter.ts)  |   | - Default-Deny Security Rules  |
-|  - AgentMail Router (agentmailRouter)  |   +--------------------------------+
+|  - Disk DB Engine (server/dbStore.ts)  |   | - Google Workspace OAuth       |
+|    -> .data/switchz-db.json (atomic)   |   | - 17 Rule-Protected Collections|
+|  - Passkey & Session Binding API       |   | - Default-Deny Security Rules  |
+|  - Gemini 4 Hydrogen (@google/genai)   |   +--------------------------------+
+|  - Poppy v1.0 Router (poppyRouter.ts)  |
+|  - x402 Payment Engine (x402Router.ts) |
+|  - AgentMail Router (agentmailRouter)  |
 |  - Live FX + IP/Geo Currency Detection |
 |  - Ephemeral Wi-Fi/WS Mesh (`/ws/mesh`)|
 +----------------------------------------+
@@ -79,8 +82,9 @@
   - **Proximity Sharing**: Announces ephemeral peers over same Wi-Fi LAN subnet hashes (`POST /api/proximity/announce`), discovers nearby BLE/Wi-Fi peers (`GET /api/proximity/peers`), and logs saved cards/negotiations (`POST /api/proximity/exchange`).
 - **Predictive Dialer & `$0.00` Civic SOS (`AgentDialerModal.tsx`)**:
   - Real-time predictive matching by digits, T9 patterns, shortcodes, or handles; dialing `911`, `112`, `999`, `10111`, or `10177` activates `$0.00` Civic Priority Dispatch with GPS lock and unit ETAs.
-- **`.agent` Handle Registry & `x402` Marketplace (`RegistryMarketplaceModule.tsx`, `src/services/paymentRails.ts`)**:
-  - Free (`$0`) system-assigned handles (`personalagent1643.agent`, `businessagent1761.agent`); custom Personal name registrations minimum **`$2/month` or `$20/year`**; custom Business name registrations base **`$10/month` or `$100/year`**; separate one-time domain name purchases for short 1–4 character domains (`$50–$1,000`) and English auctions for unique names/numbers (`1–100`, `007`, reserved brands); HTTP `402` payment challenges (`x402_base`, `x402_arc`, `x402_solana`, `paypal_vault`); and `403` locks on civic emergency codes.
+- **`.agent` Handle Registry & Universal `x402` Revenue Engine (`RegistryMarketplaceModule.tsx`, `X402RevenueHub.tsx`, `X402PaymentModal.tsx`)**:
+  - **Free Tiers (`$0`)**: Random system handles (`personalagent1643.agent`, `businessagent1761.agent`), first **10 AI job/RFP/proximity matches** (`FREE_MATCH_LIMIT = 10`), 1st subaddressed `@agentmail.to` inbox + 25 free outbound sends, standard RFPs, and `$0.00` Civic 911 shortcodes.
+  - **HTTP `402 Payment Required` (`x402`)**: Metered monetization across Base USDC, Arc USDC, Solana USDC, PayPal Vault, and Pre-Funded Autonomous Agent Wallets (with per-call Auto-Pay guardrails) for match packs (`+25`, `+100`, `Unlimited Pro`), Sponsored Ads (Status Circles, Directory Featured, Event/Geo Beacons), custom Personal (`$2/mo` / `$20/yr`) & Business (`$10/mo` / `$100/yr`) `.agent` names, short/auction domains (`$50–$1,000`), dedicated AgentMail inboxes & 500-send outreach packs, Priority Reverse-RFPs, `+Network Event Autopilot Pro`, Anti-Deepfake Video Audits, and A2A API call packs.
 - **AgentMail Inbox & AI Email Triage (`AgentMailInboxModule.tsx`, `OmnichannelCommsModule.tsx`)**:
   - Full inbox thread reader, compose/reply modal, and autonomous Gemini inbox classification (`QUALIFIED_ENGAGE`, `RFP_RESPONSE`, `SPAM_BLOCKED`, `MEETING_CONFIRMED`).
 - **Developer Toolkit (`AgentSkillsPage.tsx`, `ChromeExtensionHub.tsx`, `DeveloperLedgerModule.tsx`)**:
@@ -109,6 +113,11 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
    - Computes a normalized subnet identifier from client IP (`req.ip` / `x-forwarded-for`), hashing it with SHA-256 (`wifi-lan-<12hex>`) so raw IP addresses are never exposed. Announced peers auto-expire after a **10-minute TTL**, broadcast live via **WebSocket (`/ws/mesh`)** per room, compute Haversine distance + compass bearing, and detect bi-directional **Mutual Bearing Lock** (both users facing within ±35° along their connecting azimuth).
 6. **Zero-Scraping Compliance**:
    - LinkedIn profile URLs are normalized into clean reference handles without scraping external HTML; CV parsing, job matching, and tailored DOCX/PDF packages operate strictly on user-submitted text, URL references, and directory job specifications.
+7. **Durable Server Persistence (`server/dbStore.ts`)**:
+   - Stores all 24 collections—including agents, jobs, RFPs, negotiations, settlements, Poppy conversations/operations/audits, agent histories (`agentActionHistory`), real-time activities (`activities`), device sessions (`sessions`), and registered passkeys (`passkeys`)—in `.data/switchz-db.json` using atomic temp-file writes (`writeFileSync` + `renameSync`).
+8. **Passkey Authorization & Device `User × Agents` Memory (`src/lib/passkeyAuth.ts` & `server.ts`)**:
+   - Attempts native **WebAuthn FIDO2 (`navigator.credentials`)** and falls back seamlessly inside sandboxed iframes to non-extractable **WebCrypto ECDSA P-256** device keys stored in IndexedDB (`switchz_passkey_vault`).
+   - Server verifies signatures via Node `crypto.verify` (`VerifyEcdsaP256`), issues HMAC-SHA256 bearer `sessionToken`s (`SWITCHZ_SESSION_SECRET`), binds device-created agents (`rememberedAgentIds`, `rememberedAgentHandles`), and restores authenticated sessions + remembered agents across reloads and server restarts.
 
 ---
 
@@ -158,11 +167,18 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 | `GET` | `/api/proximity/peers` | `?room=&excludeHandle=&lat=&lng=&headingDeg=&scanRadiusMeters=` | Lists active subnet/room peers with Haversine distance, relative compass bearing, `mutualBearingLock`, and `withinScanRadius`. |
 | `POST` | `/api/proximity/exchange` | `{ fromHandle, toHandle, mode, eventRoom, transport }` | Logs a `card_share` or `share_and_negotiate` handshake event and notifies room subscribers via `/ws/mesh`. |
 
-### 5. `.agent` Handle Registry, Auctions & `x402` (`server.ts`)
+### 5. `.agent` Handle Registry, Auctions & Universal `x402` Revenue Engine (`server.ts`, `server/x402Router.ts`)
 | Method | Endpoint | Query / Body | Response / Behavior |
 | --- | --- | --- | --- |
+| `GET` | `/api/x402/catalog` | `?ownerUid=&deviceId=` | Returns 14 monetization SKUs (`X402_REVENUE_CATALOG`), live quota (`10` free matches + bonus credits), entitlement wallet, active ads, and recent receipts. |
+| `POST` | `/api/x402/challenge` | `{ sku, category, title, amountUSD, metadata }` | Issues signed HMAC-SHA256 HTTP `402 Payment Required` (`X-Payment-Required`, `X-402-Payment-Id`) for humans or autonomous agents. |
+| `POST` | `/api/x402/settle` | `{ paymentId, nonce, hmacChallenge, sku, rail, payerType, useWalletBalance, txHash }` | Idempotently verifies payment proof, settles wallet balance or external tx, unlocks credits/passes, logs settlement, and returns `X-402-Payment-Receipt`. |
+| `POST` | `/api/x402/wallet/topup` | `{ ownerUid, deviceId, amountUSD, autoPayEnabled, maxAutoPayPerCallUSD }` | Pre-funds autonomous agent USDC wallet and updates Auto-Pay guardrails. |
+| `GET` | `/api/x402/receipts` | `?ownerUid=&limit=` | Queries verified HTTP 402 payment receipts and human vs agent spend breakdown. |
+| `GET` / `POST` | `/api/ads` & `/api/ads/create` | `{ sku, agentId, agentHandle, headline, body }` + `X-402-Payment-Token` | Lists or creates x402-gated Sponsored Ads (`status_circle`, `directory_featured`, `radar_beacon`); `POST /api/ads/:id/event` tracks impressions, clicks, pause, and resume. |
 | `GET` | `/api/names/search` | `?q=<handle>&entityType=personal\|business&billingCycle=monthly\|annual` | Returns handle pricing quote, `randomAlternative`, availability, civic protection flag, active auction info, and secondary listings. |
-| `POST` | `/api/names/claim` | `{ handle, buyerType: 'human'\|'bot', entityType: 'personal'\|'business', billingCycle: 'monthly'\|'annual', rail, ownerHandle }` + optional `X-402-Payment-Token` | Free (`$0`) for `personalagentXXXX.agent` / `businessagentXXXX.agent`, `403` for protected civic numbers, `409` for auction-only separate domain purchases, HTTP `402` x402 payment challenge if paid & missing token, or claimed receipt. |
+| `POST` | `/api/names/claim` | `{ handle, buyerType: 'human'\|'bot', entityType: 'personal'\|'business', billingCycle: 'monthly'\|'annual', rail, ownerHandle }` + optional `X-402-Payment-Token` | Free (`$0`) for `personalagentXXXX.agent` / `businessagentXXXX.agent`, `403` for protected civic numbers, `409` for auction-only separate domain purchases, HTTP `402` x402 payment challenge if paid & missing/invalid token, or claimed receipt. |
+| `POST` | `/api/names/buyout` | `{ listingId, buyerHandle }` + optional `X-402-Payment-Token` | Secondary marketplace domain buyout guarded by signed HTTP `402` challenge verification. |
 | `POST` | `/api/names/bid` | `{ handle, bidderHandle, amountUSD }` | Places an English Auction bid (`400` if bid does not exceed current minimum). |
 
 ### 6. Email Triage & Predictive Voice/SOS Dialer (`server.ts`)
@@ -208,31 +224,59 @@ The backend runs on a single Express 4 HTTP server (`server.ts`) bound to `0.0.0
 | `GET` | `/api/agentmail/message` | `?inboxId=&threadId=&agentHandle=` | Fetches full messages inside a thread (or sandbox thread store). |
 | `POST` | `/api/agentmail/send` | `{ inboxId, to, subject, text, html, threadId, inReplyTo, agentHandle }` | Sends a new outbound email or replies in an existing thread via AgentMail API v0 (or appends to sandbox thread). |
 
+### 10. Durable Backend Database, Histories, Activities, Sessions & Passkey Auth (`server.ts` & `server/dbStore.ts`)
+| Method | Endpoint | Query / Body | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/db/bootstrap` | `?deviceId=&ownerUid=` | Hydrates all 24 domain collections, device passkeys, and active sessions from disk (`switchz-db.json`). |
+| `POST` | `/api/db/sync` | `{ deviceId, ownerUid, agents, ...collections }` | Merges client state mutations into the durable backend database and links device agents. |
+| `GET` / `POST` | `/api/histories` | `?agentId=&agentHandle=&actionType=&limit=` | Queries or appends persistent user/agent/HR history entries (`agentActionHistory`). |
+| `GET` / `POST` | `/api/activities` | `?ownerUid=&deviceId=&agentHandle=&category=` | Queries or appends real-time activities (`autopilot`, `proximity`, `match`, `negotiation`, `auth`, `session`, etc.). |
+| `GET` / `POST` | `/api/sessions` | `{ id, ownerUid, deviceId, authMode, agentIds, agentHandles, activeAgentId, lastTab, networkAutopilotEnabled }` | Records active device/user sessions, active agent, and `+Network` autopilot state. |
+| `POST` | `/api/auth/passkey/register-options` | `{ deviceId, ownerUid, displayName, email }` | Issues single-use 5-minute WebAuthn / P-256 registration challenge. |
+| `POST` | `/api/auth/passkey/register-verify` | `{ challenge, deviceId, credentialId, publicKeySpki, algorithm, signature, agentIds, agentHandles }` | Verifies cryptographic key proof, binds `User × Agents` to device, and issues HMAC `sessionToken`. |
+| `POST` | `/api/auth/passkey/login-options` | `{ deviceId, credentialId }` | Returns login challenge & device credential descriptors (`allowCredentials`). |
+| `POST` | `/api/auth/passkey/login-verify` | `{ challenge, deviceId, credentialId, signature, clientDataJSON }` | Verifies assertion signature, restores user session + all remembered agents created on device. |
+| `GET` / `DELETE` | `/api/auth/passkeys` & `/:credentialId` | `?deviceId=&ownerUid=` | Lists device-bound passkeys or revokes a passkey credential. |
+| `GET` / `POST` | `/api/auth/session` & `/session/link-agents` | `Authorization: Bearer <sessionToken>` | Restores verified passkey session and binds newly created agents to device memory. |
+| `POST` | `/api/auth/logout` | `{ sessionId, deviceId }` | Signs out the active session while keeping device passkey memory ready for 1-tap unlock. |
+
 ---
 
 ## Database Schema, Security Rules & Client Persistence
 
-SWITCHZ uses a **hybrid cloud + local-first persistence model** (`src/lib/firebase.ts` + `src/store/useSwitchboardStore.ts`):
+SWITCHZ uses a **three-tier durable persistence architecture**:
+1. **Express Disk Database (`server/dbStore.ts` → `.data/switchz-db.json`)** for cross-reload server persistence across anonymous/passkey/Google users,
+2. **Cloud Firestore (`firebase-blueprint.json` + `firestore.rules`)** for real-time Google Workspace-authenticated cloud sync, and
+3. **`localStorage` (`switchboard_agentpages_state_v3`)** for instant offline-first boot.
 
 ### 1. Cloud Firestore (`firebase-blueprint.json` & `firestore.rules`)
-All documents enforce a global **default-deny safety net**, strict ID validation (`^[a-zA-Z0-9_\-]+$`, max 128 chars), and Firebase Auth verification (`isSignedIn()` / `isVerifiedUser()` where `email_verified == true` for verified writes):
+All documents enforce a global **default-deny safety net**, strict ID validation (`^[a-zA-Z0-9_\-]+$`, max 128 chars), and Firebase Auth verification (`isSignedIn()` / `isVerifiedUser()`):
 
 | Collection | Access & Validation Rules | Purpose |
 | --- | --- | --- |
-| `/agents/{agentId}` | Read by signed-in users; create/delete by `ownerUid`; updates restricted to profile metadata, guardrails, wallets, geo, and sync flags (`ownerUid` & `createdAt` immutable). | Verified personal and business `.agent` directory records. |
-| `/rfps/{rfpId}` | Read if `status == 'OPEN'` or owned by user; updates restricted to `status`, `matchedProposalsCount`, `description` until `AWARDED`/`EXPIRED`. | Reverse-RFP multi-channel broadcasts. |
+| `/agents/{agentId}` | Read by signed-in users; create/update/delete by `ownerUid` (`ownerUid` & `createdAt` immutable). | Verified personal and business `.agent` directory records. |
+| `/rfps/{rfpId}` | Read if `status == 'OPEN'` or owned by user; updates restricted until `AWARDED`/`EXPIRED`. | Reverse-RFP multi-channel broadcasts. |
 | `/negotiations/{sessionId}` | Read/update restricted to `initiatorOwnerUid` or `targetOwnerUid`; locked once `SETTLED` or `REJECTED`. | Bilateral A2A negotiation transcripts & POPIA audit hashes. |
 | `/settlements/{txId}` | Read/create by `ownerUid`; **no client updates/deletes** (immutable audit ledger). | Completed `paypal_vault`, `x402_base`, `x402_arc`, `x402_solana` settlements. |
-| `/bookings/{bookingId}` | Read/create/update scoped to `ownerUid` (`startTime`, `endTime`, `status`, `googleSynced`). | Autonomous interview & meeting calendar bookings. |
+| `/bookings/{bookingId}` | Read/create/update scoped to `ownerUid`. | Autonomous interview & meeting calendar bookings. |
 | `/agent_emails/{emailId}` | Read/create scoped to `ownerUid` (immutable thread archive). | AI-triaged inbox/outbox threads. |
 | `/voice_chat_sessions/{callId}` | Read/create/update (`transcript`, `dispatchedUnits`) scoped to `callerUid`. | Voice/chat dialer & `$0.00` emergency dispatch transcripts. |
-| `/contacts/{contactId}` | Full CRUD scoped to `ownerUid`; validates contact `source` (`event_wifi`, `event_ble`, `ble_beacon`, `dooh_geofence`, `direct_share`, `directory`). | Saved personal & business agent contact book. |
+| `/contacts/{contactId}` | Full CRUD scoped to `ownerUid`. | Saved personal & business agent contact book. |
+| `/agent_histories/{historyId}` | Read/create scoped to `ownerUid`. | Per-user and per-agent audit timeline entries. |
+| `/agent_activities/{activityId}` | Read/create scoped to `ownerUid`. | Real-time `+Network` autopilot, matching, and auth activities. |
+| `/user_sessions/{sessionId}` | Read/create/update scoped to `ownerUid` (`ownerUid` & `createdAt` immutable). | Active user & device session state remembering bound agents. |
+| `/device_passkeys/{passkeyId}` | Full CRUD scoped to `ownerUid` (`ownerUid` & `createdAt` immutable). | Public-key device passkeys & remembered `User × Agents` links. |
+| `/jobs/{jobId}` | Read by signed-in users; create/update by `ownerUid`. | Published employer vacancies for candidate matching. |
+| `/status_posts/{postId}` | Read by signed-in users; create by `ownerUid`. | Status feed announcements for verified hires & deals. |
+| `/x402_receipts/{receiptId}` | Read/create by `ownerUid`; immutable audit trail. | Cryptographic HTTP 402 payment receipts across humans and agents. |
+| `/ad_campaigns/{campaignId}` | Active campaigns readable by signed-in users; owner updates status/metrics until `EXPIRED`. | Sponsored promotion campaigns launched via x402. |
+| `/x402_entitlements/{entitlementId}` | Read/create/guardrail-update scoped to `ownerUid`. | 10-free-match quotas, email credits, and Auto-Pay wallet balances. |
 
 ### 2. Local Offline-First Store (`useSwitchboardStore.ts`)
-- Persists state under `localStorage` key **`switchboard_agentpages_state_v3`**, seamlessly syncing with Firestore `onSnapshot` listeners when signed in via Google Workspace OAuth (`calendar.events`, `calendar.freebusy`, `gmail.send`, `gmail.readonly` stored in-memory only—never written to browser storage).
+- Persists state under `localStorage` key **`switchboard_agentpages_state_v3`**, seamlessly hydrating from `/api/db/bootstrap` + `/api/auth/session`, debouncing syncs to `/api/db/sync`, and syncing Firestore `onSnapshot` listeners when signed in via Google Workspace OAuth (OAuth tokens kept strictly in-memory).
 - Merges user mutations with curated seed data (`src/data/seedData.ts`), including:
   - `jobs` (including **10 OpenAI global/remote roles** across 10 regions plus enterprise SA & global vacancies),
-  - `matches`, `applicationPackages`, `agentActionHistory` (tailored CVs, cover letters, HR actions),
+  - `matches`, `applicationPackages`, `agentActionHistory`, `activities`, `user_sessions`, `device_passkeys`,
   - `statusPosts` (with `hired`, `deal_approved`, `sponsored`, `linkedin`, `ai` badges),
   - `poppyOperations`, `poppyConsents`, `poppyAuditLogs`,
   - `claimedHandles`, `auctions`, `secondaryListings`.
@@ -275,14 +319,17 @@ Configure variables in `.env` (see `.env.example`):
 
 ```text
 .
-├── server.ts                              # Express entry point, Vite middleware, FX, Discovery, A2A, RFP, Proximity, Names, Triage & Voice APIs
+├── server.ts                              # Express entry point, Vite middleware, FX, Discovery, A2A, Passkey Auth, DB Sync, Proximity, Names & Voice APIs
 ├── server/
+│   ├── dbStore.ts                         # Atomic disk-backed JSON DB engine (.data/switchz-db.json) & ECDSA/HMAC passkey/x402 helpers
 │   ├── poppyRouter.ts                     # Poppy v1.0 discovery, OAuth/JWKS, Ops v3 HMAC/idempotency, recruitment & CV tailoring APIs
-│   └── agentmailRouter.ts                 # AgentMail API v0 proxy (org + RFC 5233 +subaddress routing & sandbox fallback)
+│   ├── agentmailRouter.ts                 # AgentMail API v0 proxy (org + RFC 5233 +subaddress routing, x402 quotas & sandbox fallback)
+│   └── x402Router.ts                      # Universal HTTP 402 Payment Required catalog, challenge/settle, wallet top-up & Sponsored Ads APIs
 ├── src/
-│   ├── App.tsx                            # SPA path router (/, /term, /terms, /employeragreement, /directory), tabs, floating actions & modals
+│   ├── App.tsx                            # SPA path router (/, /pricing, /term, /terms, /employeragreement, /directory), tabs & modals
 │   ├── components/
 │   │   ├── MinimalLandingPage.tsx         # Corporate interactive landing page with WebGL hero, walkthroughs & 2-sided card showcase
+│   │   ├── PricingSection.tsx             # Standalone & landing Pricing plans, $2/$10 custom name tiers, and fee schedule
 │   │   ├── OpticalShaderCanvas.tsx        # GLSL optical shader background
 │   │   ├── LandingFlippableCardExamples.tsx # Separated "For Professionals" & "For Businesses" flippable showcase cards
 │   │   ├── AppWalkthroughPlayer.tsx       # Interactive platform walkthrough video player
@@ -299,6 +346,7 @@ Configure variables in `.env` (see `.env.example`):
 │   │   ├── PostStatusModal.tsx            # Status composer for individuals & companies
 │   │   ├── QuickJobAgentModal.tsx         # 1-click personal career agent signup + instant auto-match
 │   │   ├── QuickEmployerAgentModal.tsx    # 1-click employer hiring agent from jobs URL + candidate matching
+│   │   ├── NetworkAutopilotModal.tsx      # +Network always-on background radar, intent matching & deal closer drawer
 │   │   ├── AgentProfileHistoryModal.tsx   # User profile agent timeline, tailored CV/cover letter viewer & PDF/DOCX downloads
 │   │   ├── CompanyHrPortalModal.tsx       # Company HR dashboard: top applicants, doc/video review, notes & history
 │   │   ├── PoppyRecruitmentModule.tsx     # Poppy v1.0 Hub, 4-role recruitment studio, consent revocation & JSON validator
@@ -313,11 +361,15 @@ Configure variables in `.env` (see `.env.example`):
 │   │   ├── AgentDialerModal.tsx           # Predictive number/T9/handle dialer & $0.00 911/112/999 dispatch
 │   │   ├── AgentSkillsPage.tsx            # External agent skill docs & protocol explorer
 │   │   ├── ChromeExtensionHub.tsx         # Manifest V3 Chrome Extension preview & ZIP exporter
-│   │   ├── DeveloperLedgerModule.tsx      # Settlement audit ledger & multi-currency selector
+│   │   ├── DeveloperLedgerModule.tsx      # Settlement audit ledger, x402 Revenue Hub & multi-currency selector
+│   │   ├── X402RevenueHub.tsx             # 10-free-match meter, USDC agent wallet, Sponsored Ads manager & x402 receipts
+│   │   ├── X402PaymentModal.tsx           # Global HTTP 402 checkout & autonomous agent Auto-Pay approval modal
 │   │   ├── SurfaceSimulatorFrame.tsx      # Desktop / Mobile / CarPlay / XR viewport simulator
-│   │   ├── BurgerMenuDrawer.tsx           # Quick navigation drawer & legal links
+│   │   ├── BurgerMenuDrawer.tsx           # Quick navigation drawer, Passkey Auth UI & legal links
 │   │   ├── PWAInstallButton.tsx           # Adaptive OS/browser PWA install prompt & offline badge
 │   │   └── SwipeScrollArea.tsx            # Touch/wheel/keyboard scroller
+│   ├── hooks/
+│   │   └── useNetworkAutopilot.ts         # Persistent GPS, Wi-Fi mesh, BLE & auto-negotiation background loop
 │   ├── services/
 │   │   ├── poppyProtocol.ts               # Poppy v1.0 manifest builders, RFC 9651 header parser & validator
 │   │   ├── recruitmentMatcher.ts          # Weighted candidate <-> job match scorer & bulk auto-matcher
@@ -325,6 +377,8 @@ Configure variables in `.env` (see `.env.example`):
 │   │   ├── calendarAgentTool.ts           # Google/Outlook/.ics calendar export utilities
 │   │   └── gmailAgentBridge.ts            # Gmail REST API bridge helper
 │   ├── lib/
+│   │   ├── x402Client.ts                  # Client HTTP 402 challenge/settle interceptor & autonomous agent auto-pay SDK
+│   │   ├── passkeyAuth.ts                 # WebAuthn FIDO2 + IndexedDB ECDSA P-256 passkey client & session binding
 │   │   ├── firebase.ts                    # Firebase App, Auth, Workspace OAuth token handling & Firestore init
 │   │   ├── fx.ts                          # 13-currency FX catalog, formatting & geo/timezone currency detector
 │   │   ├── docExport.ts                   # ATS-clean PDF (jspdf) & DOCX (docx) exporters for tailored CVs & cover letters
@@ -332,13 +386,13 @@ Configure variables in `.env` (see `.env.example`):
 │   │   ├── theme.tsx                      # Light/dark theme provider
 │   │   └── toast.tsx                      # Notification toast bus
 │   ├── store/
-│   │   └── useSwitchboardStore.ts         # Unified state, Firestore real-time sync & localStorage persistence
+│   │   └── useSwitchboardStore.ts         # Unified state, Express backend DB sync, Firestore real-time sync & localStorage
 │   ├── data/
 │   │   ├── seedData.ts                    # Verified agents, 10-region OpenAI roles, RFPs, auctions & status posts
 │   │   └── legalDocuments.ts              # Unified SWITCHZ legal suite (Terms, Privacy/POPIA/GDPR, Employer Fee Agreement)
 │   └── types/
 │       └── firestore.ts                   # TypeScript domain interfaces & currency conversion helpers
-├── firebase-blueprint.json                # JSON schema for the 8 Firestore collections
+├── firebase-blueprint.json                # JSON schema for the 14 Firestore collections
 ├── firestore.rules                        # Production Firestore security rules
 ├── firebase-applet-config.json            # Firebase client config
 ├── vite.config.ts                         # Vite, Tailwind CSS v4 & VitePWA Workbox configuration

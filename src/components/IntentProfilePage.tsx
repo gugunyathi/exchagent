@@ -13,6 +13,7 @@ import {
   zarToUsd,
 } from '../types/firestore';
 import { SwipeScrollArea } from './SwipeScrollArea';
+import { X402QuotaSnapshot } from '../lib/x402Client';
 import { emitToast } from '../lib/toast';
 import {
   Briefcase,
@@ -62,6 +63,8 @@ interface IntentProfilePageProps {
   onOpenQuickPersonalUrlModal: () => void;
   onOpenQuickCompanyUrlModal: () => void;
   onOpenSpatialRadar: () => void;
+  x402Quota?: X402QuotaSnapshot;
+  onUnlockMoreMatches?: () => void;
 }
 
 const INTENT_CATEGORY_META: Array<{ id: IntentCategory; label: string; desc: string }> = [
@@ -119,6 +122,8 @@ export const IntentProfilePage: React.FC<IntentProfilePageProps> = ({
   onOpenQuickPersonalUrlModal,
   onOpenQuickCompanyUrlModal,
   onOpenSpatialRadar,
+  x402Quota,
+  onUnlockMoreMatches,
 }) => {
   const selectableAgents = useMemo(
     () => agents.filter((a) => a.handle !== '911.emergency.agent'),
@@ -970,15 +975,28 @@ export const IntentProfilePage: React.FC<IntentProfilePageProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => onRunAutonomousMatch(selectedAgent)}
-                disabled={autonomousMatchLoading}
-                className="px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-900 dark:text-white inline-flex items-center gap-1.5 shrink-0"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${autonomousMatchLoading ? 'animate-spin' : ''}`} />
-                Refresh Matches
-              </button>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {x402Quota && (
+                  <button
+                    type="button"
+                    onClick={() => onUnlockMoreMatches?.()}
+                    className="px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs font-mono tabular-nums font-semibold text-amber-800 dark:text-amber-300 hover:bg-amber-500/15"
+                  >
+                    {x402Quota.unlimitedActive
+                      ? 'Unlimited x402'
+                      : `${x402Quota.freeRemaining}/${x402Quota.freeLimit} Free (+${x402Quota.bonusCredits})`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onRunAutonomousMatch(selectedAgent)}
+                  disabled={autonomousMatchLoading}
+                  className="px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-900 dark:text-white inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${autonomousMatchLoading ? 'animate-spin' : ''}`} />
+                  Refresh Matches
+                </button>
+              </div>
             </div>
 
             {/* Filter Chips (SwipeScrollArea horizontal) */}

@@ -9,6 +9,7 @@ import {
   PersonalContactDoc,
   ProximityPeerDoc,
   SettlementDoc,
+  UserAgentActivityEntry,
 } from '../types/firestore';
 import { emitToast } from '../lib/toast';
 
@@ -82,6 +83,7 @@ interface UseNetworkAutopilotParams {
   }) => Promise<SettlementDoc>;
   onAddPasserbyEvent: (evt: PasserbyHandshakeEvent) => void;
   onLogAgentHistory: (entry: Omit<AgentActionHistoryEntry, 'id' | 'timestamp'>) => void;
+  onRecordActivity?: (entry: Omit<UserAgentActivityEntry, 'id' | 'timestamp'>) => void;
 }
 
 const DEFAULT_CONFIG: NetworkAutopilotConfig = {
@@ -127,6 +129,7 @@ export function useNetworkAutopilot({
   onSettleDeal,
   onAddPasserbyEvent,
   onLogAgentHistory,
+  onRecordActivity,
 }: UseNetworkAutopilotParams) {
   const [config, setConfig] = useState<NetworkAutopilotConfig>(() => loadSavedConfig());
   const [isScanning, setIsScanning] = useState(false);
@@ -164,8 +167,23 @@ export function useNetworkAutopilot({
         timestamp: new Date().toISOString(),
       };
       setActivityLog((prev) => [full, ...prev].slice(0, 40));
+      onRecordActivity?.({
+        ownerUid: activeUserAgent?.ownerUid,
+        agentId: activeUserAgent?.id,
+        agentHandle: activeUserAgent?.handle,
+        targetHandle: event.targetHandle,
+        category:
+          event.kind === 'intent_matched'
+            ? 'match'
+            : event.kind === 'deal_closed'
+            ? 'negotiation'
+            : 'autopilot',
+        title: event.title,
+        detail: event.detail,
+        valueZAR: event.valueZAR,
+      });
     },
-    []
+    [activeUserAgent?.handle, activeUserAgent?.id, activeUserAgent?.ownerUid, onRecordActivity]
   );
 
   useEffect(() => {

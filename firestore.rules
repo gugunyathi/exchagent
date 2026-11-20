@@ -150,11 +150,141 @@ service cloud.firestore {
         && data.favorite is bool;
     }
 
+    function isValidHistory(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'agentId', 'agentHandle', 'actorType',
+          'actorName', 'actionType', 'title', 'details', 'timestamp'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.agentId is string && data.agentId.size() >= 1 && data.agentId.size() <= 128
+        && data.agentHandle is string && data.agentHandle.size() >= 1 && data.agentHandle.size() <= 64
+        && data.actorType in ['personal_agent', 'company_agent', 'hr_staff', 'user']
+        && data.actorName is string && data.actorName.size() <= 120
+        && data.actionType is string && data.actionType.size() <= 64
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.details is string && data.details.size() <= 4000;
+    }
+
+    function isValidActivity(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'category', 'title', 'detail', 'timestamp'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.category in ['auth', 'autopilot', 'proximity', 'match', 'negotiation', 'recruitment', 'comms', 'registry', 'session', 'system']
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.detail is string && data.detail.size() <= 2000;
+    }
+
+    function isValidUserSession(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'deviceId', 'authMode', 'userDisplayName',
+          'agentIds', 'agentHandles', 'createdAt', 'lastActiveAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 128
+        && data.authMode in ['google', 'passkey_sim', 'guest']
+        && data.userDisplayName is string && data.userDisplayName.size() <= 120
+        && data.agentIds is list && data.agentIds.size() <= 100
+        && data.agentHandles is list && data.agentHandles.size() <= 100;
+    }
+
+    function isValidDevicePasskey(data) {
+      return data.keys().hasAll([
+          'credentialId', 'ownerUid', 'deviceId', 'algorithm',
+          'rememberedAgentIds', 'rememberedAgentHandles', 'createdAt', 'lastUsedAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.credentialId is string && data.credentialId.size() >= 1 && data.credentialId.size() <= 256
+        && data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 128
+        && data.algorithm in ['WEBAUTHN_FIDO2', 'DEVICE_KEY_P256']
+        && data.rememberedAgentIds is list && data.rememberedAgentIds.size() <= 100
+        && data.rememberedAgentHandles is list && data.rememberedAgentHandles.size() <= 100;
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll(['companyAgentHandle', 'companyName', 'title', 'status'])
+        && data.companyAgentHandle is string && data.companyAgentHandle.size() <= 64
+        && data.companyName is string && data.companyName.size() <= 120
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+        && data.status in ['OPEN', 'INTERVIEWING', 'FILLED', 'PAUSED'];
+    }
+
+    function isValidStatusPost(data) {
+      return data.keys().hasAll(['agentId', 'agentHandle', 'headline', 'body', 'createdAt'])
+        && data.agentId is string && data.agentId.size() <= 128
+        && data.agentHandle is string && data.agentHandle.size() <= 64
+        && data.headline is string && data.headline.size() >= 1 && data.headline.size() <= 200
+        && data.body is string && data.body.size() <= 2000;
+    }
+
+    function isValidX402Receipt(data) {
+      return data.keys().hasAll([
+          'paymentId', 'nonce', 'sku', 'category', 'title', 'ownerUid',
+          'payerType', 'payerHandle', 'rail', 'amountUSD', 'amountZAR',
+          'txHash', 'x402Token', 'status', 'settledAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.paymentId is string && data.paymentId.size() >= 1 && data.paymentId.size() <= 128
+        && data.nonce is string && data.nonce.size() >= 1 && data.nonce.size() <= 128
+        && data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 80
+        && data.category in [
+          'matches_pack', 'ad_boost', 'domain_name', 'email_inbox',
+          'rfp_boost', 'autopilot_pass', 'video_audit', 'api_pack',
+          'placement_escrow', 'wallet_topup'
+        ]
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.payerType in ['human', 'agent']
+        && data.payerHandle is string && data.payerHandle.size() >= 1 && data.payerHandle.size() <= 64
+        && data.rail in ['paypal_vault', 'x402_base', 'x402_arc', 'x402_solana']
+        && data.amountUSD is number && data.amountUSD >= 0
+        && data.amountZAR is number && data.amountZAR >= 0
+        && data.txHash is string && data.txHash.size() <= 160
+        && data.x402Token is string && data.x402Token.size() <= 256
+        && data.status == 'SETTLED';
+    }
+
+    function isValidAdCampaign(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'agentHandle', 'sponsorName', 'placement', 'headline',
+          'body', 'ctaLabel', 'budgetUSD', 'impressions', 'clicks',
+          'receiptId', 'txHash', 'status', 'startsAt', 'expiresAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.agentHandle is string && data.agentHandle.size() >= 1 && data.agentHandle.size() <= 64
+        && data.sponsorName is string && data.sponsorName.size() >= 1 && data.sponsorName.size() <= 120
+        && data.placement in ['status_circle', 'directory_featured', 'radar_beacon']
+        && data.headline is string && data.headline.size() >= 1 && data.headline.size() <= 200
+        && data.body is string && data.body.size() >= 1 && data.body.size() <= 2000
+        && data.ctaLabel is string && data.ctaLabel.size() >= 1 && data.ctaLabel.size() <= 64
+        && data.budgetUSD is number && data.budgetUSD >= 0
+        && data.impressions is number && data.impressions >= 0
+        && data.clicks is number && data.clicks >= 0
+        && data.receiptId is string && data.receiptId.size() <= 128
+        && data.txHash is string && data.txHash.size() <= 160
+        && data.status in ['ACTIVE', 'PAUSED', 'EXPIRED'];
+    }
+
+    function isValidX402Entitlement(data) {
+      return data.keys().hasAll([
+          'ownerUid', 'freeMatchesUsed', 'freeMatchLimit', 'bonusMatchCredits',
+          'walletBalanceUSD', 'autoPayEnabled', 'maxAutoPayPerCallUSD',
+          'totalSpentUSD', 'updatedAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid
+        && data.freeMatchesUsed is number && data.freeMatchesUsed >= 0
+        && data.freeMatchLimit is number && data.freeMatchLimit >= 0 && data.freeMatchLimit <= 100
+        && data.bonusMatchCredits is number && data.bonusMatchCredits >= 0
+        && data.walletBalanceUSD is number && data.walletBalanceUSD >= 0
+        && data.autoPayEnabled is bool
+        && data.maxAutoPayPerCallUSD is number && data.maxAutoPayPerCallUSD >= 0
+        && data.totalSpentUSD is number && data.totalSpentUSD >= 0;
+    }
+
     match /agents/{agentId} {
       allow get: if isSignedIn() && isValidId(agentId);
       allow list: if isSignedIn();
-      allow create: if isVerifiedUser() && isValidId(agentId) && isValidAgent(incoming());
-      allow update: if isVerifiedUser()
+      allow create: if isSignedIn() && isValidId(agentId) && isValidAgent(incoming());
+      allow update: if isSignedIn()
         && isValidId(agentId)
         && existing().ownerUid == request.auth.uid
         && incoming().ownerUid == existing().ownerUid
@@ -162,7 +292,9 @@ service cloud.firestore {
         && isValidAgent(incoming())
         && incoming().diff(existing()).affectedKeys().hasOnly([
           'displayName', 'roleTitle', 'organization', 'popiaConsentActive',
-          'skills', 'guardrails', 'walletAddresses', 'geoLocation',
+          'skills', 'impliedIntent', 'cvSummary', 'interviewVideo', 'careersUrl', 'hrTeam',
+          'cardStyle', 'tagline', 'summary', 'createdByDeviceId',
+          'guardrails', 'walletAddresses', 'geoLocation',
           'discoverableByPassersby', 'passerbyIncentive', 'calendarSyncEnabled', 'gmailBridgeEnabled'
         ]);
       allow delete: if isVerifiedUser() && isValidId(agentId) && existing().ownerUid == request.auth.uid;
@@ -241,6 +373,97 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && isValidContact(incoming());
       allow delete: if isSignedIn() && isValidId(contactId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /agent_histories/{historyId} {
+      allow get: if isSignedIn() && isValidId(historyId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(historyId) && isValidHistory(incoming());
+    }
+
+    match /agent_activities/{activityId} {
+      allow get: if isSignedIn() && isValidId(activityId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(activityId) && isValidActivity(incoming());
+    }
+
+    match /user_sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(sessionId) && isValidUserSession(incoming());
+      allow update: if isSignedIn() && isValidId(sessionId)
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && isValidUserSession(incoming());
+    }
+
+    match /device_passkeys/{passkeyId} {
+      allow get: if isSignedIn() && isValidId(passkeyId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(passkeyId) && isValidDevicePasskey(incoming());
+      allow update: if isSignedIn() && isValidId(passkeyId)
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && isValidDevicePasskey(incoming());
+      allow delete: if isSignedIn() && isValidId(passkeyId) && existing().ownerUid == request.auth.uid;
+    }
+
+    match /jobs/{jobId} {
+      allow get: if isSignedIn() && isValidId(jobId);
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isValidId(jobId)
+        && incoming().ownerUid == request.auth.uid
+        && isValidJob(incoming());
+      allow update: if isVerifiedUser() && isValidId(jobId)
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && isValidJob(incoming());
+    }
+
+    match /status_posts/{postId} {
+      allow get: if isSignedIn() && isValidId(postId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(postId)
+        && incoming().ownerUid == request.auth.uid
+        && isValidStatusPost(incoming());
+    }
+
+    match /x402_receipts/{receiptId} {
+      allow get: if isSignedIn() && isValidId(receiptId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(receiptId) && isValidX402Receipt(incoming());
+    }
+
+    match /ad_campaigns/{campaignId} {
+      allow get: if isSignedIn() && isValidId(campaignId)
+        && (existing().status == 'ACTIVE' || existing().ownerUid == request.auth.uid);
+      allow list: if isSignedIn()
+        && (resource.data.status == 'ACTIVE' || resource.data.ownerUid == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(campaignId) && isValidAdCampaign(incoming());
+      allow update: if isSignedIn()
+        && isValidId(campaignId)
+        && isValidAdCampaign(incoming())
+        && existing().ownerUid == request.auth.uid
+        && existing().status != 'EXPIRED'
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().receiptId == existing().receiptId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'impressions', 'clicks', 'headline', 'body', 'ctaLabel']);
+    }
+
+    match /x402_entitlements/{entitlementId} {
+      allow get: if isSignedIn() && isValidId(entitlementId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(entitlementId) && isValidX402Entitlement(incoming());
+      allow update: if isSignedIn()
+        && isValidId(entitlementId)
+        && isValidX402Entitlement(incoming())
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'autoPayEnabled', 'maxAutoPayPerCallUSD', 'updatedAt'
+        ]);
     }
   }
 }

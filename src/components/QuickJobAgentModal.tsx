@@ -24,8 +24,11 @@ import {
   PoppyConsentGrant,
   PoppyOperation,
   RecruitmentMatchDoc,
+  X402AccountEntitlement,
   formatMoney,
 } from '../types/firestore';
+import { X402QuotaSnapshot, X402SettleResult, x402FetchWithAutoPay } from '../lib/x402Client';
+import { getOrCreateDeviceId } from '../lib/passkeyAuth';
 import { AGENT_IMAGE_PRESETS } from '../lib/agentImages';
 import { LegalDocTab, AI_OUTREACH_DISCLAIMER_TEXT } from '../data/legalDocuments';
 import { HandleBillingCycle, quoteHandlePricing } from '../services/paymentRails';
@@ -58,6 +61,11 @@ interface QuickJobAgentModalProps {
   ) => Promise<AgentApplicationPackage | null>;
   onOpenProfileHistory?: (agent: AgentDoc, packageId?: string) => void;
   onOpenLegal?: (doc: LegalDocTab) => void;
+  x402Quota?: X402QuotaSnapshot;
+  x402Entitlement?: X402AccountEntitlement;
+  onSyncQuota?: (quota?: X402QuotaSnapshot | null) => void;
+  onX402Settled?: (result: X402SettleResult) => void;
+  onOpenX402Upgrade?: () => void;
 }
 
 const SAMPLE_PROFILES = [
@@ -95,6 +103,11 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
   onTailorAndApply,
   onOpenProfileHistory,
   onOpenLegal,
+  x402Quota,
+  x402Entitlement,
+  onSyncQuota,
+  onX402Settled,
+  onOpenX402Upgrade,
 }) => {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [focusNote, setFocusNote] = useState('');
@@ -151,19 +164,32 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const quickRes = await fetch('/api/recruitment/linkedin-quickstart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          linkedinUrl: trimmedUrl,
-          focusNote: focusNote.trim(),
-          handleMode,
-          billingCycle,
-          customHandle: customHandleInput.trim(),
-          jobs,
-        }),
-      });
+      const deviceId = getOrCreateDeviceId();
+      const quickRes = await x402FetchWithAutoPay(
+        '/api/recruitment/linkedin-quickstart',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            linkedinUrl: trimmedUrl,
+            focusNote: focusNote.trim(),
+            handleMode,
+            billingCycle,
+            customHandle: customHandleInput.trim(),
+            jobs,
+            ownerUid,
+            deviceId,
+          }),
+        },
+        {
+          entitlement: x402Entitlement,
+          payerHandle: customHandleInput.trim() || 'alex.founder.agent',
+          ownerUid,
+          onSettled: onX402Settled,
+        }
+      );
       const data = await quickRes.json();
+      if (data?.quota) onSyncQuota?.(data.quota);
       if (!quickRes.ok || !data?.profile) {
         throw new Error(data?.error || 'Could not generate your personal agent.');
       }
@@ -516,6 +542,27 @@ export const QuickJobAgentModal: React.FC<QuickJobAgentModalProps> = ({
           className="flex-1 min-h-0"
           innerClassName="px-4 sm:px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-4"
         >
+        {x402Quota && (
+          <div className="rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-zinc-900/60 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="font-mono tabular-nums text-zinc-700 dark:text-zinc-300">
+              Match Quota:{' '}
+              <strong className="text-zinc-950 dark:text-white">
+                {x402Quota.unlimitedActive
+                  ? 'Unlimited Pro'
+                  : `${x402Quota.freeRemaining}/${x402Quota.freeLimit} Free + ${x402Quota.bonusCredits} Bonus`}
+              </strong>
+            </span>
+            {onOpenX402Upgrade && !x402Quota.unlimitedActive && (
+              <button
+                type="button"
+                onClick={onOpenX402Upgrade}
+                className="text-sky-700 dark:text-sky-400 font-semibold hover:underline"
+              >
+                +Unlock 25 Matches ($4.99 x402)
+              </button>
+            )}
+          </div>
+        )}
 
         {!createdAgent ? (
           <form onSubmit={handleQuickCreate} className="space-y-4">
